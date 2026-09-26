@@ -98,7 +98,12 @@ if (!existsSync(join(standalone, "server.js"))) {
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(root, { recursive: true });
-const copy = (from, to) => cpSync(join(repoRoot, from), join(root, to), { recursive: true, verbatimSymlinks: true });
+// Links are copied as the files they point at. Next's build leaves symlinks in
+// .next/node_modules wherever the OS allows them (GitHub's Windows runner does),
+// pointing at absolute paths on the build machine, and an ordinary Windows
+// account cannot even create one when unpacking (found 2026-09-25).
+const COPY_OPTS = { recursive: true, dereference: true };
+const copy = (from, to) => cpSync(join(repoRoot, from), join(root, to), COPY_OPTS);
 
 step("assembling the app…");
 // Only what the standalone server runs from. Next's file tracing pulls in the
@@ -108,7 +113,7 @@ step("assembling the app…");
 const APP_KEEP = new Set([".next", "node_modules", "server.js", "package.json"]);
 mkdirSync(join(root, "app"), { recursive: true });
 for (const name of readdirSync(standalone)) {
-  if (APP_KEEP.has(name)) cpSync(join(standalone, name), join(root, "app", name), { recursive: true, verbatimSymlinks: true });
+  if (APP_KEEP.has(name)) cpSync(join(standalone, name), join(root, "app", name), COPY_OPTS);
 }
 copy(".next/static", "app/.next/static");
 copy("public", "app/public");
@@ -141,7 +146,7 @@ function copyClosure(names) {
       fail(`node_modules/${n} is missing; run npm ci first`);
     }
     seen.add(n);
-    cpSync(src, join(root, "node_modules", n), { recursive: true, verbatimSymlinks: true });
+    cpSync(src, join(root, "node_modules", n), COPY_OPTS);
     const pj = JSON.parse(readFileSync(join(src, "package.json"), "utf8"));
     for (const d of Object.keys(pj.dependencies ?? {})) queue.push({ n: d, optional: false, parent: src });
     for (const d of Object.keys(pj.optionalDependencies ?? {})) queue.push({ n: d, optional: true, parent: src });
@@ -195,6 +200,10 @@ writeFileSync(
   join(root, PACKAGE_INFO_FILE),
   JSON.stringify({ schema: 1, version, commit, channel, platform: key, repo, node: pins.node.version, builtAt }, null, 2) + "\n"
 );
+
+// A package holds plain files only (see COPY_OPTS): refuse to archive a link.
+const links = readdirSync(root, { recursive: true, withFileTypes: true }).filter((d) => d.isSymbolicLink());
+if (links.length > 0) fail(`the package still holds links, e.g. ${join(links[0].parentPath, links[0].name)}`);
 
 const archive = join(out, archiveName(version, key));
 step(`archiving ${archive}…`);

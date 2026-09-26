@@ -63,6 +63,7 @@ import {
   supervisorLaunch,
 } from "./lib.mjs";
 import { randomBytes } from "node:crypto";
+import { updateSourceOf } from "./release.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
@@ -119,6 +120,14 @@ function ownerPid() {
   if (!existsSync(lock)) return null;
   const pid = Number.parseInt(readFileSync(lock, "utf8").trim(), 10);
   return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/** What an update policy follows, in the words `status` prints (ADR-278). */
+function followed(policy) {
+  const packaged = existsSync(join(cfg.repoDir, "ledgr-package.json"));
+  return updateSourceOf(policy.source, packaged) === "release"
+    ? `ready-made packages, channel ${policy.branch}`
+    : `origin/${policy.branch}`;
 }
 
 function liveBuild() {
@@ -205,7 +214,7 @@ async function doStatus() {
     dbPort: cfg.dbPort,
     serving: http !== null,
     httpStatus: http,
-    build: live ? { sha: live.sha.slice(0, 7), dir: live.dir } : null,
+    build: live ? { sha: live.sha.slice(0, 7), dir: live.dir, version: live.version ?? null } : null,
     startup: {
       supported: boot.supported,
       registered: boot.registered,
@@ -232,7 +241,9 @@ async function doStatus() {
   console.log(
     `  app         ${report.serving ? `answering on :${cfg.appPort} (HTTP ${http})` : `not answering on :${cfg.appPort}`}`
   );
-  console.log(`  build       ${report.build ? report.build.sha : "none flipped yet"}`);
+  console.log(
+    `  build       ${report.build ? report.build.sha + (report.build.version ? ` (package ${report.build.version})` : "") : "none flipped yet"}`
+  );
   // The update policy is a file the app page and the tray window edit, so the
   // CLI reads the same file rather than quoting config.json's stale seed.
   {
@@ -247,8 +258,8 @@ async function doStatus() {
         !policy
           ? "no policy written yet (the service writes one on its first start)"
           : policy.mode === "auto"
-            ? `checked every ${policy.everyMinutes} min on origin/${policy.branch}`
-            : `only when asked from the app (origin/${policy.branch})`
+            ? `checked every ${policy.everyMinutes} min on ${followed(policy)}`
+            : `only when asked from the app (${followed(policy)})`
       }`
     );
   }
