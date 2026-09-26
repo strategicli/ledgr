@@ -229,7 +229,7 @@ check("update trigger, only on a real change", /CREATE TRIGGER share_tokens_sync
 check("peers pause until both take it (version stamp bumped)", /UPDATE "sync_schema_ver" SET "ver" = '0066_share_tokens_sync'/.test(mig));
 check("additive only: nothing dropped or rewritten", !/\b(DROP|DELETE FROM|TRUNCATE|ALTER TABLE)\b/i.test(mig.replace(/--.*$/gm, "")));
 const journal = JSON.parse(read("drizzle/meta/_journal.json")) as { entries: { tag: string }[] };
-check("journal ends at 0066", journal.entries[journal.entries.length - 1].tag === "0066_share_tokens_sync");
+check("journal ends at 0067", journal.entries[journal.entries.length - 1].tag === "0067_core_types");
 const shareLib = read("src/modules/sharing/lib/share.ts");
 check("minting and revoking a link ask for a check-in", (shareLib.match(/nudgeSync\(\)/g) ?? []).length >= 3);
 check("the MCP share tool uses the public address", /publicShareOrigin/.test(read("src/modules/sharing/lib/mcp-tools.ts")));

@@ -549,7 +549,8 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
     check("each database self-assigned a distinct device id", A.deviceId !== B.deviceId);
 
     // Seed the shared owner on both (users rows don't sync; a spoke starts
-    // from a restore/clone). Types + items flow through sync itself.
+    // from a restore/clone). The core types come from migrations on each side
+    // (ADR-283); a custom `recipe` type and the items flow through sync itself.
     for (const p of [A, B]) {
       // passages is off by default for a new owner (migration 0064 keeps it on
       // for existing ones); the passage_refs checks below need it on.
@@ -558,7 +559,7 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
         [OWNER]
       );
     }
-    await A.query(`insert into types (key, label) values ('note', 'Note')`);
+    await A.query(`insert into types (key, label) values ('recipe', 'Recipe')`);
     await A.query(
       `insert into items (id, owner_id, type, title, body) values ($1, $2, 'note', 'hello', '{"format":"markdown","text":"v0"}')`,
       [ITEM, OWNER]
@@ -579,7 +580,7 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
     // Offline: both sides edit the same item — same field, same body — plus a
     // type rename on A (exercises the md5 rowId path for the text pk).
     await A.query(`update items set title = 'title from A', body = '{"format":"markdown","text":"body from A"}' where id = $1`, [ITEM]);
-    await A.query(`update types set label = 'Note (renamed)' where key = 'note'`);
+    await A.query(`update types set label = 'Recipe (renamed)' where key = 'recipe'`);
     await sleep(50); // B writes later — B must win LWW
     await B.query(`update items set title = 'title from B', body = '{"format":"markdown","text":"body from B"}' where id = $1`, [ITEM]);
 
@@ -659,10 +660,10 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
         );
       check("types converge (modulo migration-seeded created_at)", (await typesSans(A)) === (await typesSans(B)));
       const noteRow = async (p: Peer) =>
-        stableStringify((await p.query(`select to_jsonb(t) as row from types t where key = 'note'`)).rows[0]?.row);
+        stableStringify((await p.query(`select to_jsonb(t) as row from types t where key = 'recipe'`)).rows[0]?.row);
       check("the synced type row converges byte-identically", (await noteRow(A)) === (await noteRow(B)));
-      const label = await B.query(`select label from types where key = 'note'`);
-      check("the type rename reached the peer (md5 rowId path)", label.rows[0]?.label === "Note (renamed)");
+      const label = await B.query(`select label from types where key = 'recipe'`);
+      check("the type rename reached the peer (md5 rowId path)", label.rows[0]?.label === "Recipe (renamed)");
     }
 
     const itemA = (await A.query(`select title, body, properties from items where id = $1`, [ITEM])).rows[0];

@@ -9,7 +9,8 @@
 // 1. install.sh, rendered for this package with a file:// download address,
 //    installs it: checksum, unpack, prepare, start, open the setup page.
 // 2. The setup page answers, and the first-run owner is made with the one-time
-//    ticket (the same two server actions the /setup form calls).
+//    ticket (the same two server actions the /setup form calls), and that
+//    owner can create a task and a note (the core types come from migrations).
 // 3. Start with the computer is really registered (launchd agent / systemd
 //    unit), the app says so, and the entry itself starts Ledgr from cold.
 // 4. "Snapshot now" works, which runs the package's own pg_dump.
@@ -240,6 +241,26 @@ const cookie = done.cookies.map((c) => c.split(";")[0]).join("; ");
 const again = await action("createOwnerAtMachine", [ticket, "intruder@example.com", pw, pw]);
 check(!again.result.ok, "the ticket works once only");
 const authed = (p, init = {}) => fetch(url(p), { ...init, headers: { ...(init.headers ?? {}), cookie } });
+
+// A new owner can capture on day one. The core types come from migrations alone
+// (ADR-283); an install never runs seed.mjs, so this is where a missing
+// `task` or `note` row would first be noticed. Through waitFor like every
+// step after it: the app may be mid-restart right after setup (a Mac runner
+// refused the connection 130ms after a successful create), and a 400 for an
+// unknown type is a definite answer, so it fails at once.
+for (const type of ["task", "note"]) {
+  const made = await waitFor(`the new owner to create a ${type}`, async () => {
+    const r = await authed("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type, title: `first ${type}` }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 400) fail(`the new owner cannot create a ${type}: ${j.error ?? "HTTP 400"}`);
+    return r.status === 201 && j.item?.type === type ? j.item : null;
+  }, 60_000);
+  ok(`the new owner can create a ${type} (${made.id})`);
+}
 
 console.log("3. Start with the computer");
 const entry = loginItemPaths(process.platform, homedir(), INSTALLED_STARTUP_NAME, process.env);
