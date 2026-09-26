@@ -27,7 +27,8 @@
 // seed insert) — so there is nothing left to "replace" the way the dump path
 // still has to.
 //
-// The dump form still needs `pg_restore` on PATH:
+// The dump form still needs `pg_restore` (a package's own copy, PATH, or on
+// Windows the Program Files folder the Postgres installer uses; findPgRestore):
 // Windows: winget install PostgreSQL.PostgreSQL.18 (or the zip binaries);
 // macOS: brew install libpq (then follow its PATH caveat).
 // The --from-url form needs nothing beyond `npm ci` (the `pg` driver ships
@@ -62,6 +63,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  readdirSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { totalmem } from "node:os";
@@ -281,6 +283,30 @@ async function resetLocalDatabase(pg, cfg) {
   await admin.end();
 }
 
+/**
+ * Where pg_restore is: the package's own copy (the supervisor passes
+ * LEDGR_PG_BIN, ADR-278), then PATH, then where the Postgres installer puts it
+ * on Windows when winget did not touch PATH (the same places findPgTool in
+ * src/modules/snapshots/lib/snapshots.ts looks). Null when none works.
+ */
+function findPgRestore() {
+  const exe = process.platform === "win32" ? "pg_restore.exe" : "pg_restore";
+  const candidates = [];
+  if (process.env.LEDGR_PG_BIN) candidates.push(join(process.env.LEDGR_PG_BIN, exe));
+  candidates.push(exe);
+  if (process.platform === "win32") {
+    for (const root of ["C:/Program Files/PostgreSQL", "C:/Program Files (x86)/PostgreSQL"]) {
+      try {
+        // Newest version first: a client must be at least the dump's major.
+        for (const v of readdirSync(root).sort((a, b) => Number(b) - Number(a))) candidates.push(join(root, v, "bin", exe));
+      } catch {
+        // not installed there
+      }
+    }
+  }
+  return candidates.find((c) => spawnSync(c, ["--version"], { encoding: "utf8" }).status === 0) ?? null;
+}
+
 /** Restore an already-produced custom-format dump file into the local
  * cluster. Throws on any failure; the caller decides how to report and
  * clean up. */
@@ -297,39 +323,49 @@ async function restoreFromFile(dumpPath, cfg) {
     }
   }
 
-  const restoreCheck = spawnSync("pg_restore", ["--version"], { encoding: "utf8" });
-  if (restoreCheck.status !== 0) {
+  const pgRestore = findPgRestore();
+  if (!pgRestore) {
     fail(
       "pg_restore is not on PATH. Install the Postgres client tools:\n" +
         "  Windows: winget install PostgreSQL.PostgreSQL.18\n" +
         "  macOS:   brew install libpq && brew link --force libpq"
     );
   }
+  // Read the file's table of contents BEFORE anything is dropped: a truncated
+  // file, or one from a newer Postgres than these tools, fails here while the
+  // current database is still untouched.
+  const toc = spawnSync(pgRestore, ["--list", dumpPath], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (toc.status !== 0) {
+    fail(`${dumpPath} could not be read, so nothing was changed: ${(toc.stderr || "").trim().split("\n")[0] || "pg_restore --list failed"}`);
+  }
   console.log(`Restoring ${dumpPath}\n  into the local cluster at ${cfg.dataDir} (port ${cfg.dbPort})`);
 
   const { pg, stop } = await startCluster(cfg);
 
+  const dbUrl = buildDbUrl(cfg);
+  const migrate = () =>
+    spawnSync(process.execPath, [join(repoDir, "scripts", "migrate.mjs")], {
+      cwd: repoDir,
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_URL: dbUrl },
+    }).status === 0;
+  let dropped = false;
   try {
-    const dbUrl = buildDbUrl(cfg);
     const prior = await readPriorIdentity(pg, cfg);
     const priorSignin = await readPriorSigninMethod(pg, cfg);
     await resetLocalDatabase(pg, cfg);
+    dropped = true;
 
     console.log("pg_restore…");
     const restore = spawnSync(
-      "pg_restore",
+      pgRestore,
       ["--no-owner", "--no-privileges", "--exit-on-error", "-d", dbUrl, dumpPath],
       { stdio: "inherit" }
     );
     if (restore.status !== 0) fail("pg_restore failed");
 
     console.log("Migrating to the bundled journal version…");
-    const mig = spawnSync(process.execPath, [join(repoDir, "scripts", "migrate.mjs")], {
-      cwd: repoDir,
-      stdio: "inherit",
-      env: { ...process.env, DATABASE_URL: dbUrl },
-    });
-    if (mig.status !== 0) fail("migrate failed");
+    if (!migrate()) fail("migrate failed");
 
     console.log("Clearing cloned sync state (fresh device identity)…");
     const db = new pg.Client({ connectionString: dbUrl });
@@ -358,6 +394,20 @@ async function restoreFromFile(dumpPath, cfg) {
         "If this peer syncs against a hub, its first pull/push cycle reconciles\n" +
         "everything newer than the backup — expect a burst of ops, then steady state."
     );
+  } catch (err) {
+    // The old database is already gone. Leave an EMPTY, migrated one rather
+    // than a half-loaded one, so this copy still starts (and, on a fresh
+    // install, offers "create the owner" again) instead of erroring on every page.
+    if (dropped) {
+      console.log("The restore failed after the old database was cleared. Leaving an empty database so Ledgr still starts…");
+      try {
+        await resetLocalDatabase(pg, cfg);
+        migrate();
+      } catch {
+        // best-effort; the original error below is the one that matters
+      }
+    }
+    throw err;
   } finally {
     await stop();
   }

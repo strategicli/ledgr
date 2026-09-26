@@ -55,7 +55,8 @@ export default function SetupOwnerForm() {
   async function finish(code: string): Promise<string | null> {
     const res = await finishResetAtMachine(ticket.current, code);
     if (!res.ok) return res.error;
-    window.location.assign("/");
+    // Back to /setup, which now offers the two optional next steps (ADR-282).
+    window.location.assign("/setup");
     return null;
   }
 

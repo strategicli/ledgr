@@ -1289,6 +1289,25 @@ sees the list.
   link that works for 15 minutes and only on that computer. Enter your email
   and a password, save the recovery kit, type one code back, and you are signed
   in as the owner.
+- **Before the password step on Windows,** the page warns you that a
+  "Windows Defender Firewall" box about Node.js may appear. Click **Allow**
+  (private networks is enough). If you click Cancel, Ledgr still works on that
+  computer, but your phone and other computers on your network can't reach it
+  until you allow it in Windows Security. A Mac with its firewall on asks the
+  same about "node".
+- **Then two optional next steps,** back on \`/setup\`, while the new copy is
+  still empty. Skip either, or both.
+  - **Restore from a backup** brings everything over from another copy. Choose
+    a \`.dump\` file: the weekly backup (OneDrive, Ledgr › Backups) or a restore
+    point copied from the other computer's data folder (under \`snapshots\`).
+    Ledgr restarts, loads it, and \`/setup\` says how it went. It replaces this
+    copy, including the owner you just made, so sign in afterwards with the old
+    copy's password (or use Reset Ledgr sign-in password if it had none).
+    Attached files are not inside a backup. If the copy already holds items,
+    it warns you and restores only after you tick "Replace everything here".
+  - **Connect with Tailscale** turns on Private access (Tailscale) and starts
+    connecting, so you can reach Ledgr from your phone and other devices. It
+    is the same control as in **Build → Modules**.
 - **A new copy that uses Clerk** makes the first person who signs in its owner,
   once. Sign in yourself before you share the address.
 - **Claude on a new local copy:** the connector secret makes itself when Ledgr

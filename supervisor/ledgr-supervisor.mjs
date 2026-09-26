@@ -82,6 +82,11 @@ import {
   serializeCronState,
   standDownDetailOf,
   restartSignalPath,
+  restoreSignalPath,
+  restoreUploadPath,
+  restoreResultPath,
+  restoreRequestFresh,
+  restoreErrorLine,
   supervisorStatePath,
   parseRestartRequest,
   parseSupervisorState,
@@ -657,15 +662,21 @@ async function desiredListenHost() {
   return appListenHost({ clerkKey, signinMethod, methodOverride });
 }
 
+/**
+ * Where a package keeps pg_dump / pg_restore: pgtools/bin on macOS and Linux
+ * (their libraries sit in pgtools/lib beside it), pgtools itself on Windows.
+ */
+function pgToolsDir(pkgRoot) {
+  return pkgRoot ? ([join(pkgRoot, "pgtools", "bin"), join(pkgRoot, "pgtools")].find((d) => existsSync(d)) ?? null) : null;
+}
+
 function startApp(ptr) {
   // A package build is Next's standalone server with its own Node (ADR-278);
   // a git build is `next start` on the Node running this, exactly as before.
   const pkgRoot = packageRootOf(ptr.dir, existsSync);
   const standalone = existsSync(join(ptr.dir, "server.js"));
   const cmd = appCommand(ptr.dir, cfg.appPort, listenHost, standalone);
-  // pgtools/bin on macOS and Linux (their libraries sit in pgtools/lib beside
-  // it), pgtools itself on Windows.
-  const pgTools = pkgRoot ? ([join(pkgRoot, "pgtools", "bin"), join(pkgRoot, "pgtools")].find((d) => existsSync(d)) ?? null) : null;
+  const pgTools = pgToolsDir(pkgRoot);
   const env = {
     ...process.env,
     // The branch the app is told about is the policy's, so Build → Updates
@@ -1774,6 +1785,63 @@ function spawnSuccessor() {
   return child.pid;
 }
 
+/**
+ * Restore from a backup the first-run page saved (ADR-282). Runs between
+ * "Postgres stopped" and "lock released" on a restart, so nothing else can be
+ * using the cluster. local-restore.mjs is the same script the terminal uses,
+ * taken from the SERVING build so its migrations match the app that comes back.
+ * The outcome is written for the setup page; the uploaded copy is deleted
+ * either way (the owner still has the original).
+ */
+function restoreIfAsked() {
+  const req = restoreSignalPath(cfg.dataDir);
+  if (!existsSync(req)) return;
+  let text = "";
+  try {
+    text = readFileSync(req, "utf8");
+    unlinkSync(req);
+  } catch {
+    // unreadable or already gone: treated as stale below
+  }
+  const dump = restoreUploadPath(cfg.dataDir);
+  const done = (ok, detail) => {
+    writeFileSync(restoreResultPath(cfg.dataDir), JSON.stringify({ ok, detail, at: new Date().toISOString() }, null, 2), "utf8");
+    try {
+      unlinkSync(dump);
+    } catch {
+      // already gone
+    }
+  };
+  if (!restoreRequestFresh(text, Date.now())) {
+    log("ignoring a stale restore request");
+    return done(false, "the request was too old, so nothing was changed");
+  }
+  if (!existsSync(dump)) return done(false, "the uploaded backup file was missing, so nothing was changed");
+  const ptr = liveBuild();
+  const pkgRoot = ptr ? packageRootOf(ptr.dir, existsSync) : null;
+  const root = pkgRoot ?? ptr?.dir ?? cfg.repoDir;
+  const script = join(root, "scripts", "local-restore.mjs");
+  if (!existsSync(script)) return done(false, "this version of Ledgr cannot restore from the setup page yet; update it and try again");
+  const pgTools = pgToolsDir(pkgRoot);
+  log("restoring from a backup", { script });
+  const r = spawnSync(nodeFor(pkgRoot, process.execPath, isWin, existsSync), [script, dump, configPath], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, ...(pgTools ? { LEDGR_PG_BIN: pgTools } : {}) },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+  for (const line of output.split(/\r?\n/).filter(Boolean).slice(-40)) log("restore", { line });
+  if (r.status === 0) {
+    log("restore finished");
+    done(true, null);
+  } else {
+    const detail = r.error ? String(r.error.message ?? r.error) : restoreErrorLine(output);
+    log("restore FAILED", { detail });
+    done(false, detail);
+  }
+}
+
 async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -1786,6 +1854,13 @@ async function shutdown(sig) {
   // fallback goes by postmaster.pid instead of pg.stop()'s remembered process.
   if (!clean) await forceStopPostgres();
   log("postgres stopped", { clean });
+  if (restartAfterShutdown) {
+    try {
+      restoreIfAsked();
+    } catch (err) {
+      log("restore FAILED", { detail: String(err?.message ?? err) });
+    }
+  }
   releaseLock();
   if (restartAfterShutdown) {
     try {
