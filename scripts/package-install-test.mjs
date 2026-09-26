@@ -244,15 +244,22 @@ const authed = (p, init = {}) => fetch(url(p), { ...init, headers: { ...(init.he
 
 // A new owner can capture on day one. The core types come from migrations alone
 // (ADR-282); an install never runs seed.mjs, so this is where a missing
-// `task` or `note` row would first be noticed.
+// `task` or `note` row would first be noticed. Through waitFor like every
+// step after it: the app may be mid-restart right after setup (a Mac runner
+// refused the connection 130ms after a successful create), and a 400 for an
+// unknown type is a definite answer, so it fails at once.
 for (const type of ["task", "note"]) {
-  const r = await authed("/api/items", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ type, title: `first ${type}` }),
-  });
-  const j = await r.json().catch(() => ({}));
-  check(r.status === 201 && j.item?.type === type, `the new owner can create a ${type} (HTTP ${r.status}${j.error ? `: ${j.error}` : ""})`);
+  const made = await waitFor(`the new owner to create a ${type}`, async () => {
+    const r = await authed("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type, title: `first ${type}` }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 400) fail(`the new owner cannot create a ${type}: ${j.error ?? "HTTP 400"}`);
+    return r.status === 201 && j.item?.type === type ? j.item : null;
+  }, 60_000);
+  ok(`the new owner can create a ${type} (${made.id})`);
 }
 
 console.log("3. Start with the computer");
