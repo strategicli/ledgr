@@ -43,6 +43,9 @@ AppPublisherURL=https://github.com/strategicli/ledgr
 DefaultDirName={autopf}\Ledgr
 DefaultGroupName=Ledgr
 DisableDirPage=yes
+; The welcome page says what is about to happen (per user, data kept apart,
+; another Ledgr left alone): one extra click, worth it for a stranger.
+DisableWelcomePage=no
 DisableProgramGroupPage=yes
 DisableReadyPage=no
 PrivilegesRequired=lowest
@@ -61,7 +64,7 @@ CloseApplications=no
 RestartApplications=no
 
 [Messages]
-WelcomeLabel2=This puts Ledgr on this computer, for this Windows account only (no Administrator prompt).%n%nWhen it finishes, your browser opens on Ledgr's setup page, where you make your sign-in.%n%nIf another copy of Ledgr already runs here, this one is installed beside it and leaves it alone.
+WelcomeLabel2=This puts Ledgr on this computer, for this Windows account only (no Administrator prompt).%n%nWhen it finishes, your browser opens Ledgr. The first time, that is its setup page, where you make your sign-in.%n%nIf another copy of Ledgr already runs here, this one is installed beside it and leaves it alone.
 FinishedLabel=Ledgr is installed and running. It starts by itself when you sign in to Windows, and its icon sits near the clock.%n%nOpen it any time from the Start menu: Ledgr.
 
 [InstallDelete]
