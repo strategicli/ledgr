@@ -4924,3 +4924,23 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Checks.** `scripts/verify-tailnet.mts`: public access only when both sides say sign-in is required, and the Funnel status fields parse with only Tailscale fix links let through.
 
 **Affects:** `tailnet/main.go` (helper 0.2.0), `supervisor/{tailnet.mjs,ledgr-supervisor.mjs}`, `src/modules/tailscale/`, `src/app/api/tailscale/`, `src/app/api/machine/tailscale/`, the Network page, runbook §1q, user guide.
+
+## ADR-280: the Windows installer, and an installed copy beside a git one
+
+**Date:** 2026-09-25
+**Status:** accepted (install plan step 7; Brandon approved Inno Setup and an unsigned installer).
+
+**Context.** A ready-made package (ADR-278) still had to be unzipped, configured and registered by hand. The goal is one download, a couple of Next clicks, and the browser on the setup page, with no terminal, config file or Administrator prompt. Several things about that are hard to change once people have installed it.
+
+**Decision.**
+1. **Inno Setup, per user.** `scripts/ledgr-setup.iss` builds `Ledgr-Setup.exe` in the package workflow, published in every package release with its sha256. `PrivilegesRequired=lowest`: the program goes to `%LOCALAPPDATA%\Programs\Ledgr`, the data and its `config.json` to `%LOCALAPPDATA%\LedgrData`, never inside the program folder. The installer's `AppId` (`{8C1E2B8A-5F4D-4C7B-9E1A-2D6F0B3A7C51}`) and the data folder are permanent: moving either strands existing installs.
+2. **A thin wrapper.** The `.iss` copies files and makes shortcuts; `supervisor/installer.mjs`, run with the package's Node, makes every decision (ports, other installs, upgrade, what to stop), and it has a pure check (`scripts/verify-installer.mts`).
+3. **Start at sign-in from a Startup-folder shortcut, not a scheduled task.** `schtasks` fails unelevated on some machines (ADR-211's note), and a shortcut in the owner's own Startup folder never needs elevation. It runs the tray with `-Boot`, so the icon and the service start together. The supervisor makes and removes it through the ordinary "Start with the computer" request, so that box stays truthful. The per-user Run key was the other option; the shortcut won because Task Manager and the owner can see and remove it by name, and it can run minimized.
+4. **Beside an existing Ledgr, never over it.** An installed copy takes its own names through a new config key, `startupName` (`"Ledgr app"`): its Startup shortcut and, for "before anyone signs in", its own scheduled task. A config without it keeps "Ledgr Supervisor" exactly, so no git install changes. This also closes ADR-211's open item (one task name per machine). The installer detects a git install (its task, its running processes) only to keep clear of its ports; it skips the defaults whenever one is found. Chosen over refusing to install because side by side touches nothing of the other copy and lets a builder try the installed version on the same computer.
+5. **Upgrade in place, never backwards.** A newer installer stops this copy cleanly, replaces the program folders whole, and re-adopts the package when `live.json` points into them (so the new migrations run); a newer self-update keeps serving. An older installer refuses to run over a newer one.
+6. **Uninstall keeps the data** unless the owner ticks an unticked box and then answers Yes (default No). A silent uninstall never deletes data.
+7. **The download link** is `releases/latest/download/Ledgr-Setup.exe`: `main`'s package releases are now marked the repository's Latest (previously none were).
+
+**Checks.** `scripts/verify-installer.mts` (pure, in CI). Exercised on Brandon's machine beside his production hub: fresh install, setup page, upgrade over itself, downgrade refused, Start/Stop from the Start menu, the startup box off and on, silent uninstall keeping data, reinstall over kept data, uninstall with the box ticked, and paths with spaces; the machine was compared with a snapshot taken before and matched.
+
+**Affects:** `scripts/ledgr-setup.iss`, `supervisor/{installer.mjs,lib.mjs,ledgr-supervisor.mjs,ledgr-ctl.mjs,ledgr-tray.ps1,README.md}`, `.github/workflows/package.yml`, `scripts/verify-installer.mts`, `scripts/verify-restart.mts`, the setup checklist wording, runbook §1t, README, user guide.

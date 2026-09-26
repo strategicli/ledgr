@@ -72,7 +72,9 @@ import {
   startupSignalPath,
   startupStatePath,
   stopSignalPath,
-  STARTUP_TASK_NAME,
+  startupTaskNameOf,
+  startupShortcutPath,
+  trayLaunchArgs,
   cronStatePath,
   initialDueAt,
   nextRunAt,
@@ -1153,6 +1155,36 @@ setInterval(() => {
 // elevated. An owner who ticks a box and is not told it failed believes their
 // hub survives a reboot when it does not.
 const startupSignal = startupSignalPath(cfg.dataDir);
+const TASK_NAME = startupTaskNameOf(cfg);
+const SHORTCUT = cfg.startupName && isWin ? startupShortcutPath(process.env.APPDATA ?? "", cfg.startupName) : null;
+
+/** Write the installed copy's Startup-folder shortcut (the tray with -Boot). */
+function writeStartupShortcut() {
+  if (!process.env.APPDATA) return { ok: false, detail: "APPDATA is not set, so there is no Startup folder to write to" };
+  const root = resolve(cfg.repoDir);
+  const argLine = trayLaunchArgs({ root, nodePath: nodeFor(root, process.execPath, isWin, existsSync), configPath, boot: true })
+    .map((a) => (/\s/.test(a) ? `"${a}"` : a))
+    .join(" ");
+  const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
+  const r = run("powershell", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(SHORTCUT)}); ` +
+      `$s.TargetPath = 'powershell.exe'; $s.Arguments = ${q(argLine)}; $s.WorkingDirectory = ${q(root)}; ` +
+      `$s.WindowStyle = 7; $s.Description = 'Starts Ledgr and its tray icon when you sign in'; $s.Save()`,
+  ]);
+  return r.ok && existsSync(SHORTCUT) ? { ok: true } : { ok: false, detail: (r.stderr || "could not write the Startup shortcut").trim().split("\n")[0] };
+}
+
+function removeStartupShortcut() {
+  try {
+    if (existsSync(SHORTCUT)) unlinkSync(SHORTCUT);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, detail: String(err?.message ?? err) };
+  }
+}
 
 function applyStartupRequest(req) {
   // A package install registers the folder it was installed into, never a
@@ -1167,8 +1199,29 @@ function applyStartupRequest(req) {
         supervisorScript: script,
         configPath,
         scope: req.scope,
+        taskName: TASK_NAME,
       })
-    : schtasksDeleteArgs();
+    : schtasksDeleteArgs(TASK_NAME);
+
+  // An installed copy (install plan step 7) starts at sign-in from a shortcut in
+  // the owner's Startup folder, which needs no Administrator prompt. The
+  // shortcut stays for "always" too (it brings the tray icon), which then adds
+  // the scheduled task below under this copy's own name.
+  if (cfg.startupName && isWin) {
+    const made = req.enabled ? writeStartupShortcut() : removeStartupShortcut();
+    if (!made.ok || !req.enabled || req.scope === "logon") {
+      // Logon or off: no task of ours should be left behind. Deleting one that
+      // was never made fails, harmlessly, and is not the outcome recorded.
+      if (!req.enabled || req.scope === "logon") run("schtasks", schtasksDeleteArgs(TASK_NAME));
+      writeFileSync(
+        startupStatePath(cfg.dataDir),
+        serializeStartupState({ enabled: req.enabled, scope: req.scope, ok: made.ok, detail: made.ok ? null : made.detail }),
+        "utf8"
+      );
+      log(made.ok ? "startup shortcut updated" : "startup shortcut FAILED", { enabled: req.enabled, detail: made.detail });
+      return;
+    }
+  }
 
   if (!isWin) {
     writeFileSync(
@@ -1228,8 +1281,8 @@ function applyStartupRequest(req) {
   // Windows what it actually registered rather than trusting our own request.
   let caveat = null;
   if (ok && req.enabled) {
-    const q = run("schtasks", schtasksQueryArgs());
-    caveat = q.ok ? startupCaveat(req.scope, parseSchtasksLogonMode(q.stdout)) : null;
+    const q = run("schtasks", schtasksQueryArgs(TASK_NAME));
+    caveat = q.ok ? startupCaveat(req.scope, parseSchtasksLogonMode(q.stdout), TASK_NAME) : null;
   }
 
   writeFileSync(
@@ -1254,7 +1307,7 @@ function applyStartupRequest(req) {
     "utf8"
   );
   log(ok ? "startup registration updated" : "startup registration FAILED", {
-    task: STARTUP_TASK_NAME,
+    task: TASK_NAME,
     enabled: req.enabled,
     scope: req.scope,
     elevated,
@@ -1284,10 +1337,10 @@ function refreshStartupState() {
     return;
   }
   if (!recorded?.enabled || !recorded.ok) return;
-  const q = run("schtasks", schtasksQueryArgs());
+  const q = run("schtasks", schtasksQueryArgs(TASK_NAME));
   if (!q.ok) return; // task gone or unreadable: leave the record, nothing better to say
   const scope = parseSchtasksScope(q.stdout) ?? recorded.scope;
-  const caveat = startupCaveat(scope, parseSchtasksLogonMode(q.stdout));
+  const caveat = startupCaveat(scope, parseSchtasksLogonMode(q.stdout), TASK_NAME);
   if (scope === recorded.scope && caveat === recorded.caveat) return;
   writeFileSync(
     p,

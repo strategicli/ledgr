@@ -98,6 +98,7 @@ cp supervisor/config.example.json supervisor/config.json   # gitignored
 | `syncGuardrails.maxFirstPush` | This device's very first push (this process's lifetime) is held rather than sent if the pending oplog exceeds this count (default 500) — the guard against a bad restore or bug dumping the whole database at the hub as edits. Only the first push is gated; a busy device that's been syncing fine is never throttled. Threaded as `LEDGR_SYNC_MAX_FIRST_PUSH`. |
 | `syncGuardrails.confirmLargePush` | Set `true` (after looking at what's pending) to release a held first push without raising the limit. Threaded as `LEDGR_SYNC_CONFIRM_LARGE_PUSH`. Usually unnecessary now: a held push shows a **"Send anyway (N changes)"** button on Build → Network, which releases one-shot with no config edit or restart. |
 | `syncGuardrails.skewWarnMs` / `skewHoldMs` | Clock-skew thresholds (ms) against the hub's reported time. Past `skewWarnMs` (default 5000) the Sync section and pill turn amber but syncing continues; past `skewHoldMs` (default 60000) pushes are held — last-writer-wins can't be trusted at that much drift — while pulling keeps working. Threaded as `LEDGR_SYNC_SKEW_WARN_MS` / `LEDGR_SYNC_SKEW_HOLD_MS`. |
+| `startupName` | Set only by the Windows installer (`"Ledgr app"`). Names this copy's start-at-sign-in shortcut in the Startup folder (which "Start with the computer" then makes and removes, no elevation) and its scheduled task for "before anyone signs in", so an installed copy can never overwrite a git install's "Ledgr Supervisor". Unset: the old task name and behavior, exactly. |
 | `extraEnv` | Any additional env for the app (R2 keys, Graph secrets, machine tokens), passed through verbatim. `LEDGR_OAUTH_SECRET` no longer needs to be here: the supervisor makes one in `<dataDir>/install-secrets.json` when neither this nor the environment has one (ADR-275). A Clerk key here (or in the environment) is also what keeps the app listening on every network; without one, and without password sign-in switched on, the app listens on 127.0.0.1 only (runbook §1p). |
 
 ### Scheduled jobs (ADR-214)
@@ -477,6 +478,19 @@ serving, so a package update delivers supervisor fixes after the ordinary
 "restart needed". Snapshots find the package's `pg_dump` through
 `LEDGR_PG_BIN`. How packages are built, published and rolled back:
 `runbook.md` §1s.
+
+## Set up a new machine without git: `Ledgr-Setup.exe` (install plan step 7)
+
+For anyone who is not building Ledgr: download
+[`Ledgr-Setup.exe`](https://github.com/strategicli/ledgr/releases/latest/download/Ledgr-Setup.exe)
+and double-click it. It installs a ready-made package per user (program in
+`%LOCALAPPDATA%\Programs\Ledgr`, data in `%LOCALAPPDATA%\LedgrData`), picks free
+ports, starts this supervisor and the tray, and opens `/setup`. It is a thin
+Inno Setup wrapper (`scripts/ledgr-setup.iss`) around `installer.mjs` here and
+the ordinary `ledgr-ctl` verbs, including the new `open` (start if needed, then
+open the browser). A git install on the same machine is detected and left
+alone. Everything else, upgrade and uninstall included: `runbook.md` §1t. The
+path below stays for builders.
 
 ## Set up a new machine: download `install.cmd` (LH4)
 
