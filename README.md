@@ -1,39 +1,76 @@
 # Ledgr
 
-A personal life management system (a Notion replacement) built by Brandon and Tyler on one shared codebase with separate single-tenant deployments: meetings, tasks, notes, links, and richer workflow items (songs, papers, sermons) stored as **Markdown** documents in Postgres, presented through a Next.js PWA, integrated with Microsoft 365 / Google, Todoist, and Claude.
+Ledgr is a personal system for keeping your work and life in one place: tasks, notes, meetings, links, people, and projects, all stored as items that link to each other. Notes are plain Markdown, so everything stays readable and exportable. It runs as a web app you can install on your phone or computer, and Claude can read and update it through a built-in MCP server.
 
-**Start with [`CLAUDE.md`](./CLAUDE.md)**, the operating manual. It points to the PRD (`ledgr-prd.md`), the data model (`schema.md`), the phase plan (`roadmap.md`), the work queue (`next_steps.md`), operations (`runbook.md`), and the decision log (`decisions.md`).
+It is built by two people for their own use, one owner per copy. There are no shared accounts: each person runs their own copy and owns their own data.
 
-**To find out what Ledgr actually does**, read the user guide rather than the docs above: it is one markdown constant in [`src/lib/mcp/user-guide.ts`](./src/lib/mcp/user-guide.ts), rendered in-app at `/build/guide` (Build → MAINTAIN) and served to any connected AI as `ledgr://guide/using-ledgr`. It is a feature index with a route on every entry. A slice that changes what the owner can do updates it in the same PR (ADR-189).
+## What it does
 
-## Download Ledgr for Windows
+- **Tasks** with due dates, subtasks, repeating tasks, and a daily focus list.
+- **Notes and documents** in a rich editor that saves as Markdown, with revision history.
+- **Meetings and people**, linked to the tasks and notes that came out of them.
+- **Projects** that gather their tasks, notes, meetings, and a timeline in one place.
+- **Custom types** for anything else, plus optional modules (songs, calendar sync, email capture, and more) you switch on under Build → Modules.
+- **Claude integration** through MCP, so an AI assistant can search, file, and update items for you.
+- **Backups:** automatic restore points on a local install, plus an optional plain-file export.
 
-**[Download Ledgr for Windows](https://github.com/strategicli/ledgr/releases/latest/download/Ledgr-Setup.exe)** (the newest `main` build), then double-click `Ledgr-Setup.exe`. It installs for your Windows account only, with no Administrator prompt, and ends in your browser on Ledgr's setup page. Your data lives in `%LOCALAPPDATA%\LedgrData`, apart from the program, so updating or uninstalling never touches it unless you tick the box that says so.
+The full list lives in the in-app user guide (Build → Guide).
 
-The installer is not signed yet, so Windows may show **"Windows protected your PC"**. That is Windows SmartScreen saying it does not recognize the file, not that anything is wrong with it: choose **More info**, then **Run anyway**. Each release lists the file's sha256 if you want to check your download. How the installer works: `runbook.md` §1t.
+## Install it on your own computer
 
-## Download Ledgr for Mac or Linux
+This is the recommended way to run Ledgr. Your data stays on your machine, and nothing else needs to be set up. Leave the computer on if you want to reach Ledgr from your phone.
 
-Open **Terminal** (on a Mac: press Command-Space, type Terminal, press Return), paste this one line, and press Return:
+### Windows
+
+1. **[Download Ledgr-Setup.exe](https://github.com/strategicli/ledgr/releases/latest/download/Ledgr-Setup.exe)** and double-click it.
+2. The installer is not signed yet, so Windows may say **"Windows protected your PC"**. Choose **More info**, then **Run anyway**.
+3. Click through the installer. It installs for your account only and needs no administrator rights.
+4. Ledgr opens in your browser on its setup page. Enter your email and a password, save the recovery kit, and type one code back.
+
+Ledgr then starts when you sign in to Windows. It has a Ledgr folder in the Start menu (open, start, stop, reset password, uninstall) and an icon near the clock.
+
+### Mac or Linux
+
+Open **Terminal** (on a Mac: Command-Space, type Terminal, press Return), paste this line, and press Return:
 
 ```sh
 curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh
 ```
 
-It downloads the newest `main` build for your computer (Apple silicon or Intel Mac, or 64-bit Linux), checks its sha256, installs it for your account only (no password), starts Ledgr, and opens your browser on the setup page. Ledgr then starts by itself when you sign in, and **Ledgr** appears in your Applications › Ledgr folder (Mac) or your applications menu (Linux). Your data lives apart from the program, in `~/Library/Application Support/Ledgr/data` on a Mac or `~/.local/share/ledgr/data` on Linux.
+It installs for your account only (no password), then opens your browser on the setup page. Ledgr then starts when you sign in, and a Ledgr launcher appears in Applications › Ledgr (Mac) or your apps menu (Linux). Linux needs Ubuntu 22.04, Debian 12, Fedora 36, or newer.
 
-- **To update**, run the same line again. Ledgr also updates itself from Build → Updates.
-- **To uninstall**, run it with `--uninstall`: `curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh -s -- --uninstall`. Your data is kept unless you type `DELETE` and then confirm.
-- **Why a Terminal line and not a download:** a file downloaded in a browser gets macOS's "downloaded from the internet" flag, and then Gatekeeper questions every program inside it. A download the script makes does not, so nothing asks. Linux needs glibc 2.34 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later). How it works: `runbook.md` §1u.
+### After installing
 
-## Stack
+- **Moving from another copy?** The setup page offers to restore a backup. Starting fresh, skip it.
+- **Reach it from your phone:** turn on **Private access (Tailscale)** under Build → Modules and click **Connect with Tailscale**. You sign in with a Google, Microsoft, Apple, or GitHub account. Install the Tailscale app on your phone, sign in with the same account, and open the address Ledgr shows you.
+- **Share items publicly:** from the same Tailscale panel, **Make this reachable from the internet**. Ledgr only allows this once a password is set.
+- **Keep a copy in the cloud** (optional): Build → Network → "Keep a copy in the cloud" pairs your computer with a hosted copy that stays in sync, so Ledgr still works when your computer is off.
 
-Next.js (App Router, TypeScript) on Vercel, Postgres on Neon (via the connection pooler, always), Drizzle ORM, Clerk auth (behind a thin provider interface), a markdown-native WYSIWYG editor (library TBD; markdown is the canonical body format since ADR-037), Cloudflare R2 storage.
+### Updating and uninstalling
 
-## Local development
+- **Update:** Build → Updates → **Update**. On Mac or Linux, running the install line again also updates.
+- **Uninstall:** Windows uses the Start menu or Windows Settings → Apps. On Mac or Linux, run the install line with `-s -- --uninstall` added after `sh`.
+- **Your data is kept** unless you explicitly choose to delete it during uninstall.
+
+## Run it in the cloud instead
+
+Ledgr can also run on Vercel with a Neon Postgres database. This takes accounts on GitHub, Vercel, Neon, and (for now) Clerk, plus some configuration, so it is aimed at people comfortable with those tools. See [`docs/satellite-setup.md`](./docs/satellite-setup.md) and `runbook.md` §1k. A simpler hosted setup is planned.
+
+## Status and license
+
+Ledgr is in daily use by its builders and is still changing quickly. New builds are published from `main` several times a day. The code is public, but **it has no license yet**, which means it is not yet licensed for others to use or redistribute. A license will be added before Ledgr is offered more widely.
+
+## For developers
+
+- **[`CLAUDE.md`](./CLAUDE.md)** is the operating manual and the entry point. It links the product spec (`ledgr-prd.md`), data model (`schema.md`), work queue (`next_steps.md`), operations (`runbook.md`), and decision log (`decisions.md`).
+- **The user guide** is one Markdown constant in [`src/lib/mcp/user-guide.ts`](./src/lib/mcp/user-guide.ts). It is shown in the app at `/build/guide` and served to AI clients as `ledgr://guide/using-ledgr`.
+- **Stack:** Next.js (App Router, TypeScript), Postgres (Neon in the cloud, embedded Postgres on a local install), Drizzle ORM, a Tiptap editor over Markdown, sign-in by Clerk or Ledgr's own password login, and file storage on Cloudflare R2 or local disk.
+- **How installs are built and updated:** runbook §1s (packages), §1t (Windows installer), §1u (Mac and Linux), §1q (Tailscale), §1r (cloud copy).
+
+### Local development
 
 1. Copy `.env.example` to `.env.local` and fill in values (see `runbook.md` §1).
 2. `npm install`
 3. `npm run dev`
 
-`/health` reports DB reachability and the last export timestamp.
+`/health` reports database reachability and the state of scheduled jobs.
