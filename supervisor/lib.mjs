@@ -491,6 +491,46 @@ export function parseRestartRequest(text) {
   return { reason: "asked from the app", at: null };
 }
 
+// ── Restore from a backup, asked for by the first-run page (ADR-282) ────────
+//
+// The app cannot replace the database it is running on, so the setup page
+// saves the uploaded backup to a FIXED path and writes a request file, then
+// asks for a restart. The outgoing supervisor, with the app and Postgres both
+// stopped and the lock still held, runs scripts/local-restore.mjs on that file
+// and writes the outcome for the page to read. The request names no path, so
+// nothing the app writes can point the restore at any other file.
+export function restoreSignalPath(dataDir) {
+  return join(dataDir, "restore-requested");
+}
+
+/** Where the setup page saves the uploaded backup. */
+export function restoreUploadPath(dataDir) {
+  return join(dataDir, "restore", "incoming.dump");
+}
+
+export function restoreResultPath(dataDir) {
+  return join(dataDir, "restore-result.json");
+}
+
+/** A request older than this is ignored, so a leftover file never restores on a later restart. */
+export const RESTORE_REQUEST_MAX_AGE_MS = 10 * 60_000;
+
+/** Is this restore request recent enough to act on? Unreadable means no. */
+export function restoreRequestFresh(text, nowMs) {
+  try {
+    const at = Date.parse(JSON.parse(text)?.at);
+    return Number.isFinite(at) && at <= nowMs + 60_000 && nowMs - at <= RESTORE_REQUEST_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** The last ERROR line local-restore printed, for the owner (never the whole log). */
+export function restoreErrorLine(output) {
+  const lines = String(output ?? "").split(/\r?\n/).filter((l) => l.startsWith("ERROR: "));
+  return lines.length ? lines[lines.length - 1].slice(7, 307) : "the restore stopped without saying why";
+}
+
 /**
  * The phases, in order. `handing-off` is the last thing the OUTGOING process
  * writes, so a state stuck there means the successor never started — which is

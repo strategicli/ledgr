@@ -4963,3 +4963,20 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Not done:** code signing and notarization; a menu-bar or tray icon on Mac/Linux (the launchers and the app's pages are the controls); an Intel Mac install test (it is built only); a Linux on Arm package.
 
 **Affects:** `scripts/install.sh`, `scripts/package.mjs`, `scripts/package-pins.json`, `scripts/package-install-test.mjs`, `.github/workflows/package.yml`, `supervisor/{login-item.mjs,installer.mjs,ledgr-ctl.mjs,ledgr-supervisor.mjs,release.mjs,README.md}`, `scripts/local-setup.mjs`, `src/lib/startup.ts`, `src/components/updates/StartupToggle.tsx`, `scripts/verify-installer.mts`, runbook §1s/§1u, README, user guide.
+
+## ADR-282: restore from a backup on the first-run page, through the supervisor
+
+**Date:** 2026-09-25
+**Status:** accepted (Brandon, 2026-09-25: two optional next steps after the owner is created, restore and Tailscale, plus a firewall note).
+
+**Context.** A new local install could only be filled from a backup in a terminal (`npm run local:restore`), with the service stopped. The app cannot do it itself: it is a child of the supervisor, which owns the database cluster, and the proxy cuts request bodies at 10MB. A restore also replaces the whole database, so it must never land on data someone has started entering.
+
+**Decision.**
+1. **The supervisor restores, the app only asks.** The app saves the upload to one fixed path (`<dataDir>/restore/incoming.dump`), writes `restore-requested` (a timestamp, no path), and asks for the existing restart (ADR-227). The outgoing supervisor, after Postgres stops and before it releases the lock, runs the serving build's `scripts/local-restore.mjs` on that file, writes `restore-result.json`, deletes the upload, and hands off. A request older than 10 minutes is ignored. Nothing new parses or restores a backup: it is the terminal path, run by the process that can.
+2. **Only on an empty copy, unless the owner says otherwise.** The restore step shows only to the owner, at the computer (localhost), on a supervised copy with zero items. Both the request and the upload re-count; a copy with items gets a warning naming the count and restores only with "Replace everything here" ticked.
+3. **The upload is outside the proxy** at `/restore-upload`, authorized by a 15-minute one-time token written into the data folder for the signed-in owner, plus localhost (the pair the first-run and reset pages already use).
+4. **`local-restore.mjs` got safer for everyone:** it reads the file's table of contents before dropping anything, finds `pg_restore` in a package's own tools or under Program Files, and after a failure past the drop leaves an empty migrated database rather than a half-loaded one. Packages now carry the script.
+
+**Not done:** listing this computer's own restore points to pick from (a fresh install has none); carrying attached files across (a backup holds none); clearing per-computer `job_state` switches a backup brings along (unchanged terminal behavior).
+
+**Affects:** `supervisor/{lib.mjs,ledgr-supervisor.mjs}`, `scripts/{local-restore.mjs,package.mjs,verify-restore-from-setup.mts}`, `src/app/setup/page.tsx`, `src/app/api/local/restore/route.ts`, `src/app/restore-upload/route.ts`, `src/components/setup/*`, `src/components/auth/SetupOwnerForm.tsx`, `src/lib/first-run.ts`, `src/proxy.ts`, runbook §1p, user guide.
