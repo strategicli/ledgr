@@ -123,9 +123,12 @@ html[data-role="audience"] #presenter{display:none}
 .stage-titlebar{position:absolute;display:none;align-items:center;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 #audience{position:fixed;inset:0}
-.blank-overlay{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center;
+/* The overlays need a z-index: the two stage layers carry inline z-index 1/2
+   (the transition's stacking), so an overlay with none painted UNDER the slide.
+   The countdown's number sat hidden behind it; only its edges showed. */
+.blank-overlay{position:fixed;inset:0;z-index:10;background:#000;display:none;align-items:center;justify-content:center;
   color:#f2f2f2;font-size:5vw;font-weight:700;text-align:center}
-.countdown-overlay{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center}
+.countdown-overlay{position:fixed;inset:0;z-index:10;background:#000;display:none;align-items:center;justify-content:center}
 .countdown-num{font-size:12vw;font-variant-numeric:tabular-nums;color:#f2f2f2}
 
 #presenter{position:fixed;inset:0;display:flex;flex-direction:column}
@@ -1186,6 +1189,9 @@ function initPresenter() {
     try { localStorage.setItem("ledgr-present-build-lists", state.build ? "1" : "0"); } catch (e) {}
     state.step = 0;
     broadcastAndRender();
+  });
+  $("countdown-min").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !state.countdownEnd) { e.preventDefault(); $("start-countdown").click(); }
   });
   $("start-countdown").addEventListener("click", function () {
     if (state.countdownEnd) { state.countdownEnd = null; broadcastAndRender(); return; }
