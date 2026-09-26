@@ -1076,6 +1076,18 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   that item: its own slides if it has any, otherwise its whole text.
 - **Save offline** downloads the whole show as one file, pictures included, that
   runs in any browser with no internet.
+- **Design** (in the presenter view) sets the look for this presentation: a
+  theme (Dark, Light, Gray, Sepia) or your own text and heading colors, a logo
+  in a corner, a background color or picture with a darken slider, a title bar
+  on every slide, and the transition between slides (Fade, Fade through black,
+  Fade up or down, Wipe up or down, Grow). Pictures come from images attached
+  to the item. "Hide on slides" and "Full brightness on slides" take slide
+  numbers like \`1, 5-7\`. **Save as my default** starts new presentations with
+  this look.
+- **Export** downloads the show as **PowerPoint** (editable, with your notes),
+  a **ProPresenter** text file (in ProPresenter use File → Import; the booth's
+  own theme applies), a **PDF** (with or without notes), or a zip of **PNG/JPG**
+  images.
 - **Go live** gives you a public link. Anyone who opens it sees exactly the
   slide you are showing, following along as you advance. **End live** turns the
   link off.

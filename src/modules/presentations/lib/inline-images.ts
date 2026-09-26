@@ -6,6 +6,7 @@ import { attachments } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getStorage } from "@/lib/storage";
 import { SRC_RE, findAttachmentIds } from "@/modules/presentations/lib/attachment-ids";
+import type { PresentationDesign } from "@/modules/presentations/lib/design";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 // ponytail: fixed total cap rather than per-deck tuning; raise if a real deck
@@ -53,4 +54,27 @@ export async function inlineImages(ownerId: string, html: string): Promise<strin
     const uri = dataUris.get(id.toLowerCase());
     return uri ? `src="${uri}"` : whole;
   });
+}
+
+// Inline a design's logo/background image when it's a /files/<id> address
+// (design.ts's IMAGE_SRC already refuses anything else, e.g. an external URL).
+// Wraps each src in a throwaway <img> tag and runs it through inlineImages
+// rather than teaching that function a second input shape.
+export async function inlineDesignImages(
+  ownerId: string,
+  design: PresentationDesign
+): Promise<PresentationDesign> {
+  const wrap = (src: string | null) => (src ? `<img src="${src}">` : "");
+  const html = wrap(design.logo.src) + wrap(design.background.image);
+  if (!html) return design;
+  const inlined = await inlineImages(ownerId, html);
+  const srcs = [...inlined.matchAll(/src="([^"]*)"/g)].map((m) => m[1]);
+  let i = 0;
+  const logoSrc = design.logo.src ? srcs[i++] : design.logo.src;
+  const backgroundImage = design.background.image ? srcs[i++] : design.background.image;
+  return {
+    ...design,
+    logo: { ...design.logo, src: logoSrc },
+    background: { ...design.background, image: backgroundImage },
+  };
 }

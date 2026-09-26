@@ -12,6 +12,8 @@ Built 2026-09-26, off by default (Build → Modules → Presentations). Left for
 - Try **Open audience window** in a real browser with a second screen. Pop-ups couldn't be
   opened in the build session's browser, so the two-window sync was tested with a stand-in.
 - Try **Save offline** on an item with pictures (the inlining path had no image to test).
+- Open an exported **PowerPoint** in PowerPoint, and import the **ProPresenter** text file (File → Import) and/or the .pptx into ProPresenter 21+ at church. Both were checked by reading the files, not in those apps.
+- Try a **background picture** with the darken slider, and a logo attached to the item (the build session used a color background and a pasted image).
 - **Go live** links only work for viewers who can reach the address you present from.
   Present from the cloud copy for an outside audience; a hub on localhost is LAN/Tailscale only.
 

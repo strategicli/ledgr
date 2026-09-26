@@ -18,6 +18,7 @@ export const presentationsModule: ModuleManifest = {
   routes: [
     "src/app/present/[id]/route.ts",
     "src/app/present/[id]/live/route.ts",
+    "src/app/present/[id]/design/route.ts",
     "src/app/live/[token]/route.ts",
   ],
 };
