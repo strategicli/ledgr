@@ -470,6 +470,13 @@
       "when": 1790380000000,
       "tag": "0066_share_tokens_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790400000000,
+      "tag": "0067_core_types",
+      "breakpoints": true
     }
   ]
 }

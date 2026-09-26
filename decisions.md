@@ -4963,3 +4963,18 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Not done:** code signing and notarization; a menu-bar or tray icon on Mac/Linux (the launchers and the app's pages are the controls); an Intel Mac install test (it is built only); a Linux on Arm package.
 
 **Affects:** `scripts/install.sh`, `scripts/package.mjs`, `scripts/package-pins.json`, `scripts/package-install-test.mjs`, `.github/workflows/package.yml`, `supervisor/{login-item.mjs,installer.mjs,ledgr-ctl.mjs,ledgr-supervisor.mjs,release.mjs,README.md}`, `scripts/local-setup.mjs`, `src/lib/startup.ts`, `src/components/updates/StartupToggle.tsx`, `scripts/verify-installer.mts`, runbook §1s/§1u, README, user guide.
+
+## ADR-282: the core types come from migrations, not the seed script
+
+**Date:** 2026-09-25
+**Status:** accepted (fix for a fresh-install defect found the same day).
+
+**Context.** Migration 0000 created the `types` table and never inserted the four core content types (task, event, note, link); only `scripts/seed.mjs` did. Every instance made by hand ran migrate then seed (`new-instance.mjs`), so nobody noticed. An installed copy (the Windows installer, `install.sh`, the supervisor's first run) applies migrations only and then makes its owner on `/setup`, so it came up with person, project, tag, transcript, file, pursuit and the hidden types, and no task or note. Creating either answered 400 "unknown type". The package install test never created an item, so CI did not catch it.
+
+**Decision.** Migration `0067_core_types.sql` inserts the four rows, each in the shape seed.mjs leaves it in after the later guarded appends (the `tags` field from 0028, the `project` field on task from 0031, task's checkbox status from 0032), with `ON CONFLICT (key) DO NOTHING`. Every existing install is left byte-identical, including an owner's edits to those rows; a migrated-only install now converges with a seeded one; seed.mjs is unchanged and stays idempotent against the rows. Two checks keep it true: `scripts/verify-core-types-migrated.mts` (pure, runs in CI) fails if any type key seed.mjs inserts is missing from every migration, and `scripts/package-install-test.mjs` now creates a task and a note as the new owner.
+
+**Rule going forward.** A type a fresh install needs on day one is inserted by a migration. seed.mjs is the hand-run convenience for a developer database and must never be the only place a row is made.
+
+**Rejected.** Running seed.mjs from the supervisor or the installers: it also creates an owner row from an env var, which the `/setup` flow now owns, and it would put a second writer in front of the same rows.
+
+**Affects:** `drizzle/0067_core_types.sql`, `drizzle/meta/_journal.json`, `scripts/verify-core-types-migrated.mts`, `scripts/package-install-test.mjs`, runbook §1a.
