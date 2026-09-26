@@ -270,8 +270,10 @@ export function registerLoginItem({ name, enabled, scope, node, ctl, configPath,
     rmSync(p.wants, { force: true });
     symlinkSync(p.file, p.wants);
     sh("systemctl", ["--user", "daemon-reload"]);
-    if (scope !== "always") return { ok: true, scope: "logon" };
     const user = userInfo().username;
+    // Linger already on (set earlier, or for another service) means the unit
+    // starts before anyone signs in, whatever was asked: say what is true.
+    if (scope !== "always") return { ok: true, scope: existsSync(join("/var/lib/systemd/linger", user)) ? "always" : "logon" };
     const linger = sh("loginctl", ["--no-ask-password", "enable-linger", user]);
     if (linger.ok || existsSync(join("/var/lib/systemd/linger", user))) return { ok: true, scope: "always" };
     return { ok: true, scope: "logon", caveat: lingerCaveat(user) };
