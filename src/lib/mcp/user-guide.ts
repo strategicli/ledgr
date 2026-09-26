@@ -1051,6 +1051,35 @@ then one press gives you two documents:
 The slides document is rewritten each time rather than piling up. The old version
 stays in the item's history.
 
+## Presenting from Ledgr
+
+Turn on **Presentations** in Build → Modules. Every item then has a **Present**
+button under Export & sharing. It opens the item as a slideshow in a new tab.
+
+- **Where slides come from.** If the item has slide marks, each marked span is a
+  slide and the text between marks becomes your speaker notes. Otherwise a \`---\`
+  line (with a blank line above it) starts a new slide. With no \`---\` lines,
+  each top-level heading does. Comments become speaker notes and never reach
+  the screen.
+- **Two windows.** The tab you open is your presenter view: the current and next
+  slide, your notes, a timer and the clock. **Open audience window** opens the
+  view for the projector; drag it there and press **F** for full screen.
+  **Present here** uses one screen.
+- **Keys.** Arrows, space, Page Up/Down (what clickers send) move. **B** or
+  **.** blacks the screen, **W** shows the title, a number then Enter jumps,
+  **F** is full screen.
+- **Build lists** reveals bullets one at a time. **Start countdown** shows a
+  countdown on the screen until you begin.
+- **Edits show up live.** Fix a typo mid-talk and the slide updates within a
+  few seconds.
+- **Show another item on a slide.** A slide holding nothing but one @-link shows
+  that item: its own slides if it has any, otherwise its whole text.
+- **Save offline** downloads the whole show as one file, pictures included, that
+  runs in any browser with no internet.
+- **Go live** gives you a public link. Anyone who opens it sees exactly the
+  slide you are showing, following along as you advance. **End live** turns the
+  link off.
+
 ## Your tasks in your calendar app
 
 **User Settings → Task calendar feed (ICS)** publishes a subscribe URL that

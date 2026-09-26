@@ -75,10 +75,10 @@ export default function PresentationExport({
           >
             Opens a clean black-and-white copy of this document for print or PDF:
             no colors, no struck-through text, no notes to self, and a{" "}
-            <strong>[SLIDE N]</strong> cue at every <strong>blue highlight</strong>
-            . Also writes those passages into a “Slides” note attached to this item,
-            in the same order. <strong>Highlight in blue</strong> to put a passage or
-            quote on the screen; every other highlight color is just for you.
+            <strong>[SLIDE N]</strong> cue at every <strong>slide mark</strong>. Also
+            writes those passages into a “Slides” note attached to this item, in the
+            same order. Use the toolbar&apos;s <strong>slide mark</strong> (the screen
+            button) to put a passage or quote on the screen.
           </span>
         </span>
       </div>

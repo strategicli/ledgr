@@ -89,6 +89,7 @@ export default async function ItemUtilitiesFooter({
               {/* The sharing module's control; renders nothing while it is off. */}
               <ModuleItemPanel id="share" itemId={itemId} bare />
               <PresentationExport itemId={itemId} bare />
+              <ModuleItemPanel id="present" itemId={itemId} />
             </div>
           </details>
         </div>

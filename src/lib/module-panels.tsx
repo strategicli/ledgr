@@ -10,6 +10,7 @@ import DiscoverSection from "@/modules/relatedness/components/DiscoverSection";
 import ExploreView from "@/modules/relatedness/components/ExploreView";
 import LiveContextPanel from "@/modules/live-context/components/LiveContextPanel";
 import MeetingTranscripts from "@/modules/meeting-transcripts/components/MeetingTranscripts";
+import PresentPanel from "@/modules/presentations/components/PresentPanel";
 
 type PanelProps = { itemId: string; title?: string; bare?: boolean; collapsed?: boolean };
 
@@ -18,6 +19,7 @@ const ITEM_PANELS: Record<string, (props: PanelProps) => ReactNode | Promise<Rea
   discover: DiscoverSection,
   "live-context": LiveContextPanel,
   "meeting-transcripts": MeetingTranscripts,
+  present: PresentPanel,
 };
 
 export function ModuleItemPanel({ id, ...props }: PanelProps & { id: string }) {
