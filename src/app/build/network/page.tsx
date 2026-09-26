@@ -51,7 +51,7 @@ import {
 } from "@/lib/network-addresses";
 import { moduleIsOn } from "@/lib/modules/gate";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
-import { readTailnetStatus, tailnetAddress } from "@/modules/tailscale/lib/status";
+import { funnelAddress, readTailnetStatus, tailnetAddress } from "@/modules/tailscale/lib/status";
 import ReleasePushButton from "@/components/network/ReleasePushButton";
 import CloudCopy from "@/components/network/CloudCopy";
 import { pairingState } from "@/lib/sync/pairing-hub";
@@ -117,6 +117,13 @@ export default async function Network() {
   // deploy's address is its domain and nobody needs telling.
   const isLocal = !!process.env.LEDGR_SUPERVISOR_DIR;
   const tailscale = isLocal ? await readTailscaleState() : TAILSCALE_ABSENT;
+  // The Tailscale module's own address, only while its helper is serving. With
+  // public access (Funnel) on, the same address is also the public one.
+  const tailnetStatus =
+    isLocal && tailscaleAvailable() && (await moduleIsOn(owner.id, "tailscale"))
+      ? await readTailnetStatus(process.env.LEDGR_SUPERVISOR_DIR ?? null)
+      : null;
+  const funnelUrl = funnelAddress(tailnetStatus);
   const myAddresses = isLocal
     ? reachableAddresses({
         tailscale,
@@ -126,12 +133,8 @@ export default async function Network() {
         // NEXT_PUBLIC_* var at build time, and the supervisor builds with its own
         // environment rather than the app's, so the dotted form can bake in as
         // undefined here. The supervisor DOES pass it to `next start`.
-        publicUrl: process.env["NEXT_PUBLIC_APP_URL"],
-        // The Tailscale module's own address, only while its helper is serving.
-        privateUrl:
-          tailscaleAvailable() && (await moduleIsOn(owner.id, "tailscale"))
-            ? tailnetAddress(await readTailnetStatus(process.env.LEDGR_SUPERVISOR_DIR ?? null))
-            : null,
+        publicUrl: process.env["NEXT_PUBLIC_APP_URL"] || funnelUrl,
+        privateUrl: funnelUrl && !process.env["NEXT_PUBLIC_APP_URL"] ? null : tailnetAddress(tailnetStatus),
       })
     : [];
 

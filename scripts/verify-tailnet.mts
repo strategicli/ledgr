@@ -15,8 +15,9 @@ import {
   tailnetAsset,
   tailnetDownloadUrl,
   tailnetHostname,
+  tailnetPlan,
 } from "../supervisor/tailnet.mjs";
-import { parseTailnetStatus as parseInApp, tailnetAddress } from "@/modules/tailscale/lib/status";
+import { funnelAddress, parseTailnetStatus as parseInApp, tailnetAddress } from "@/modules/tailscale/lib/status";
 import { reachableAddresses, TAILSCALE_ABSENT } from "@/lib/network-addresses";
 
 let n = 0;
@@ -91,10 +92,37 @@ check("status parsing: both halves agree, junk is null", () => {
   assert.equal(tailnetAddress(parseInApp(JSON.stringify({ state: "error", url: "https://x" }))), null);
 });
 
-check("the signal file: logout only when it says so", () => {
-  assert.deepEqual(parseTailnetRequest('{"logout":true}'), { logout: true });
-  assert.deepEqual(parseTailnetRequest('{"logout":false}'), { logout: false });
-  assert.deepEqual(parseTailnetRequest(""), { logout: false });
+check("the signal file: logout and recheck only when it says so", () => {
+  assert.deepEqual(parseTailnetRequest('{"logout":true}'), { logout: true, recheck: false });
+  assert.deepEqual(parseTailnetRequest('{"recheck":true}'), { logout: false, recheck: true });
+  assert.deepEqual(parseTailnetRequest(""), { logout: false, recheck: false });
+});
+
+check("public access needs BOTH the app and the supervisor to say sign-in is required", () => {
+  assert.deepEqual(tailnetPlan({ run: true, funnel: true }, true), { run: true, funnel: true });
+  // The app says yes but the supervisor sees no sign-in: private only.
+  assert.deepEqual(tailnetPlan({ run: true, funnel: true }, false), { run: true, funnel: false });
+  // Funnel never outlives private access, and junk never turns anything on.
+  assert.deepEqual(tailnetPlan({ run: false, funnel: true }, true), { run: false, funnel: false });
+  assert.deepEqual(tailnetPlan({ run: true, funnel: "yes" }, true), { run: true, funnel: false });
+  assert.deepEqual(tailnetPlan({}, true), { run: false, funnel: false });
+  assert.equal(tailnetPlan(null, true), null); // the app did not answer: change nothing
+});
+
+check("Funnel status: on, unavailable with a Tailscale fix link, nothing else", () => {
+  const on = JSON.stringify({ state: "running", url: "https://ledgr-pc.example.ts.net", funnel: "on" });
+  assert.equal(parseTailnetStatus(on)?.funnel, "on");
+  assert.equal(funnelAddress(parseInApp(on)), "https://ledgr-pc.example.ts.net");
+  const refused = JSON.stringify({
+    state: "running", url: "https://ledgr-pc.example.ts.net", funnel: "unavailable",
+    funnelMessage: "not allowed", funnelFixUrl: "https://login.tailscale.com/f/funnel?node=abc",
+  });
+  assert.equal(funnelAddress(parseInApp(refused)), null);
+  assert.equal(parseInApp(refused)?.funnelFixUrl, "https://login.tailscale.com/f/funnel?node=abc");
+  const evil = JSON.stringify({ state: "running", funnel: "unavailable", funnelFixUrl: "https://evil.example/" });
+  assert.equal(parseInApp(evil)?.funnelFixUrl, null);
+  assert.equal(parseInApp(JSON.stringify({ state: "running", funnel: "maybe" }))?.funnel, null);
+  assert.equal(funnelAddress(parseInApp(JSON.stringify({ state: "error", url: "https://x", funnel: "on" }))), null);
 });
 
 check("the Network page lists the private address after a public one, first otherwise", () => {
