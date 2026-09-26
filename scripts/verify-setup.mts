@@ -95,6 +95,10 @@ check(
   "--from-url parses",
   parseSetupArgs(["--from-url", "postgresql://u:p@h/db", "--yes"])["from-url"] === "postgresql://u:p@h/db"
 );
+check("--auto-update and --update-every parse (USAGE documents them)", (() => {
+  const f = parseSetupArgs(["--auto-update", "no", "--update-every", "30"]);
+  return f["auto-update"] === "no" && f["update-every"] === "30";
+})());
 
 // ── (2) Validators ───────────────────────────────────────────────────────────
 

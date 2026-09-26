@@ -30,6 +30,8 @@ const OPTIONS = {
   // logon (no elevation, starts after sign-in) | always (ONSTART, 24/7 hub) |
   // none. Absent means ask.
   startup: { type: "string" },
+  "auto-update": { type: "string" }, // yes | no (self-update, ADR-278)
+  "update-every": { type: "string" }, // minutes between update checks
   help: { type: "boolean", default: false },
 };
 
