@@ -796,6 +796,37 @@
 .cmt-point {
   text-decoration: none;
 }
+/* EDITOR ONLY: the same point comment while it's still literal `{>>…<<}` text
+   (comment-mark.ts pointNoteDecorations), which is how speaker notes are written.
+   A muted, italic band with a "Note" label, delimiters faded, so a deck reads as
+   content vs notes at a glance. It stays plain editable text underneath.
+   No padding or radius: the delimiters and any bold inside split the run into
+   several spans, and per-span padding showed as gaps in the band. */
+.cmt-point-edit {
+  font-style: italic;
+  color: var(--color-ink-muted, #a3a3a3);
+  background: var(--cmt-fill);
+}
+.cmt-point-delim {
+  opacity: 0.35;
+  font-style: normal;
+}
+.cmt-point-label {
+  display: inline-block;
+  margin-right: 0.375rem;
+  padding: 0 0.375rem;
+  border-radius: 4px;
+  background: var(--cmt-line);
+  color: var(--color-neutral-950, #0a0a0a);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  vertical-align: 0.1em;
+  user-select: none;
+}
 /* The margin card. Every inherited text property is RESET here, not left to
    cascade: the card sits inside the run it annotates, so a comment on a heading
    inherited that heading's size, weight, and letter-spacing and rendered as a

@@ -57,4 +57,12 @@ assert.deepEqual(slideToBlocks("- [a link](https://x) item"), [
   { kind: "bullets", items: ["a link item"] },
 ]);
 
+// A markdown table becomes one table block: header row first, the `---` rule
+// dropped, cells trimmed and emphasis stripped; text after it is its own block.
+assert.deepEqual(slideToBlocks("## Keys\n| Key | Does |\n| --- | :---: |\n| **B** | Black |\n| W | Title |\nafter"), [
+  { kind: "heading", text: "Keys" },
+  { kind: "table", rows: [["Key", "Does"], ["B", "Black"], ["W", "Title"]] },
+  { kind: "paragraph", text: "after" },
+]);
+
 console.log("verify-presentation-export: ok");

@@ -11,7 +11,7 @@
 // Nothing here is new body syntax: `---` is CommonMark and comments are already
 // in the dialect. Pure and dependency-light (server + verify-script safe).
 import { boothExport } from "@/lib/editor/booth-export";
-import { stripComments } from "@/lib/editor/comment-markdown";
+import { healEncodedComments, stripComments } from "@/lib/editor/comment-markdown";
 import type { ChordChart, LyricLine, Section } from "@/lib/chordpro/types";
 
 export type DeckSlide = { md: string; notes: string };
@@ -50,7 +50,8 @@ function deckSlide(chunk: string): DeckSlide {
 }
 
 export function buildDeck(markdown: string, title = ""): Deck {
-  const md = markdown ?? "";
+  // A note saved entity-encoded by the editor is still a note (see healEncodedComments).
+  const md = healEncodedComments(markdown ?? "");
   const { manuscript, slides } = boothExport(md);
   if (slides.length > 0) {
     // parts[0] is everything before the first cue: the intro, spoken over the

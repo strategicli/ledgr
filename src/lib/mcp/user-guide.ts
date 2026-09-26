@@ -1060,7 +1060,9 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   slide and the text between marks becomes your speaker notes. Otherwise a \`---\`
   line (with a blank line above it) starts a new slide. With no \`---\` lines,
   each top-level heading does. Comments become speaker notes and never reach
-  the screen.
+  the screen. To write a note, type \`{>>your note<<}\` on its own line; the
+  editor shows it as a highlighted band with a **Note** label so notes stand
+  apart from slide content, and you edit it like any other text.
 - **Two windows.** The tab you open is your presenter view: the current and next
   slide, your notes, a timer and the clock. **Open audience window** opens the
   view for the projector; drag it there and press **F** for full screen.
@@ -1068,8 +1070,12 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
 - **Keys.** Arrows, space, Page Up/Down (what clickers send) move. **B** or
   **.** blacks the screen, **W** shows the title, a number then Enter jumps,
   **F** is full screen.
-- **Build lists** reveals bullets one at a time. **Start countdown** shows a
-  countdown on the screen until you begin.
+- **Build lists** reveals bullets one at a time, each filling in below the ones
+  already shown. The **Next** preview shows the next bullet while a slide has
+  some left, then the next slide, and reads "End of presentation" on the last.
+- **Start countdown** takes a number of minutes and shows a countdown on the
+  audience screen until you begin. Your presenter bar shows it too, and the same
+  button becomes **Stop countdown**. Advancing a slide also ends it.
 - **Edits show up live.** Fix a typo mid-talk and the slide updates within a
   few seconds.
 - **Show another item on a slide.** A slide holding nothing but one @-link shows
@@ -1079,18 +1085,22 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
 - **Design** (in the presenter view) sets the look for this presentation: a
   theme (Dark, Light, Gray, Sepia) or your own text and heading colors, a logo
   in a corner, a background color or picture with a darken slider, a title bar
-  on every slide, and the transition between slides (Fade, Fade through black,
-  Fade up or down, Wipe up or down, Grow). Pictures come from images attached
+  on every slide, and the transition between slides (Fade, Fade out then in,
+  Fade up or down, Wipe up or down, Grow). "Fade out, then in" fades only the
+  words; the background stays put. Pictures come from images attached
   to the item. "Hide on slides" and "Full brightness on slides" take slide
-  numbers like \`1, 5-7\`. **Save as my default** starts new presentations with
-  this look.
+  numbers like \`1, 5-7\`. Changes save automatically about a second after you
+  make them, and reach a live link right away. **Save as my default** starts new
+  presentations with this look.
 - **Export** downloads the show as **PowerPoint** (editable, with your notes),
   a **ProPresenter** text file (in ProPresenter use File → Import; the booth's
   own theme applies), a **PDF** (with or without notes), or a zip of **PNG/JPG**
   images.
 - **Go live** gives you a public link. Anyone who opens it sees exactly the
-  slide you are showing, following along as you advance. **End live** turns the
-  link off.
+  slide you are showing, following along as you advance, up to about a second
+  behind. (The audience window is instant because it talks to your presenter
+  window directly; a live link reaches other devices through the server.)
+  **End live** turns the link off.
 
 ## Your tasks in your calendar app
 

@@ -24,7 +24,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
 import { LIT_CLASS } from "./comment-hover";
-import { tidyEditorComments, sanitizeNote } from "@/lib/editor/comment-markdown";
+import { healEncodedComments, tidyEditorComments, sanitizeNote } from "@/lib/editor/comment-markdown";
 
 type JsonMarked = { type?: string; marks?: { type: string; attrs?: { note?: unknown } }[] };
 
@@ -106,7 +106,9 @@ export const Comment = Mark.create({
         : undefined;
       return mark ? `{==${out}==}{>>${sanitizeNote(String(mark.attrs?.note ?? ""))}<<}` : out;
     };
-    mgr.serialize = (...a: unknown[]) => tidyEditorComments(boundSerialize(...a));
+    // healEncodedComments first: the serializer entity-encodes literal-text
+    // comments (every speaker note) into a shape nothing reads back.
+    mgr.serialize = (...a: unknown[]) => tidyEditorComments(healEncodedComments(boundSerialize(...a)));
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -362,9 +364,59 @@ export const CommentCards = Extension.create({
           },
         },
       }),
+      new Plugin({
+        key: pointNoteKey,
+        props: { decorations: (state) => pointNoteDecorations(state.doc) },
+      }),
     ];
   },
 });
+
+// Point comments ({>>note<<} with nothing anchored) stay LITERAL TEXT in the
+// editor (see the Comment mark above), which is exactly how speaker notes are
+// written, so a deck read as a wall of `{>>…<<}`. This styles them in place:
+// the run becomes a muted note box with a "Note" label, and the delimiters fade.
+// Decorations only — the text is still ordinary editable text, so the markdown
+// round-trips byte for byte and there's nothing new to serialize.
+//
+// Offsets come from textBetween with a one-char leaf placeholder, so every
+// character maps 1:1 to a document position even past a mention chip or a hard
+// break. Code (a code block, or inline code) is never styled: `{>>` there is code.
+const pointNoteKey = new PluginKey("pointNotes");
+const POINT_NOTE = /\{>>([^\n]*?)<<\}/g;
+
+function pointNoteLabel(): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "cmt-point-label";
+  el.contentEditable = "false";
+  el.textContent = "Note";
+  return el;
+}
+
+export function pointNoteDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = [];
+  const code = doc.type.schema.marks.code;
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    if (node.type.spec.code) return false;
+    const text = node.textBetween(0, node.content.size, undefined, "￼");
+    if (!text.includes("{>>")) return false;
+    const start = pos + 1;
+    for (const m of text.matchAll(POINT_NOTE)) {
+      const from = start + m.index!;
+      const to = from + m[0].length;
+      if (code && doc.rangeHasMark(from, to, code)) continue;
+      decos.push(
+        Decoration.widget(from, pointNoteLabel, { side: -1, ignoreSelection: true, key: `pn-${from}` }),
+        Decoration.inline(from, to, { class: "cmt-point-edit" }),
+        Decoration.inline(from, from + 3, { class: "cmt-point-delim" }),
+        Decoration.inline(to - 3, to, { class: "cmt-point-delim" })
+      );
+    }
+    return false;
+  });
+  return DecorationSet.create(doc, decos);
+}
 
 // The note on the comment under the current selection, or null when there isn't
 // one. Reads Tiptap's own active-mark attributes, which follow the selection the

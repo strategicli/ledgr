@@ -336,5 +336,16 @@ check(
   "tidy lifts a trailing block anchor out of the pair",
   tidyEditorComments("{==do it ^k3x9ab==}{>>n<<}") === "{==do it==}{>>n<<} ^k3x9ab"
 );
+// A note the editor saved entity-encoded (@tiptap/markdown encodes < > in text)
+// is still a note on every read path, and code fences are left alone.
+{
+  const { buildDeck } = await import("../src/modules/presentations/lib/deck");
+  const bad = "Slide words\n\n{&gt;&gt;speaker note&lt;&lt;}\n\n```\n{&gt;&gt;code&lt;&lt;}\n```";
+  check("encoded note is stripped from print", !markdownToHtml(bad, undefined, { comments: false }).includes("speaker note"));
+  check("encoded note renders as a comment", markdownToHtml(bad).includes('class="cmt-note"'));
+  check("encoded note inside a fence is untouched", markdownToHtml(bad).includes("{&amp;gt;&amp;gt;code"));
+  const d = buildDeck("# A\n\nWords {&gt;&gt;say this&lt;&lt;}");
+  check("encoded note becomes a speaker note", d.slides.some((s) => s.notes === "say this" && !s.md.includes("say this")), JSON.stringify(d.slides));
+}
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

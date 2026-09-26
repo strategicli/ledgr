@@ -28,6 +28,14 @@ check("strikethrough", markdownToHtml("~~x~~").includes("<s>x</s>"));
 // own, so markdown-render adds one (otherwise the plus signs print literally).
 check("underline", markdownToHtml("++u++").includes("<u>u</u>"));
 check("underline keeps nested formatting", markdownToHtml("++a **b**++").includes("<u>a <strong>b</strong></u>"));
+// An underline must not scramble the other marks on its line (it once ran a
+// nested inline parse that re-processed the whole line's emphasis delimiters).
+check(
+  "underline beside other marks",
+  markdownToHtml("**b**, *i*, ++u++, ~~s~~, `c`.").includes(
+    "<strong>b</strong>, <em>i</em>, <u>u</u>, <s>s</s>, <code>c</code>."
+  )
+);
 check("lone ++ is left alone", markdownToHtml("2 ++ 2").includes("2 ++ 2"));
 check("++ inside code is left alone", markdownToHtml("`a++b++c`").includes("a++b++c"));
 

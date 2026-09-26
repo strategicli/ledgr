@@ -1,7 +1,7 @@
 // A slide's markdown -> simple content blocks, for the PowerPoint export
 // (pptx.ts). Deliberately coarser than the player's HTML render: PowerPoint
 // text boxes don't need real markdown, just heading/paragraph/bullets/quote/
-// image, in source order. Pure — no DB, no React — so
+// image/table, in source order. Pure — no DB, no React — so
 // scripts/verify-presentation-export.mts can exercise it directly.
 
 export type SlideBlock =
@@ -9,7 +9,8 @@ export type SlideBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "bullets"; items: string[] }
   | { kind: "quote"; text: string }
-  | { kind: "image"; src: string };
+  | { kind: "image"; src: string }
+  | { kind: "table"; rows: string[][] }; // rows[0] is the header row
 
 const HEADING_RE = /^ {0,3}#{1,2}\s+(.*)$/;
 const BULLET_RE = /^\s*[-*+]\s+(.*)$/;
@@ -29,13 +30,26 @@ function inline(text: string): string {
     .trim();
 }
 
+const TABLE_ROW_RE = /^\|.*\|$/;
+const TABLE_RULE_RE = /^\|(\s*:?-+:?\s*\|)+$/;
+
+// ponytail: splits on every `|`, so an escaped `\|` inside a cell splits too.
+function tableCells(line: string): string[] {
+  return line.slice(1, -1).split("|").map((c) => inline(c));
+}
+
 export function slideToBlocks(md: string): SlideBlock[] {
   const lines = (md ?? "").split("\n");
   const blocks: SlideBlock[] = [];
   let bullets: string[] = [];
   let quote: string[] = [];
   let para: string[] = [];
+  let table: string[][] = [];
 
+  const flushTable = () => {
+    if (table.length) blocks.push({ kind: "table", rows: table });
+    table = [];
+  };
   const flushBullets = () => {
     if (bullets.length) blocks.push({ kind: "bullets", items: bullets });
     bullets = [];
@@ -49,6 +63,7 @@ export function slideToBlocks(md: string): SlideBlock[] {
     para = [];
   };
   const flushAll = () => {
+    flushTable();
     flushBullets();
     flushQuote();
     flushPara();
@@ -60,6 +75,12 @@ export function slideToBlocks(md: string): SlideBlock[] {
       flushAll();
       continue;
     }
+    if (TABLE_ROW_RE.test(line)) {
+      if (!table.length) flushAll();
+      if (!TABLE_RULE_RE.test(line)) table.push(tableCells(line));
+      continue;
+    }
+    flushTable();
     const img = IMAGE_ONLY_RE.exec(line);
     const heading = HEADING_RE.exec(line);
     const bullet = BULLET_RE.exec(line) ?? ORDERED_RE.exec(line);
