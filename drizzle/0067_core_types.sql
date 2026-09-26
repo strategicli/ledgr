@@ -1,5 +1,5 @@
 -- The four core content types a fresh database needs before anything can be
--- captured: task, event, note, link (ADR-282). Migration 0000 created the
+-- captured: task, event, note, link (ADR-283). Migration 0000 created the
 -- `types` table but never inserted these rows; only scripts/seed.mjs did. That
 -- was fine while every instance was made by hand (new-instance.mjs: migrate,
 -- then seed), but an installed copy (the Windows installer, install.sh, the

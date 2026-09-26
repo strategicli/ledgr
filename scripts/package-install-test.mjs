@@ -243,7 +243,7 @@ check(!again.result.ok, "the ticket works once only");
 const authed = (p, init = {}) => fetch(url(p), { ...init, headers: { ...(init.headers ?? {}), cookie } });
 
 // A new owner can capture on day one. The core types come from migrations alone
-// (ADR-282); an install never runs seed.mjs, so this is where a missing
+// (ADR-283); an install never runs seed.mjs, so this is where a missing
 // `task` or `note` row would first be noticed. Through waitFor like every
 // step after it: the app may be mid-restart right after setup (a Mac runner
 // refused the connection 130ms after a successful create), and a 400 for an

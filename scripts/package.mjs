@@ -137,6 +137,9 @@ copy("scripts/whisper-transcribe.py", "app/scripts/whisper-transcribe.py");
 step("adding migrations and the supervisor…");
 copy("drizzle", "drizzle");
 copy("scripts/migrate.mjs", "scripts/migrate.mjs");
+// Restore from a backup on the setup page (ADR-282): the supervisor runs the
+// serving build's local-restore.mjs, which loads these beside it.
+for (const f of ["local-restore.mjs", "local-setup-lib.mjs", "lib/pg-copy.mjs", "lib/pg-stop.mjs"]) copy(`scripts/${f}`, `scripts/${f}`);
 for (const f of readdirSync(join(repoRoot, "supervisor"))) {
   // Never a real config (config.json and friends hold an install's settings).
   if (/^config(?!\.example).*\.json$/.test(f)) continue;

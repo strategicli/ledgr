@@ -1,4 +1,4 @@
-// A fresh database gets its core types from migrations alone (ADR-282).
+// A fresh database gets its core types from migrations alone (ADR-283).
 //
 // An installed copy (Windows installer, install.sh, the supervisor's first run)
 // applies drizzle/*.sql and never runs scripts/seed.mjs, so every type an item

@@ -550,7 +550,7 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
 
     // Seed the shared owner on both (users rows don't sync; a spoke starts
     // from a restore/clone). The core types come from migrations on each side
-    // (ADR-282); a custom `recipe` type and the items flow through sync itself.
+    // (ADR-283); a custom `recipe` type and the items flow through sync itself.
     for (const p of [A, B]) {
       // passages is off by default for a new owner (migration 0064 keeps it on
       // for existing ones); the passage_refs checks below need it on.
