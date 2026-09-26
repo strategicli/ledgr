@@ -217,7 +217,7 @@ decides (`GET /api/machine/tailscale`, asked every minute and on the
 `tailscale-requested` signal file). Files live in `<dataDir>/tailscale/`;
 `state/` holds the node's keys. Public access (Funnel) is the same helper
 started with `-funnel`, and this supervisor passes it only when its own reading
-says the install requires sign-in (ADR-278). Operations: `runbook.md` §1q.
+says the install requires sign-in (ADR-279). Operations: `runbook.md` §1q.
 
 ### Snapshots: point-in-time recovery on this machine (ADR-217)
 

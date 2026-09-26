@@ -5,6 +5,7 @@ import { routeGate } from "@/lib/modules/gate";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 import { readTailnetStatus } from "@/modules/tailscale/lib/status";
 import {
+  clearPublicUrlIfFunnel,
   readFunnelWanted,
   readTailscaleEnabled,
   signalSupervisor,
@@ -13,7 +14,7 @@ import {
   writeTailscaleEnabled,
 } from "@/modules/tailscale/lib/switch";
 
-// The owner's Tailscale controls (ADR-276, ADR-278), for this computer only.
+// The owner's Tailscale controls (ADR-276, ADR-279), for this computer only.
 //
 //   GET                               the switches, sign-in, and the helper's status
 //   POST {action: "connect"}          switch private access on
@@ -40,12 +41,13 @@ async function gate() {
   if (!tailscaleAvailable() || !dir) {
     return NextResponse.json({ error: "Private access runs only on a Ledgr installed on your own computer." }, { status: 400 });
   }
-  return dir;
+  return { dir, owner };
 }
 
 export async function GET() {
-  const dir = await gate();
-  if (dir instanceof Response) return dir;
+  const g = await gate();
+  if (g instanceof Response) return g;
+  const { dir } = g;
   return NextResponse.json({
     enabled: await readTailscaleEnabled(),
     funnel: await readFunnelWanted(),
@@ -55,8 +57,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const dir = await gate();
-  if (dir instanceof Response) return dir;
+  const g = await gate();
+  if (g instanceof Response) return g;
+  const { dir, owner } = g;
   let action: unknown;
   try {
     action = ((await request.json()) as { action?: unknown }).action;
@@ -76,6 +79,10 @@ export async function POST(request: Request) {
     // Switches first, then the signal: the supervisor's next question to the
     // app must already get the new answer.
     if (action === "connect") await writeTailscaleEnabled(true);
+    if (action === "disconnect" || action === "funnel-off") {
+      // Leaving public access: share links stop using this address, if they were.
+      await clearPublicUrlIfFunnel(owner.id, (await readTailnetStatus(dir))?.url ?? null);
+    }
     if (action === "disconnect") {
       await writeFunnelWanted(false);
       await writeTailscaleEnabled(false);

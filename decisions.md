@@ -4885,7 +4885,7 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 
 **Affects:** `drizzle/0066_share_tokens_sync.sql`, `src/lib/sync/{pairing,pairing-cloud,pairing-hub,pairing-actions,engine,client}.ts`, `src/app/api/pair/`, `src/app/api/machine/pair/fill/`, `src/proxy.ts`, `src/app/api/sync/pair/`, `src/components/network/CloudCopy.tsx`, `src/components/auth/PairingCodeForm.tsx`, `src/app/setup/page.tsx`, the Network page, `src/lib/settings.ts`, `src/lib/setup-checklist.ts`, `src/modules/sharing/`, `src/components/attachments/FilePanel.tsx`, `src/app/files/[id]/route.ts`, runbook §1r, user guide.
 
-## ADR-278: public access through Tailscale Funnel, only behind sign-in
+## ADR-279: public access through Tailscale Funnel, only behind sign-in
 
 **Date:** 2026-09-25
 **Status:** accepted (install plan step 5, "Funnel, one click").
@@ -4896,7 +4896,7 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 1. **One switch on the module's panel**, `tailscale:funnel` in `job_state` (per computer, never synced). The helper is restarted with `-funnel` and serves the same `:443` through `ListenFunnel`, which answers both the tailnet and the internet. Same keys, so turning it on or off needs no new Tailscale sign-in.
 2. **Refused unless the install requires sign-in** (Clerk keys, or the built-in password switched on), checked on two independent sides: the app refuses the request and never tells the supervisor `funnel: true` without it (and forgets the request when sign-in goes away, so turning sign-in back on does not silently reopen it); the supervisor passes `-funnel` only when its own reading of sign-in agrees (the one that already decides whether the app listens beyond 127.0.0.1, ADR-275), and closes Funnel on its 2-second beat when that reading changes. Bypassing either side alone cannot publish a Ledgr with no sign-in.
 3. **A tailnet that refuses Funnel is explained, not guessed at.** The helper stays private and reports `funnel: "unavailable"`, a message in words, and one fix link: Tailscale's own "enable Funnel" link from the node's `QueryFeature`, or the DNS page when HTTPS certificates are off. No Tailscale API key is asked for or held.
-4. **The address is the tailnet name** (`https://ledgr-<computer>.<tailnet>.ts.net`). The Network page lists it as the public address while Funnel is on, unless the install already names one in `NEXT_PUBLIC_APP_URL`. Share links and the MCP share tool are not pointed at it yet: the one synced public-address setting they will use (`settings.publicUrl`, ADR-277) was not on `main` when this shipped, and a second setting would be worse than the gap.
+4. **The address is the tailnet name** (`https://ledgr-<computer>.<tailnet>.ts.net`). The Network page lists it as the public address while Funnel is on, unless the install already names one in `NEXT_PUBLIC_APP_URL`. Share links use the ONE synced public address, `settings.publicUrl` (ADR-277); no second setting. While Funnel is on the panel offers to set it to the Funnel address (an offer, since the owner may point it at a cloud copy or a tunnel), and Funnel-off (by the button, by Disconnect, or by sign-in going away) clears it only while it still holds that address.
 
 **Checks.** `scripts/verify-tailnet.mts`: public access only when both sides say sign-in is required, and the Funnel status fields parse with only Tailscale fix links let through.
 

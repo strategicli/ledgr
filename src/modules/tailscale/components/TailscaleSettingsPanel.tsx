@@ -13,16 +13,17 @@ import CopyAddress from "@/components/network/CopyAddress";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 import { readTailnetStatus, type TailnetStatus } from "@/modules/tailscale/lib/status";
 import { readFunnelWanted, readTailscaleEnabled, signinRequired } from "@/modules/tailscale/lib/switch";
-import { ActionButton, AutoRefresh, ConnectButton, DisconnectButton } from "./TailscaleActions";
+import { getSettings } from "@/lib/settings";
+import { ActionButton, AutoRefresh, ConnectButton, DisconnectButton, UseForShareLinks } from "./TailscaleActions";
 
 const LINK = "underline underline-offset-2 hover:text-ink";
 
 /**
- * Public access (Funnel, ADR-278): the same address, also open to the internet.
+ * Public access (Funnel, ADR-279): the same address, also open to the internet.
  * Offered only once this copy makes everyone sign in; the API and the
  * supervisor each refuse it otherwise, so this is the explanation, not the lock.
  */
-async function PublicAccess({ status }: { status: TailnetStatus }) {
+async function PublicAccess({ status, ownerId }: { status: TailnetStatus; ownerId: string }) {
   const [wanted, required] = await Promise.all([readFunnelWanted(), signinRequired()]);
   const title = <p className="ui-section-label text-ink-subtle">Public access</p>;
 
@@ -60,6 +61,7 @@ async function PublicAccess({ status }: { status: TailnetStatus }) {
         <p className="text-ink">
           On. {status.url} also works from the public internet, and everyone who opens it has to sign in.
         </p>
+        <ShareLinkAddress url={status.url} ownerId={ownerId} />
         <ActionButton action="funnel-off" label="Turn off public access" busyLabel="Turning off…" />
       </div>
     );
@@ -93,6 +95,25 @@ async function PublicAccess({ status }: { status: TailnetStatus }) {
   );
 }
 
+/** Whether share links use this address (the one synced public address, ADR-277). */
+async function ShareLinkAddress({ url, ownerId }: { url: string | null; ownerId: string }) {
+  if (!url) return null;
+  const current = (await getSettings(ownerId)).publicUrl;
+  if (current === new URL(url).origin) {
+    return <p>Share links and the Claude connector&apos;s share tool use this address.</p>;
+  }
+  return (
+    <div className="space-y-1">
+      <p>
+        {current
+          ? `Share links use ${current} right now. Switch them to this address?`
+          : "Share links use whichever address you happen to be on. Point them at this one so they open for anyone?"}
+      </p>
+      <UseForShareLinks url={url} />
+    </div>
+  );
+}
+
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <span className="group relative cursor-help">
@@ -107,7 +128,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export default async function TailscaleSettingsPanel() {
+export default async function TailscaleSettingsPanel({ ownerId }: { ownerId: string }) {
   const dir = process.env.LEDGR_SUPERVISOR_DIR ?? null;
   if (!tailscaleAvailable() || !dir) {
     return <p className="ui-meta text-ink-subtle">Private access runs only on a Ledgr installed on your own computer.</p>;
@@ -182,7 +203,7 @@ export default async function TailscaleSettingsPanel() {
             Install the Tailscale app on your phone, sign in with the same account, then scan this.
           </p>
         </div>
-        <PublicAccess status={status} />
+        <PublicAccess status={status} ownerId={ownerId} />
         <DisconnectButton />
       </div>
     );

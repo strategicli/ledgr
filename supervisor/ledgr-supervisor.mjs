@@ -1610,7 +1610,7 @@ tailnet = createTailnet({
   nextBackoffMs,
   // Public access (Funnel) needs sign-in, and this is the supervisor's own
   // answer to "does it?": the same reading that lets the app listen beyond
-  // this machine. The app is asked too; both must agree (ADR-278).
+  // this machine. The app is asked too; both must agree (ADR-279).
   signinRequired: () => listenHost !== LOOPBACK_HOST,
   askApp: async () => {
     try {

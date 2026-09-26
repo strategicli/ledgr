@@ -35,10 +35,7 @@ Left over from step 1:
 
 Step 2 (files on local disk) landed. Step 3 (private access through the bundled
 Tailscale helper, ADR-276, runbook §1q) landed. Step 5 (public access through Tailscale
-Funnel, only behind sign-in, ADR-278) landed. Left over from step 5: once
-`settings.publicUrl` (ADR-277, the cloud-copy work) is on `main`, have the Funnel panel
-offer to set it to the Funnel address, and clear it on Funnel-off only if it still holds
-that address, so share links and the MCP share tool use it.
+Funnel, only behind sign-in, ADR-279) landed.
 
 Step 9 (keep a copy in the cloud, ADR-277, runbook §1r) landed: Build → Network pairs a
 hub with a fresh cloud copy by a one-time code typed on the cloud's `/setup`, fills it

@@ -17,7 +17,7 @@
 //   - exits cleanly when stdin closes, so it cannot outlive the supervisor.
 //   - with -logout, signs this node out of the tailnet and exits.
 //   - with -funnel, serves the same :443 through Tailscale Funnel as well, so
-//     the address also answers from the public internet (ADR-278). The
+//     the address also answers from the public internet (ADR-279). The
 //     supervisor passes it only when the app requires sign-in. If the tailnet
 //     does not allow Funnel yet, the helper keeps serving privately and reports
 //     why, with the link that fixes it.

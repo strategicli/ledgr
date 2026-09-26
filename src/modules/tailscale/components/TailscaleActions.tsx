@@ -88,7 +88,7 @@ export function ConnectButton() {
 }
 
 /**
- * One public-access switch (ADR-278). The helper restarts with the new setting
+ * One public-access switch (ADR-279). The helper restarts with the new setting
  * (a few seconds, no new sign-in), so wait, then refresh the panel.
  */
 export function ActionButton({ action, label, busyLabel }: { action: Action; label: string; busyLabel: string }) {
@@ -156,6 +156,44 @@ export function DisconnectButton({ label = "Disconnect" }: { label?: string }) {
           deleted, and you can connect again any time.
         </span>
       </span>
+      {error && <p className="ui-meta mt-1 text-ink-subtle">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Point the ONE public address share links use (settings.publicUrl, ADR-277)
+ * at this computer's Funnel address. An offer, never automatic: the owner may
+ * already point share links at a cloud copy or a tunnel.
+ */
+export function UseForShareLinks({ url }: { url: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function use() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicUrl: url }),
+      });
+      if (!res.ok) throw new Error("That didn't save. Try again.");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" className={BUTTON} disabled={busy} onClick={() => void use()}>
+        {busy ? "Saving…" : "Use this address for share links"}
+      </button>
       {error && <p className="ui-meta mt-1 text-ink-subtle">{error}</p>}
     </div>
   );

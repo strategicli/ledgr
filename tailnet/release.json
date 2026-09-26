@@ -2,11 +2,11 @@
   "version": "0.2.0",
   "repo": "strategicli/ledgr",
   "sha256": {
-    "ledgr-tailnet-windows-amd64.exe": "d74d2c6f357893d46d8008c25c83aae9a69983f6d956fdcd91d7e3ac7caafee2",
-    "ledgr-tailnet-windows-arm64.exe": "0c1b0c63e7cef76a8b5a07e3c2f2d9b7b8b7332bd5d33f0bfaad34417a41d8a7",
-    "ledgr-tailnet-darwin-amd64": "a6b5c6338a0fcd0a265f06e391872683aa766fc327a4c9b23ecf11cfdae53f4d",
-    "ledgr-tailnet-darwin-arm64": "0229aa82b265d1b392c5d4f72e9b71405235f8faef9a7f19630f35d7ce6f50ba",
-    "ledgr-tailnet-linux-amd64": "41db87e9df61f0046206981c79db3a8c4153eaba6d32eca3839c58f8056adf80",
-    "ledgr-tailnet-linux-arm64": "18b5fc7fa0f176efe712a03eeb599af6ff6b95b7a29fc1ba9cd56d50a90c02de"
+    "ledgr-tailnet-windows-amd64.exe": "608ecf5c9c62103d037bcf90b71e776c987f313ff87905a96bc6a384a6c4dd2c",
+    "ledgr-tailnet-windows-arm64.exe": "e30bf1dd2745659a6b9dda7813388578e5698c10bd2d64f6bbd1c65c1844ea12",
+    "ledgr-tailnet-darwin-amd64": "85d68b8ccec4dba40f5b9ef91658856dd0855d8fcf4aba49f11d3d4aceae24dd",
+    "ledgr-tailnet-darwin-arm64": "3bbacc533cd59466914cfed584745a2300f5bb1a1488882b18fcbacc02a216bd",
+    "ledgr-tailnet-linux-amd64": "83bf087e89feb1be3be573f0391be9959f30ce28322d1bf00800828c83993d8e",
+    "ledgr-tailnet-linux-arm64": "28e269e0b752d572d884c0b0ff085e2cf7edc2a1524c5c7f68b31f838a87553d"
   }
 }

@@ -11,7 +11,7 @@ export type TailnetStatus = {
   dnsName: string | null;
   url: string | null;
   message: string | null;
-  // Public access (Funnel, ADR-278): "on", "unavailable" (asked for, refused by
+  // Public access (Funnel, ADR-279): "on", "unavailable" (asked for, refused by
   // the tailnet, with why and the page that fixes it), or null (not asked for).
   funnel: "on" | "unavailable" | null;
   funnelMessage: string | null;

@@ -3,10 +3,17 @@ import { verifyMachineRequest } from "@/lib/auth/credentials";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { moduleIsOn } from "@/lib/modules/gate";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
-import { readFunnelWanted, readTailscaleEnabled, signinRequired, writeFunnelWanted } from "@/modules/tailscale/lib/switch";
+import { readTailnetStatus } from "@/modules/tailscale/lib/status";
+import {
+  clearPublicUrlIfFunnel,
+  readFunnelWanted,
+  readTailscaleEnabled,
+  signinRequired,
+  writeFunnelWanted,
+} from "@/modules/tailscale/lib/switch";
 
 // "Should the Tailscale helper run on this computer, and publicly?" (ADR-276,
-// ADR-278). Asked by the supervisor over loopback with its own cron token,
+// ADR-279). Asked by the supervisor over loopback with its own cron token,
 // every minute and on every signal file. The ADR-222 shape: the supervisor
 // always asks and the app decides, so the owner's control is a button.
 //
@@ -30,6 +37,7 @@ export async function GET(request: Request) {
     // forget the request, so switching sign-in back on never reopens it
     // without the owner asking again.
     await writeFunnelWanted(false);
+    await clearPublicUrlIfFunnel(ownerId, (await readTailnetStatus(process.env.LEDGR_SUPERVISOR_DIR ?? null))?.url ?? null);
     funnel = false;
   }
   return NextResponse.json({ run, funnel, why: run ? null : "switched off on this computer" });

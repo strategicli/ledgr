@@ -1787,7 +1787,10 @@ you ask again. If your Tailscale network does not allow it yet (HTTPS
 certificates off, or Funnel not permitted for this device), the panel says so
 in words and links the one Tailscale page that fixes it, then **Try again**.
 **Turn off public access** goes back to private only. Neither needs a new
-Tailscale sign-in.
+Tailscale sign-in. While it is on, the panel offers **Use this address for
+share links**, which sets the public address share links are made with (the
+same setting as on Network); turning public access off clears it again, but
+only if it still holds this address.
 
 - **How long a device's history is kept.** For another device to reconnect and
   simply carry on, this instance has to keep the changes it missed. That costs

@@ -9,8 +9,9 @@ import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
 import { builtinOnState } from "@/lib/auth/builtin-state";
 import { isClerkConfigured } from "@/lib/auth/keyless";
+import { getSettings, normalizePublicUrl, updateSettings } from "@/lib/settings";
 
-// Private access on this computer, and public access (Funnel, ADR-278) on top.
+// Private access on this computer, and public access (Funnel, ADR-279) on top.
 const ENABLED = "tailscale:enabled";
 const FUNNEL = "tailscale:funnel";
 
@@ -34,7 +35,7 @@ export const writeFunnelWanted = (on: boolean) => writeFlag(FUNNEL, on);
 
 /**
  * Does this copy make everyone sign in? Clerk keys, or the built-in password
- * switched on. Public access is refused without it (ADR-278); "unknown" counts
+ * switched on. Public access is refused without it (ADR-279); "unknown" counts
  * as no. The supervisor checks the same thing on its own side.
  */
 export async function signinRequired(): Promise<boolean> {
@@ -46,6 +47,18 @@ export async function signinRequired(): Promise<boolean> {
  * door). `logout` also signs this computer's node out and forgets its keys;
  * `recheck` retries public access after the owner fixed their tailnet.
  */
+/**
+ * Funnel-off tidies the ONE public address share links use (settings.publicUrl,
+ * ADR-277), but only when it still holds this computer's Funnel address: an
+ * address the owner pointed somewhere else (a cloud copy, a tunnel) is theirs.
+ */
+export async function clearPublicUrlIfFunnel(ownerId: string, funnelUrl: string | null): Promise<void> {
+  const mine = normalizePublicUrl(funnelUrl);
+  if (mine && (await getSettings(ownerId)).publicUrl === mine) {
+    await updateSettings(ownerId, { publicUrl: null });
+  }
+}
+
 export async function signalSupervisor(
   supervisorDir: string,
   opts: { logout?: boolean; recheck?: boolean } = {}
