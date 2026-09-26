@@ -45,8 +45,10 @@ export async function POST(request: Request) {
   }
   const v = validatePolicyInput(body);
   if (!v.ok) return NextResponse.json({ ok: false, error: v.error }, { status: 400 });
+  // A caller that does not name a source keeps the one on file.
+  const source = v.policy.source ?? (await readUpdatePolicy(dir))?.source ?? null;
   try {
-    const policy = await writeUpdatePolicy(dir, v.policy);
+    const policy = await writeUpdatePolicy(dir, { ...v.policy, source });
     log.info("update policy written", { ...policy });
     return NextResponse.json({ ok: true, policy });
   } catch (err) {

@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
+// Ready-made packages (ADR-278) need Next's standalone server. ONLY the package
+// build asks for it (scripts/package.mjs sets LEDGR_STANDALONE=1), and never on
+// Vercel: Vercel runs its own Next.js adapter, and standalone output is known
+// to break Vercel builds on some Next versions (vercel/next.js#96646). With the
+// variable unset, which is every Vercel build, `build:satellite` and CI, this
+// config is exactly what it was before.
+const standalone = process.env.LEDGR_STANDALONE === "1" && !process.env.VERCEL;
+
 const nextConfig: NextConfig = {
+  ...(standalone
+    ? {
+        output: "standalone" as const,
+        // Trace from this folder even when a parent folder holds another
+        // lockfile (a git worktree inside the main checkout), so server.js
+        // lands at .next/standalone/server.js.
+        outputFileTracingRoot: process.cwd(),
+      }
+    : {}),
   // Keep CSS in import order; do NOT remove this. Next's default (`true`, loose)
   // merges and reorders CSS chunks to minimize their count, which races our
   // per-component stylesheets (Tiptap's markdown-editor.css, react-grid-layout's

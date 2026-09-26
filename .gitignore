@@ -112,3 +112,6 @@ scripts/tmp-*
 
 # The Tailscale helper build output (tailnet/build.sh).
 /tailnet/dist/
+
+# Ready-made package downloads (scripts/package.mjs; its output is under /dist).
+/.package-cache/

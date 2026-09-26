@@ -89,6 +89,8 @@ const base: InstanceIdentity = {
   vercelEnv: "production",
   supervisorDir: null,
   isLocalPeer: false,
+  updateSource: "git",
+  buildVersion: null,
 };
 const behind = (touchesSchema: boolean): CodeStatus => ({
   state: "behind",

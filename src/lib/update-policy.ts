@@ -22,8 +22,17 @@ export type UpdatePolicy = {
   branch: string;
   /** Git remote URL for origin, or "" to leave the current remote alone. */
   repo: string;
+  /**
+   * Where updates come from: "git" builds the branch on this machine, "release"
+   * downloads the ready-made package published for it (ADR-278). null in a file
+   * written before the field existed; updateSourceOf in supervisor/release.mjs
+   * then decides from what the install is.
+   */
+  source: UpdateSource | null;
   updatedAt: string | null;
 };
+
+export type UpdateSource = "git" | "release";
 
 export const POLICY_FILE = "update-policy.json";
 export const MIN_EVERY_MINUTES = 1;
@@ -48,6 +57,7 @@ export function parseUpdatePolicy(text: string): UpdatePolicy | null {
     everyMinutes: Number.isFinite(every) && every >= 1 ? Math.round(every) : 15,
     branch: typeof o.branch === "string" && o.branch.trim() ? o.branch.trim() : "main",
     repo: typeof o.repo === "string" ? o.repo.trim() : "",
+    source: o.source === "git" || o.source === "release" ? o.source : null,
     updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : null,
   };
 }
@@ -72,10 +82,16 @@ export function validatePolicyInput(
   if (repo && !/^(https?:\/\/|git@|ssh:\/\/)/.test(repo)) {
     return { ok: false, error: "repo must be a git URL (https://… or git@…), or empty" };
   }
-  return { ok: true, policy: { mode: o.mode, everyMinutes: every, branch, repo } };
+  if (o.source !== undefined && o.source !== null && o.source !== "git" && o.source !== "release") {
+    return { ok: false, error: 'source must be "git" or "release"' };
+  }
+  const source = o.source === "git" || o.source === "release" ? o.source : null;
+  return { ok: true, policy: { mode: o.mode, everyMinutes: every, branch, repo, source } };
 }
 
-export function serializeUpdatePolicy(p: Omit<UpdatePolicy, "updatedAt"> & { updatedAt?: string | null }): string {
+export function serializeUpdatePolicy(
+  p: Omit<UpdatePolicy, "updatedAt" | "source"> & { source?: UpdateSource | null; updatedAt?: string | null }
+): string {
   return (
     JSON.stringify(
       {
@@ -83,6 +99,7 @@ export function serializeUpdatePolicy(p: Omit<UpdatePolicy, "updatedAt"> & { upd
         everyMinutes: p.everyMinutes,
         branch: p.branch,
         repo: p.repo,
+        ...(p.source ? { source: p.source } : {}),
         updatedAt: p.updatedAt ?? new Date().toISOString(),
       },
       null,

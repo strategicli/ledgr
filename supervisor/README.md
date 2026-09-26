@@ -254,7 +254,8 @@ Postgres client tools, the same ones the restore-from-file path already needs
 have to be on PATH: the lookup also checks `C:\Program Files\PostgreSQL\*\bin`,
 which is where winget leaves them, and `install.ps1` installs them already. When
 they are genuinely missing, the Snapshots section says so instead of quietly
-never snapshotting.
+never snapshotting. A ready-made package ships its own copy in `pgtools/`
+(ADR-278), so an install made from one needs none of this.
 
 **Restoring is browse-only, deliberately.** From a terminal on the machine:
 
@@ -328,9 +329,10 @@ the cluster and the update signal. Note the supervisor does not restart
 *itself* when an update changes `supervisor/*.mjs` — the app flips, but the
 supervisor process keeps running its old code until you restart it.
 
-First run: initdb, then a full build of the repo's current HEAD (npm ci +
-`next build` + migrate), then the app serves on `appPort`. Ctrl+C stops the
-app, then Postgres, in order.
+First run: initdb, create the `ledgr` database, then a full build of the repo's
+current HEAD (npm ci + `next build` + migrate), then the app serves on
+`appPort`. (A package skips the build and serves itself; see "Updating from a
+ready-made package" below.) Ctrl+C stops the app, then Postgres, in order.
 
 First **data**: fill it before first use, either from the weekly backup —
 
@@ -437,6 +439,44 @@ The supervisor then:
 `live.json` is a plain pointer file rather than a symlink/junction: it works
 identically on every platform, needs no privileges, and the supervisor reads
 it once at spawn.
+
+### Updating from a ready-made package instead (ADR-278)
+
+`update-policy.json`'s `source` picks the path: `"git"` (the flow above) or
+`"release"`. A policy with no `source` (every install made before this) means
+git for a clone and release for a package, so nobody changes path unless the
+owner does, from **Build → Updates → Update policy → Where new versions come
+from**. The tray's Settings tab keeps the field when it saves.
+
+With `"release"`, the same Update button, auto poll and signal file run this
+instead of fetch-and-build:
+
+1. List the repo's GitHub Releases and pick the newest `pkg-<branch>-<version>`
+   (the policy's branch is the channel). Move only if its version is strictly
+   newer than the one serving.
+2. Download its `manifest.json`, then this platform's archive, and refuse the
+   archive unless its sha256 matches the manifest exactly.
+3. Unpack into a fresh `builds/<version>/` with the system `tar` (Windows' own
+   `tar.exe` reads zip), and check its `ledgr-package.json` names the version
+   and commit that were downloaded.
+4. Migrate with the package's own Node and `scripts/migrate.mjs`.
+5. Only then flip `live.json` (it records `version` too) and start
+   `node app/server.js` with the package's Node. Any failure leaves the previous
+   build serving and deletes the attempt. Prune to the last 2 builds.
+
+**Running from a package.** A package is the folder `scripts/package.mjs`
+makes: `app/` (the standalone server), `supervisor/`, `node/`, `pgtools/`,
+`drizzle/`, `scripts/migrate.mjs`, a small `node_modules/` and
+`ledgr-package.json`. It needs no git, npm or system Node. Run it as
+`<install>\node\node.exe <install>\supervisor\ledgr-supervisor.mjs <config>`,
+with the config's `repoDir` set to the install folder (so the boot task and the
+Postgres binaries always come from there, never from a `builds/` folder a later
+update prunes). Its first start serves the package it came from, with no
+download. Boot and restart then start the supervisor inside whichever build is
+serving, so a package update delivers supervisor fixes after the ordinary
+"restart needed". Snapshots find the package's `pg_dump` through
+`LEDGR_PG_BIN`. How packages are built, published and rolled back:
+`runbook.md` §1s.
 
 ## Set up a new machine: download `install.cmd` (LH4)
 

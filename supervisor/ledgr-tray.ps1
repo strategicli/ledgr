@@ -263,9 +263,9 @@ function Refresh-Status {
   if (-not $policy) {
     $script:lblUpdate.Text = "Updates: no update policy written yet (the service writes one on its first start)"
   } elseif ($policy.mode -eq "manual") {
-    $script:lblUpdate.Text = "Updates: only when you press Update now in Ledgr (branch $($policy.branch))"
+    $script:lblUpdate.Text = "Updates: only when you press Update now in Ledgr ($(if ($policy.source -eq 'release') { 'ready-made packages, channel' } else { 'branch' }) $($policy.branch))"
   } else {
-    $script:lblUpdate.Text = "Updates: checks every $($policy.everyMinutes) min on branch $($policy.branch)"
+    $script:lblUpdate.Text = "Updates: checks every $($policy.everyMinutes) min $(if ($policy.source -eq 'release') { 'for ready-made packages, channel' } else { 'on branch' }) $($policy.branch)"
   }
 
   $cron = if ($DataDir) { Read-JsonFile (Join-Path $DataDir "cron-state.json") } else { $null }
@@ -449,6 +449,10 @@ function New-StatusForm {
         repo          = $script:txtRepo.Text.Trim()
         updatedAt     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
       }
+      # Keep where updates come from (git or ready-made packages, ADR-278):
+      # this tab does not edit it, so it must not drop it either.
+      $old = Read-JsonFile $script:policyPath
+      if ($old -and $old.source) { $policy.source = $old.source }
       $json = $policy | ConvertTo-Json -Depth 3
       $utf8NoBom = New-Object System.Text.UTF8Encoding $false
       [System.IO.File]::WriteAllText($script:policyPath, $json, $utf8NoBom)

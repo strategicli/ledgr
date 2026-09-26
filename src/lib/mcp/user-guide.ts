@@ -1444,8 +1444,18 @@ looks for new versions, without editing any file or signing in to Windows:
   checks every so many minutes and applies what it finds; switched off, nothing
   happens until you press the button yourself.
 - **How often**, in minutes, when it checks on its own.
+- **Where new versions come from.** *Ready-made packages* downloads the package
+  published for the branch below, checks that the download is exactly what was
+  published, and switches to it; the computer needs nothing else installed, and
+  an update takes a minute or so. *Build from the repository* fetches the branch
+  and builds it on this computer, which needs git and Node there and gets a
+  change as soon as it merges, before its package exists. An install made from a
+  package starts on packages; an install made from a git clone starts on the
+  repository. Either way, a failed update leaves the version you are on serving.
+  The Updates page shows the package version you are running beside the commit.
 - **The branch to follow** — \`main\` for every change as it lands, or a release
-  branch for one that moves only when someone deliberately ships it.
+  branch for one that moves only when someone deliberately ships it. With
+  ready-made packages, the branch is the channel whose packages you take.
 - **The repository**, if this instance should follow a different fork. Leave it
   blank to keep the one it already follows.
 

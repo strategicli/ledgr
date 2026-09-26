@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { chooseAuthProvider, noLoginListenOk } from "../src/lib/auth/local";
 import { setupChecklist, setupView, type SetupFacts } from "../src/lib/setup-checklist";
 import {
+  appCommand,
   appListenHost,
   assembleAppEnv,
   effectiveEnv,
@@ -103,7 +104,8 @@ check("only the connector secret is generated (API tokens are minted in the app)
 }
 const SUP = read("supervisor/ledgr-supervisor.mjs");
 check("the supervisor never logs a secret's value (only the key names)", /log\("made per-install secrets", \{ keys: Object\.keys\(plan\.apply\)/.test(SUP));
-check("the supervisor starts the app through nextStartArgs with the decided host", SUP.includes("nextStartArgs(cfg.appPort, host)"));
+check("the supervisor starts the app through appCommand with the decided host", SUP.includes("appCommand(ptr.dir, cfg.appPort, listenHost, standalone)"));
+check("appCommand for a git build is nextStartArgs with that host", appCommand("/b", 3200, "127.0.0.1", false).args.slice(1).join(" ") === nextStartArgs(3200, "127.0.0.1").join(" "));
 check("the Clerk check happens before any database read", SUP.indexOf("if (clerkKey || methodOverride)") < SUP.indexOf('client.query("select method from signin_install'));
 
 // ── 3. The /setup page ──────────────────────────────────────────────────────

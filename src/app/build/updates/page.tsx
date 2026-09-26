@@ -133,6 +133,16 @@ export default async function Updates() {
               )}
             </dd>
 
+            {instance.buildVersion && (
+              <>
+                <dt className="ui-meta text-ink-subtle">Package</dt>
+                <dd className="text-sm text-ink">
+                  <span className="font-mono">{instance.buildVersion}</span>
+                  <span className="ui-meta ml-2 text-ink-subtle">(a ready-made package for {instance.branch})</span>
+                </dd>
+              </>
+            )}
+
             <dt className="ui-meta text-ink-subtle">Deploys from</dt>
             <dd className="text-sm text-ink">
               {instance.deployRepo ? (
@@ -279,12 +289,12 @@ export default async function Updates() {
           <Card>
             <p className="text-sm text-ink-muted">
               How this machine takes new versions: check on its own every so
-              often, or only when you press Update now. Which branch and
-              repository it follows is set here too. Changes take effect within
-              a minute, with no restart.
+              often, or only when you press Update now. Where the new versions
+              come from, and which branch and repository it follows, are set
+              here too. Changes take effect within a minute, with no restart.
             </p>
             <div className="mt-3">
-              <UpdatePolicyForm initial={policy} />
+              <UpdatePolicyForm initial={policy} effectiveSource={instance.updateSource} />
             </div>
           </Card>
         </section>

@@ -20,8 +20,9 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { createLogger, isDebugMode } from "@/lib/log";
-import { getCodeStatus, type CodeStatus } from "@/lib/github/client";
-import { githubSlugOf, readUpdatePolicySync } from "@/lib/update-policy";
+import { GithubError, getCodeStatus, listReleases, type CodeStatus } from "@/lib/github/client";
+import { githubSlugOf, readUpdatePolicySync, type UpdateSource } from "@/lib/update-policy";
+import { pickNewestRelease, shouldUpdate, updateSourceOf } from "../../supervisor/release.mjs";
 import journal from "../../drizzle/meta/_journal.json";
 
 const log = createLogger("updates");
@@ -129,6 +130,12 @@ export type InstanceIdentity = {
   // the supervisor follows, whatever repo that is — even the shared one, which
   // used to make the page call a local peer a "source" that updates itself.
   isLocalPeer: boolean;
+  // Where a local peer takes updates from (ADR-278): "git" builds its branch,
+  // "release" downloads the ready-made package published for that branch.
+  // Always "git" off a local peer, where it means nothing.
+  updateSource: UpdateSource;
+  // The package version being served, or null for a git build.
+  buildVersion: string | null;
 };
 
 
@@ -175,7 +182,49 @@ export function getInstanceIdentity(): InstanceIdentity {
     vercelEnv,
     supervisorDir,
     isLocalPeer,
+    updateSource: isLocalPeer
+      ? (updateSourceOf(policy?.source ?? null, process.env.LEDGR_INSTALL_KIND === "package") as UpdateSource)
+      : "git",
+    buildVersion: process.env.LEDGR_BUILD_VERSION || null,
   };
+}
+
+/**
+ * "Am I behind?", asked the way this instance actually takes updates. A local
+ * peer on ready-made packages compares its commit with the commit of its
+ * channel's newest package, not the branch tip, because the tip is not what it
+ * would install (the package for it may still be building). Everyone else asks
+ * about the branch, exactly as before.
+ */
+export async function getCodeStatusFor(instance: InstanceIdentity, fresh = false): Promise<CodeStatus> {
+  if (instance.isLocalPeer && instance.updateSource === "release") {
+    let newest: { version: string; commit: string | null } | null;
+    try {
+      newest = pickNewestRelease(await listReleases(instance.upstreamRepo, fresh), instance.branch);
+    } catch (err) {
+      return {
+        state: "unknown",
+        detail: err instanceof GithubError ? err.message : String(err),
+        touchesSchema: false,
+      };
+    }
+    if (!newest?.commit) {
+      return {
+        state: "unknown",
+        detail: `No ready-made package has been published for ${instance.branch} yet.`,
+        touchesSchema: false,
+      };
+    }
+    if (!shouldUpdate(instance.buildVersion, newest.version)) return { state: "current", touchesSchema: false };
+    return getCodeStatus(instance.sha, instance.upstreamRepo, newest.commit, true, fresh);
+  }
+  return getCodeStatus(
+    instance.sha,
+    instance.upstreamRepo,
+    instance.branch,
+    instance.isSatellite || isLocalPeerInstance(instance),
+    fresh
+  );
 }
 
 // ── The combined answer ──────────────────────────────────────────────────────
@@ -286,13 +335,7 @@ export async function getUpdateReport({ fresh = false } = {}): Promise<UpdateRep
     // deploy of the upstream repo itself is a "source" that updates on push.
     // (Bug, 2026-09-11: passing isSatellite alone read every hub as a source,
     // so the Update button never rendered on the machine the button was for.)
-    getCodeStatus(
-      instance.sha,
-      instance.upstreamRepo,
-      instance.branch,
-      instance.isSatellite || isLocalPeerInstance(instance),
-      fresh
-    ),
+    getCodeStatusFor(instance, fresh),
     getSchemaStatus(),
   ]);
   const { canApply, blockedReason, strategy } = resolveApplicability(instance, code);

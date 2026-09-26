@@ -37,6 +37,20 @@ Step 2 (files on local disk) landed. Step 3 (private access through the bundled
 Tailscale helper, ADR-276, runbook §1q) landed. Step 5 (public access through Tailscale
 Funnel, only behind sign-in, ADR-279) landed.
 
+Step 6 (ready-made packages, ADR-278, runbook §1s) landed: every push to `main` or
+`prod-brandon` publishes a Windows x64 package as a GitHub Release (`pkg-<channel>-<version>`),
+and an install can take its updates from those instead of building from git (Build →
+Updates → Update policy → "Where new versions come from"). Every existing install,
+Brandon's hub included, stays on git until its owner changes that. Left over from step 6:
+- Mac and Linux packages (step 8): pins in `scripts/package-pins.json` plus a matrix entry.
+  Linux needs a source for portable `pg_dump`/`pg_restore`; the archive is tar.gz there.
+- The in-app agent's platform binary (230 MB) is not in the package, so the agent module
+  cannot run from one yet.
+- A fresh package install still has no owner until `ledgr-ctl setup` runs; the installer
+  (step 7) should run it and open the page.
+- No LICENSE file yet (plan decision 3), needed before anyone outside Brandon and Tyler
+  installs a package.
+
 Step 9 (keep a copy in the cloud, ADR-277, runbook §1r) landed: Build → Network pairs a
 hub with a fresh cloud copy by a one-time code typed on the cloud's `/setup`, fills it
 from one snapshot, lists it as a 15-minute copy, and share tokens now sync with one

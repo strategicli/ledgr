@@ -59,8 +59,11 @@ import {
   serializeSigninReset,
   signinResetPath,
   SIGNIN_RESET_MINUTES,
+  nodeFor,
+  supervisorLaunch,
 } from "./lib.mjs";
 import { randomBytes } from "node:crypto";
+import { updateSourceOf } from "./release.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
@@ -117,6 +120,14 @@ function ownerPid() {
   if (!existsSync(lock)) return null;
   const pid = Number.parseInt(readFileSync(lock, "utf8").trim(), 10);
   return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/** What an update policy follows, in the words `status` prints (ADR-278). */
+function followed(policy) {
+  const packaged = existsSync(join(cfg.repoDir, "ledgr-package.json"));
+  return updateSourceOf(policy.source, packaged) === "release"
+    ? `ready-made packages, channel ${policy.branch}`
+    : `origin/${policy.branch}`;
 }
 
 function liveBuild() {
@@ -203,7 +214,7 @@ async function doStatus() {
     dbPort: cfg.dbPort,
     serving: http !== null,
     httpStatus: http,
-    build: live ? { sha: live.sha.slice(0, 7), dir: live.dir } : null,
+    build: live ? { sha: live.sha.slice(0, 7), dir: live.dir, version: live.version ?? null } : null,
     startup: {
       supported: boot.supported,
       registered: boot.registered,
@@ -230,7 +241,9 @@ async function doStatus() {
   console.log(
     `  app         ${report.serving ? `answering on :${cfg.appPort} (HTTP ${http})` : `not answering on :${cfg.appPort}`}`
   );
-  console.log(`  build       ${report.build ? report.build.sha : "none flipped yet"}`);
+  console.log(
+    `  build       ${report.build ? report.build.sha + (report.build.version ? ` (package ${report.build.version})` : "") : "none flipped yet"}`
+  );
   // The update policy is a file the app page and the tray window edit, so the
   // CLI reads the same file rather than quoting config.json's stale seed.
   {
@@ -245,8 +258,8 @@ async function doStatus() {
         !policy
           ? "no policy written yet (the service writes one on its first start)"
           : policy.mode === "auto"
-            ? `checked every ${policy.everyMinutes} min on origin/${policy.branch}`
-            : `only when asked from the app (origin/${policy.branch})`
+            ? `checked every ${policy.everyMinutes} min on ${followed(policy)}`
+            : `only when asked from the app (${followed(policy)})`
       }`
     );
   }
@@ -326,7 +339,15 @@ async function doRestart() {
 }
 
 function spawnDetachedSupervisor() {
-  const script = join(here, "ledgr-supervisor.mjs");
+  // A package install starts the supervisor of the build it serves (ADR-278);
+  // a clone starts the one beside this file, as always.
+  const { node, script } = supervisorLaunch({
+    here,
+    execPath: process.execPath,
+    liveDir: liveBuild()?.dir ?? null,
+    isWin,
+    exists: existsSync,
+  });
   let out = "ignore";
   let err = "ignore";
   try {
@@ -336,7 +357,7 @@ function spawnDetachedSupervisor() {
     // still start it, just blind
   }
   try {
-    const child = spawn(process.execPath, [script, configPath], {
+    const child = spawn(node, [script, configPath], {
       detached: true,
       stdio: ["ignore", out, err],
       cwd: cfg.repoDir,
@@ -527,10 +548,13 @@ function doStartup() {
   }
 
   const scope = startupScope(wantAlways ? "always" : "logon");
+  // A package install registers the folder it was installed into, never a
+  // builds/<version> folder a later update prunes (ADR-278).
+  const stableRoot = existsSync(join(cfg.repoDir, "ledgr-package.json")) ? cfg.repoDir : null;
   const args = schtasksCreateArgs({
     username: process.env.USERNAME || process.env.USER || "",
-    nodePath: process.execPath,
-    supervisorScript: join(here, "ledgr-supervisor.mjs"),
+    nodePath: nodeFor(stableRoot, process.execPath, isWin, existsSync),
+    supervisorScript: stableRoot ? join(stableRoot, "supervisor", "ledgr-supervisor.mjs") : join(here, "ledgr-supervisor.mjs"),
     configPath,
     scope,
   });

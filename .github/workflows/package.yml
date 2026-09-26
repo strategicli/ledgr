@@ -1,0 +1,168 @@
+# Ready-made packages (install plan step 6, ADR-278).
+#
+# A package is one archive that runs Ledgr with nothing else installed: the
+# standalone app, the supervisor, a pinned Node, the embedded Postgres, and
+# pg_dump/pg_restore. Installs that take updates from packages follow a CHANNEL,
+# which is a branch: Tyler's `main`, Brandon's `prod-brandon`.
+#
+# - A push to a channel branch publishes one GitHub Release, tagged
+#   `pkg-<channel>-<version>` (version = UTC build time, YYYYMMDD.HHMMSS), with
+#   one archive per platform and manifest.json (each archive's sha256). The
+#   release targets the exact commit it was built from. Only the newest KEEP
+#   releases per channel are kept. The `pkg-` prefix keeps these apart from the
+#   Tailscale helper's `tailnet-v*` releases.
+# - A pull request that touches packaging builds the packages and uploads them
+#   as a workflow artifact. It publishes NOTHING, so a PR can be tested by
+#   downloading that artifact and installing it (runbook §1s).
+# - Running it by hand (Actions → "Ready-made package" → Run workflow) builds and
+#   uploads the artifact; tick "publish" to also release it, which only works on
+#   a channel branch.
+#
+# Each platform builds on its own runner because Next's standalone output
+# carries native pieces (image resizing, the database binaries) for the machine
+# it was installed on. Runners are free on a public repository.
+#
+# None of this touches Vercel, CI's build, or any deploy: next.config.ts turns
+# standalone output on only when scripts/package.mjs sets LEDGR_STANDALONE=1.
+name: Ready-made package
+
+on:
+  push:
+    branches: [main, prod-brandon]
+  pull_request:
+    paths:
+      - "scripts/package.mjs"
+      - "scripts/package-pins.json"
+      - "supervisor/**"
+      - "next.config.ts"
+      - ".github/workflows/package.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Also publish a release (channel branches only)"
+        type: boolean
+        default: false
+
+# One publish per channel at a time, in push order; a newer push does not
+# cancel a release half-way through.
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: write # only the publish job uses it
+
+env:
+  CHANNELS: "main prod-brandon"
+  KEEP: "5"
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      version: ${{ steps.m.outputs.version }}
+      channel: ${{ steps.m.outputs.channel }}
+      publish: ${{ steps.m.outputs.publish }}
+    steps:
+      - id: m
+        run: |
+          channel="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          publish=false
+          if [ "$GITHUB_EVENT_NAME" = push ] || { [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "${{ inputs.publish }}" = true ]; }; then
+            for c in $CHANNELS; do [ "$c" = "$GITHUB_REF_NAME" ] && publish=true; done
+          fi
+          echo "version=$(date -u +%Y%m%d.%H%M%S)" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel publish=$publish"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Add a platform: an entry here and its pins in scripts/package-pins.json.
+          - platform: windows-x64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The pinned downloads (Node, the Postgres client tools) change only when
+      # the pins do; package.mjs re-checks every cached file's sha256 anyway.
+      - uses: actions/cache@v4
+        with:
+          path: .package-cache
+          key: package-downloads-${{ matrix.platform }}-${{ hashFiles('scripts/package-pins.json') }}
+      - run: node scripts/package.mjs --channel "${{ needs.meta.outputs.channel }}" --version "${{ needs.meta.outputs.version }}" --out dist/package
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ledgr-package-${{ matrix.platform }}
+          path: |
+            dist/package/ledgr-*
+            dist/package/manifest-*.json
+          retention-days: 7
+          compression-level: 0 # already compressed
+
+  publish:
+    needs: [meta, build]
+    if: needs.meta.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: ledgr-package-*
+          path: dist
+          merge-multiple: true
+      - name: Merge the platform manifests
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+            import { mergeManifests } from "./supervisor/release.mjs";
+            const parts = readdirSync("dist").filter((f) => /^manifest-.*\.json$/.test(f))
+              .map((f) => JSON.parse(readFileSync("dist/" + f, "utf8")));
+            const m = mergeManifests(parts);
+            if (m.commit !== process.env.GITHUB_SHA) throw new Error("built " + m.commit + ", expected " + process.env.GITHUB_SHA);
+            writeFileSync("dist/manifest.json", JSON.stringify(m, null, 2) + "\n");
+            console.log(JSON.stringify(m, null, 2));
+          '
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          CHANNEL: ${{ needs.meta.outputs.channel }}
+        run: |
+          tag=$(node --input-type=module -e 'import { packageTag } from "./supervisor/release.mjs"; console.log(packageTag(process.env.CHANNEL, process.env.VERSION))')
+          gh release create "$tag" dist/ledgr-* dist/manifest.json \
+            --target "$GITHUB_SHA" \
+            --title "Ledgr package $VERSION ($CHANNEL)" \
+            --notes "Ready-made Ledgr for the $CHANNEL channel, built from $GITHUB_SHA. Installs that take packages from this channel update to it on their own or with Update now. manifest.json lists each archive's sha256; the supervisor refuses a download that does not match." \
+            --latest=false
+      - name: Keep only the newest releases of this channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ needs.meta.outputs.channel }}
+        run: |
+          gh release list --limit 200 --json tagName --jq '.[].tagName' > tags.txt
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { compareVersions, versionOfTag } from "./supervisor/release.mjs";
+            const mine = readFileSync("tags.txt", "utf8").split("\n")
+              .map((t) => ({ t, v: versionOfTag(t.trim(), process.env.CHANNEL) })).filter((x) => x.v)
+              .sort((a, b) => compareVersions(b.v, a.v));
+            for (const x of mine.slice(Number(process.env.KEEP))) console.log(x.t);
+          ' > old.txt
+          while read -r t; do
+            [ -n "$t" ] || continue
+            echo "removing $t"
+            gh release delete "$t" --yes --cleanup-tag
+          done < old.txt

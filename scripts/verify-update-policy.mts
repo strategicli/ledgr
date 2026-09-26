@@ -124,4 +124,25 @@ ok("the wizard's answers become the first-boot policy", () => {
   assert.deepEqual(defaults, { mode: "auto", everyMinutes: 15, branch: "main", repo: "" });
 });
 
+ok("where updates come from survives both writers, and an older file has none (ADR-278)", () => {
+  const ts = serializeTs({ mode: "auto", everyMinutes: 15, branch: "main", repo: "", source: "release" });
+  assert.equal(parseMjs(ts)?.source, "release");
+  const mjs = serializeMjs({ mode: "auto", everyMinutes: 15, branch: "main", repo: "", source: "git" });
+  assert.equal(parseTs(mjs)?.source, "git");
+  // A file from before the field: no source, so the install keeps its own path.
+  const old = JSON.stringify({ mode: "auto", everyMinutes: 15, branch: "main", repo: "" });
+  assert.equal(parseMjs(old)?.source, null);
+  assert.equal(parseTs(old)?.source, null);
+  assert.equal(serializeMjs({ mode: "manual", everyMinutes: 15, branch: "main", repo: "" }).includes("source"), false);
+  const v = validatePolicyInput({ mode: "auto", everyMinutes: 15, branch: "main", repo: "", source: "release" });
+  assert.ok(v.ok && v.policy.source === "release");
+  assert.equal(validatePolicyInput({ mode: "auto", everyMinutes: 15, branch: "main", source: "ftp" }).ok, false);
+  const kept = validatePolicyInput({ mode: "auto", everyMinutes: 15, branch: "main" });
+  assert.ok(kept.ok && kept.policy.source === null, "a caller that names no source leaves it to the route");
+  // A package seeds its policy as "release"; a clone's seed is what it always was.
+  const cfg = normalizeConfig({ dataDir: "/d", ownerEmail: "a@b.c" }, "/r/supervisor");
+  assert.equal(policyFromConfig(cfg, "", "release").source, "release");
+  assert.equal("source" in policyFromConfig(cfg, ""), false);
+});
+
 console.log(`\nverify-update-policy: ${checks} checks passed`);

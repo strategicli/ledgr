@@ -296,6 +296,56 @@ export function nextStartArgs(port, host) {
   return ["start", "-p", String(port), ...(host ? ["-H", host] : [])];
 }
 
+// ── Ready-made packages (ADR-278) ────────────────────────────────────────────
+//
+// A package's root holds ledgr-package.json, node/, supervisor/, scripts/,
+// drizzle/ and app/ (the standalone server). live.json points at <root>/app,
+// so everything else about a package build is found from there.
+
+/**
+ * How to start the app in a build directory, as node arguments plus env. A
+ * standalone build (a package) runs its own `server.js`, which reads PORT and
+ * HOSTNAME; a git build keeps today's `next start`.
+ */
+export function appCommand(dir, port, host, standalone) {
+  if (standalone) {
+    return { args: [join(dir, "server.js")], env: { PORT: String(port), HOSTNAME: host ?? "0.0.0.0" } };
+  }
+  return { args: [join(dir, "node_modules", "next", "dist", "bin", "next"), ...nextStartArgs(port, host)], env: {} };
+}
+
+/** The package root for a live app dir (`<root>/app`), or null for a git build. */
+export function packageRootOf(appDir, exists) {
+  if (!appDir) return null;
+  const root = resolve(appDir, "..");
+  return exists(join(root, "ledgr-package.json")) ? root : null;
+}
+
+/** The Node a package ships, else the one running now. */
+export function nodeFor(root, execPath, isWin, exists) {
+  const own = root ? join(root, "node", isWin ? "node.exe" : "bin/node") : null;
+  return own && exists(own) ? own : execPath;
+}
+
+/**
+ * Which supervisor to start next (boot, restart). For a package install it is
+ * the one inside the build that is SERVING, with that build's Node, because a
+ * package update is the only way a packaged supervisor ever gets new code. A git
+ * install (no package root) keeps starting the supervisor beside this file.
+ */
+export function supervisorLaunch({ here, execPath, liveDir, isWin, exists }) {
+  const root = packageRootOf(liveDir, exists);
+  const script = root ? join(root, "supervisor", "ledgr-supervisor.mjs") : null;
+  if (script && exists(script)) return { node: nodeFor(root, execPath, isWin, exists), script };
+  return { node: execPath, script: join(here, "ledgr-supervisor.mjs") };
+}
+
+/** The system tar, which reads zip on Windows and macOS (bsdtar) and tar.gz everywhere. */
+export function extractCommand(platform, archive, dest, systemRoot) {
+  const tar = platform === "win32" ? join(systemRoot || "C:\\Windows", "System32", "tar.exe") : "tar";
+  return { cmd: tar, args: ["-xf", archive, "-C", dest] };
+}
+
 // ── Per-install secrets (ADR-275) ───────────────────────────────────────────
 //
 // A local install needs its own signing secret for the Claude connector and
@@ -968,7 +1018,8 @@ export function parseLivePointer(text) {
   try {
     const v = JSON.parse(text);
     if (v && typeof v.dir === "string" && v.dir && typeof v.sha === "string" && v.sha) {
-      return { dir: v.dir, sha: v.sha };
+      // `version` is set only for a ready-made package build (ADR-278).
+      return { dir: v.dir, sha: v.sha, version: typeof v.version === "string" ? v.version : null };
     }
   } catch {
     // fall through
@@ -976,8 +1027,9 @@ export function parseLivePointer(text) {
   return null;
 }
 
-export function serializeLivePointer(dir, sha) {
-  return JSON.stringify({ dir, sha, flippedAt: new Date().toISOString() }, null, 2) + "\n";
+/** @param {string} dir @param {string} sha @param {string | null} [version] a package build's version */
+export function serializeLivePointer(dir, sha, version = null) {
+  return JSON.stringify({ dir, sha, ...(version ? { version } : {}), flippedAt: new Date().toISOString() }, null, 2) + "\n";
 }
 
 /**
@@ -1463,6 +1515,9 @@ export function parseUpdatePolicy(text) {
     // The git remote URL (what `git remote set-url` takes), or "" for "leave
     // origin alone". Not owner/repo: a non-GitHub host would have neither.
     repo: typeof v.repo === "string" ? v.repo.trim() : "",
+    // "git" (build from the repo) or "release" (ready-made packages, ADR-278).
+    // null when the file predates the field; updateSourceOf decides then.
+    source: v.source === "git" || v.source === "release" ? v.source : null,
     updatedAt: typeof v.updatedAt === "string" ? v.updatedAt : null,
   };
 }
@@ -1473,6 +1528,7 @@ export function serializeUpdatePolicy(p) {
     everyMinutes: 15,
     branch: "main",
     repo: "",
+    source: null,
   };
   return (
     JSON.stringify(
@@ -1481,6 +1537,7 @@ export function serializeUpdatePolicy(p) {
         everyMinutes: norm.everyMinutes,
         branch: norm.branch,
         repo: norm.repo,
+        ...(norm.source ? { source: norm.source } : {}),
         updatedAt: p.updatedAt ?? new Date().toISOString(),
       },
       null,
@@ -1490,12 +1547,14 @@ export function serializeUpdatePolicy(p) {
 }
 
 /** The policy a fresh install starts with: what config.json asked for. */
-export function policyFromConfig(cfg, originUrl = "") {
+/** @param {any} cfg @param {string} [originUrl] @param {"git" | "release" | null} [source] */
+export function policyFromConfig(cfg, originUrl = "", source = null) {
   return {
     mode: cfg.update.mode === "auto" ? "auto" : "manual",
     everyMinutes: Math.max(1, Math.round(cfg.update.pollIntervalMs / 60_000)),
     branch: cfg.branch,
     repo: originUrl,
+    ...(source ? { source } : {}),
   };
 }
 
