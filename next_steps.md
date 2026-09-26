@@ -41,8 +41,6 @@ Step 6 (ready-made packages, ADR-278, runbook §1s) landed: every push to `main`
 and an install can take its updates from those instead of building from git (Build →
 Updates → Update policy → "Where new versions come from"). Every existing install,
 Brandon's hub included, stays on git until its owner changes that. Left over from step 6:
-- Mac and Linux packages (step 8): pins in `scripts/package-pins.json` plus a matrix entry.
-  Linux needs a source for portable `pg_dump`/`pg_restore`; the archive is tar.gz there.
 - The in-app agent's platform binary (230 MB) is not in the package, so the agent module
   cannot run from one yet.
 - No LICENSE file yet (plan decision 3), needed before anyone outside Brandon and Tyler
@@ -61,6 +59,21 @@ on free ports. Left over from step 7:
 - The plan's first-run extras are not built: "start fresh or drop in a backup" and
   "Connect with Tailscale" on the setup page. Both exist elsewhere (restore from a
   backup is a terminal command; Tailscale is on Build → Network).
+
+Step 8 (Mac and Linux, ADR-281, runbook §1u) landed, closing chunk A: packages for Mac
+(Apple silicon and Intel) and Linux x64 in every package release, a one-line
+`install.sh` (install, upgrade in place, `--uninstall` keeping data), start at sign-in
+as a launchd agent or systemd user unit written by `ledgr-ctl startup` and the app's
+box alike, and an `install-test` job that installs each fresh package on a real Mac and
+Linux runner before anything publishes. Left over from step 8:
+- Not exercised: the Intel Mac package (built, never installed), a real desktop
+  sign-in, Gatekeeper on a person's Mac, the launchers opened from Finder or a desktop
+  menu, and Linux other than Ubuntu (24.04 tested, 22.04 built on).
+- No tray or menu-bar icon on Mac/Linux; the launchers and the app's pages stand in.
+  The app has no Stop button (Stop Ledgr is a launcher).
+- Unsigned and not notarized; fine through `curl`, but a browser-downloaded copy of
+  anything would meet Gatekeeper.
+- No Linux on Arm (a Raspberry Pi) package: it needs its own pins and runner.
 
 Step 9 (keep a copy in the cloud, ADR-277, runbook §1r) landed: Build → Network pairs a
 hub with a fresh cloud copy by a one-time code typed on the cloud's `/setup`, fills it
@@ -597,7 +610,7 @@ The verbs exist: `npm run local:status` (supervisor alive? app actually answerin
 
 **The rig found two more bugs here.** First, `stop` reported success but left a stale lock, because a termination signal sent to another process on Windows is a hard kill Node cannot catch — the shutdown handler never ran, so Postgres was killed rather than shut down and the lock survived looking like a live owner. `stop` now asks through a `stop-requested` file that reaches the same handler a Ctrl-C reaches. Second, even *with* the handler running, every restart replayed WAL: **embedded-postgres stops the cluster with `taskkill /f /t`**, which is a kill, not a shutdown. `shutdown()` now asks `pg_ctl stop -m fast` first and keeps the forced path as a bounded fallback; verified by a stop logging `clean: true` and the next start showing zero recovery lines.
 
-**Still open, deliberately:** writing and enabling the **launchd plist / systemd user unit** the same way win32 does its `schtasks` (both are still printed for hand-installation, and the tooling says so rather than pretending), `install.sh` for the non-Windows bootstrap, and the supervisor still not restarting *itself* when an update changes `supervisor/*.mjs` (listed in E; the new verbs are what make that fix testable). Note for whoever tests the registration on a fresh machine: **this machine's account cannot create scheduled tasks unelevated at all** — both scopes return "Access is denied" — so the honest-failure path is what got exercised end to end here, not a successful registration.
+**Still open, deliberately:** the supervisor still not restarting *itself* when an update changes `supervisor/*.mjs` (listed in E; the new verbs are what make that fix testable). Note for whoever tests the registration on a fresh machine: **this machine's account cannot create scheduled tasks unelevated at all** — both scopes return "Access is denied" — so the honest-failure path is what got exercised end to end here, not a successful registration.
 
 
 #### B3. A locally-installed AI agent can stand up a hub or a spoke

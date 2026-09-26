@@ -12,6 +12,20 @@ A personal life management system (a Notion replacement) built by Brandon and Ty
 
 The installer is not signed yet, so Windows may show **"Windows protected your PC"**. That is Windows SmartScreen saying it does not recognize the file, not that anything is wrong with it: choose **More info**, then **Run anyway**. Each release lists the file's sha256 if you want to check your download. How the installer works: `runbook.md` §1t.
 
+## Download Ledgr for Mac or Linux
+
+Open **Terminal** (on a Mac: press Command-Space, type Terminal, press Return), paste this one line, and press Return:
+
+```sh
+curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh
+```
+
+It downloads the newest `main` build for your computer (Apple silicon or Intel Mac, or 64-bit Linux), checks its sha256, installs it for your account only (no password), starts Ledgr, and opens your browser on the setup page. Ledgr then starts by itself when you sign in, and **Ledgr** appears in your Applications › Ledgr folder (Mac) or your applications menu (Linux). Your data lives apart from the program, in `~/Library/Application Support/Ledgr/data` on a Mac or `~/.local/share/ledgr/data` on Linux.
+
+- **To update**, run the same line again. Ledgr also updates itself from Build → Updates.
+- **To uninstall**, run it with `--uninstall`: `curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh -s -- --uninstall`. Your data is kept unless you type `DELETE` and then confirm.
+- **Why a Terminal line and not a download:** a file downloaded in a browser gets macOS's "downloaded from the internet" flag, and then Gatekeeper questions every program inside it. A download the script makes does not, so nothing asks. Linux needs glibc 2.34 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later). How it works: `runbook.md` §1u.
+
 ## Stack
 
 Next.js (App Router, TypeScript) on Vercel, Postgres on Neon (via the connection pooler, always), Drizzle ORM, Clerk auth (behind a thin provider interface), a markdown-native WYSIWYG editor (library TBD; markdown is the canonical body format since ADR-037), Cloudflare R2 storage.

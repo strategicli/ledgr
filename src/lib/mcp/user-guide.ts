@@ -1235,6 +1235,44 @@ your email and password.
 - **Another Ledgr already on the computer** (one built from source, say) is left
   alone: the installer puts this one beside it on its own free ports.
 
+## Installing Ledgr on a Mac or Linux
+
+**Download Ledgr for Mac or Linux:** open **Terminal** (on a Mac, press
+Command-Space, type Terminal, press Return), paste this one line and press
+Return:
+
+\`curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh\`
+
+It picks the right build for your computer (Apple silicon or Intel Mac, or
+64-bit Linux), checks the download's sha256 and refuses it if it does not match,
+installs it for your account only with no password, starts Ledgr, and opens your
+browser on the setup page, where you make your email and password.
+
+- **Why a Terminal line rather than a download:** a file downloaded in a browser
+  carries macOS's "downloaded from the internet" flag, and Gatekeeper then asks
+  about every program inside it. A download the script makes carries no such
+  flag, so nothing asks. The build is not signed.
+- **Opening it:** **Ledgr** in your **Applications › Ledgr** folder (or search
+  Spotlight for Ledgr) on a Mac, or **Ledgr** in your applications menu on
+  Linux. It opens Ledgr in the browser, starting it first if needed. Beside it
+  are **Stop Ledgr** and **Reset Ledgr sign-in password** (works only at that
+  computer); on Linux they are on Ledgr's right-click menu. There is no icon
+  near the clock on a Mac or Linux yet: those launchers, the app's own pages
+  and a terminal are how you start, stop and reset.
+- **It starts when you sign in:** a Login Item on a Mac, a systemd user service
+  on Linux. Turn that off, or on Linux ask for "before anyone signs in", with
+  **Build → Updates → Start with the computer**.
+- **Your data** lives apart from the program: \`~/Library/Application Support/Ledgr/data\`
+  on a Mac, \`~/.local/share/ledgr/data\` on Linux. Running the same line again
+  updates the program in place and keeps the data. Ledgr also updates itself
+  from **Build → Updates**. An older version never replaces a newer one.
+- **Uninstalling:** the same line with \`sh -s -- --uninstall\` at the end
+  instead of \`sh\`. It stops Ledgr and removes the program, its launchers and
+  its start-at-sign-in entry. It keeps your data unless you type \`DELETE\` and
+  then answer yes.
+- **Linux needs** glibc 2.34 or newer: Ubuntu 22.04, Debian 12, Fedora 36 or
+  later.
+
 ## Setting up a new copy
 
 **\`/setup\`** lists what a copy of Ledgr still needs, in plain words: what is
@@ -1243,9 +1281,10 @@ one is set. Anyone can open it, but once a copy has an owner only that owner
 sees the list.
 
 - **A new copy on your own computer** has no owner until you make one. The
-  Windows installer opens this for you when it finishes. Later, at that
-  computer, choose **Reset Ledgr sign-in password** from the Start menu (or
-  right-click the tray icon and choose **Reset sign-in password...**, or run
+  Windows installer and the Mac/Linux install line open this for you when they
+  finish. Later, at that computer, choose **Reset Ledgr sign-in password** from
+  the Start menu, the Mac's Applications › Ledgr folder or Ledgr's right-click
+  menu on Linux (or right-click the tray icon and choose **Reset sign-in password...**, or run
   \`npm run local:setup-owner\` in a copy built from source). It opens \`/setup\` with a one-time
   link that works for 15 minutes and only on that computer. Enter your email
   and a password, save the recovery kit, type one code back, and you are signed
@@ -1519,6 +1558,13 @@ try. If a change cannot be applied at all, the page still shows the
 exact command to run instead. It will not quietly let you believe a reboot is
 covered when it is not. The service re-checks this registration with Windows on
 every start, so an old warning here does not outlive the restart that fixed it.
+On a Mac the switch adds Ledgr to your Login Items, and it offers only *when I
+sign in*: starting before anyone signs in needs an administrator, which Ledgr
+does not do for you (turn on automatic login instead, if the Mac must come back
+by itself). On Linux it is a systemd user service, and *always on* asks Linux to
+start your services when the computer starts; if that is not allowed, the page
+says so and gives the one command to run. On both, the box re-checks every few
+minutes, so switching Ledgr off in the Mac's Login Items shows here too.
 
 **This machine's Ledgr service** (only on a machine you run yourself). The
 service is what holds the database, serves the app and triggers the scheduled

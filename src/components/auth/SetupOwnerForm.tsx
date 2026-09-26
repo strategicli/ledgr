@@ -63,8 +63,9 @@ export default function SetupOwnerForm() {
   if (!hasTicket) {
     return (
       <p className="text-sm text-ink-muted">
-        To create the owner, open the Start menu on this computer and choose Reset Ledgr sign-in password, or
-        right-click the Ledgr tray icon and choose Reset sign-in password. (In a copy built from source,{" "}
+        To create the owner, choose Reset Ledgr sign-in password on this computer: from the Start menu or the
+        Ledgr tray icon on Windows, the Applications › Ledgr folder on a Mac, or Ledgr&rsquo;s right-click menu in
+        the applications menu on Linux. (In a copy built from source,{" "}
         <code className="font-mono text-ink">npm run local:setup-owner</code> does the same.) Each one reopens this
         page with a one-time link that works for 15 minutes.
       </p>

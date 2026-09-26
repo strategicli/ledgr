@@ -200,6 +200,38 @@ export function updateSourceOf(policySource, packaged) {
   return packaged ? "release" : "git";
 }
 
+// ── The Mac/Linux install script (install plan step 8) ──────────────────────
+
+/** The release asset people run: `curl -fsSL …/releases/latest/download/install.sh | sh`. */
+export const INSTALL_SCRIPT_ASSET = "install.sh";
+
+/**
+ * scripts/install.sh with one release's facts filled in: its version and
+ * channel, where its archives are, and the sha256 of each Mac and Linux
+ * archive. The checksums travel inside the script, from the same release, so
+ * the script needs nothing but sh, curl, tar and a sha256 tool to refuse a
+ * download that does not match.
+ */
+export function renderInstallScript(template, { manifest, base }) {
+  const m = parseManifest(manifest);
+  const sums = m.files
+    .filter((f) => /^(macos|linux)-/.test(f.platform))
+    .map((f) => `${f.platform} ${f.name} ${f.sha256}`)
+    .join("\n");
+  if (!sums) throw new Error("the manifest has no Mac or Linux archive");
+  if (!/^(https|file):\/\/\S+$/.test(base) || /['"\\$`]/.test(base)) throw new Error(`bad base URL ${base}`);
+  if (/['"\\$`\s]/.test(m.channel)) throw new Error(`bad channel ${m.channel}`);
+  const out = String(template)
+    .replace("__LEDGR_VERSION__", () => m.version)
+    .replace("__LEDGR_CHANNEL__", () => m.channel)
+    .replace("__LEDGR_BASE__", () => base.replace(/\/+$/, ""))
+    .replace("__LEDGR_SUMS__", () => sums);
+  if (/__LEDGR_[A-Z]+__/.test(out)) {
+    throw new Error("the install script template has a placeholder this does not fill");
+  }
+  return out;
+}
+
 /** owner/repo for a GitHub URL (https or ssh), else null. */
 export function githubSlug(url) {
   const m = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(String(url ?? "").trim());

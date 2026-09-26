@@ -47,6 +47,7 @@ import {
   parseSupervisorState,
   AWAIT_PID_ENV,
   serializeStartupRequest,
+  serializeStartupState,
   startupScope,
   startupSignalPath,
   startupStatePath,
@@ -66,6 +67,7 @@ import {
 } from "./lib.mjs";
 import { randomBytes } from "node:crypto";
 import { updateSourceOf } from "./release.mjs";
+import { loginItemCommand, queryLoginItem, registerLoginItem } from "./login-item.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
@@ -157,7 +159,11 @@ async function appAnswers() {
 
 /** What Windows actually holds, not what we last asked for. */
 function registeredScope() {
-  if (!isWin) return { supported: false, registered: false, scope: null, mode: null };
+  if (!isWin) {
+    // macOS / Linux: the launchd agent or systemd unit (supervisor/login-item.mjs).
+    const q = queryLoginItem({ name: STARTUP_TASK_NAME });
+    return { supported: q !== null, registered: !!q?.registered, scope: q?.scope ?? null, mode: null, blocked: !!q?.blocked };
+  }
   const res = spawnSync("schtasks", schtasksQueryArgs(STARTUP_TASK_NAME), { encoding: "utf8" });
   if (res.status !== 0) {
     // An installed copy starts at sign-in from its Startup-folder shortcut.
@@ -275,6 +281,8 @@ async function doStatus() {
   }
   if (!boot.supported) {
     console.log("  at boot     not managed here on this platform (see supervisor/README.md)");
+  } else if (boot.blocked) {
+    console.log("  at boot     registered, but switched off in System Settings → Login Items");
   } else if (!boot.registered) {
     console.log("  at boot     not registered — this peer does not come back after a reboot");
   } else {
@@ -515,19 +523,11 @@ async function doBoot() {
 // ── startup (the boot registration) ──────────────────────────────────────────
 
 function doStartup() {
-  if (!isWin) {
-    // Deliberately not pretending: the launchd plist / systemd unit are still
-    // written by hand, and saying otherwise would be worse than saying so.
-    console.log(
-      "Boot registration is managed here on Windows only for now.\n" +
-        "For macOS (launchd) and Linux (systemd user units), see supervisor/README.md."
-    );
-    return 2;
-  }
-
   const wantDisable = flags.has("--disable") || flags.has("--off");
   const wantAlways = flags.has("--always") || flags.has("--boot");
   const wantLogon = flags.has("--logon") || flags.has("--signin");
+
+  if (!isWin) return doStartupUnix({ wantDisable, wantAlways, wantLogon });
 
   if (!wantDisable && !wantAlways && !wantLogon) {
     const boot = registeredScope();
@@ -601,6 +601,61 @@ function doStartup() {
       formatSchtasks(args, { shell: "powershell" })
   );
   return 1;
+}
+
+/**
+ * macOS and Linux: write or remove this copy's launchd agent / systemd user
+ * unit directly (no supervisor needed), and record the outcome where the app's
+ * "Start with the computer" box reads it, so the two always agree.
+ */
+function doStartupUnix({ wantDisable, wantAlways, wantLogon }) {
+  const where = process.platform === "darwin" ? "launchd user agent" : "systemd user unit";
+  if (!wantDisable && !wantAlways && !wantLogon) {
+    const boot = registeredScope();
+    console.log(
+      boot.blocked
+        ? "Registered, but switched off in System Settings → General → Login Items & Extensions."
+        : boot.registered
+          ? `Registered (${where}) to start ${boot.scope === "always" ? "when the computer starts, before anyone signs in" : "when you sign in"}.`
+          : "Not registered — this copy does not come back after a restart."
+    );
+    console.log(
+      "\nChange it with:\n" +
+        "  ledgr-ctl startup --logon     start when you sign in\n" +
+        (process.platform === "linux" ? "  ledgr-ctl startup --always    also start before anyone signs in (systemd linger)\n" : "") +
+        "  ledgr-ctl startup --disable"
+    );
+    return 0;
+  }
+  const enabled = !wantDisable;
+  const scope = startupScope(wantAlways ? "always" : "logon");
+  const r = registerLoginItem({
+    name: STARTUP_TASK_NAME,
+    enabled,
+    scope,
+    ...loginItemCommand({ repoDir: cfg.repoDir, here, execPath: process.execPath, exists: existsSync }),
+    configPath,
+    dataDir: cfg.dataDir,
+  });
+  writeFileSync(
+    startupStatePath(cfg.dataDir),
+    serializeStartupState({ enabled, scope: r.scope, ok: r.ok, detail: r.detail ?? null, caveat: r.caveat ?? null }),
+    "utf8"
+  );
+  if (!r.ok) {
+    console.error(`Could not change it: ${r.detail}`);
+    return 1;
+  }
+  console.log(
+    !enabled
+      ? "Removed. This copy no longer starts on its own."
+      : r.scope === "always"
+        ? "Registered to start when the computer starts, before anyone signs in."
+        : "Registered to start when you sign in."
+  );
+  if (r.caveat) console.log(`Heads up: ${r.caveat}`);
+  if (r.note) console.log(`(${r.note})`);
+  return 0;
 }
 
 // ── tray (the notification-area icon) ────────────────────────────────────────
@@ -852,7 +907,11 @@ function openBrowser(url) {
       ? ["open", [url]]
       : ["xdg-open", [url]];
   try {
-    spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
+    // A missing launcher (no xdg-open on a server) arrives as an 'error'
+    // event, which would otherwise crash this process after the work is done.
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
   } catch {
     // no browser launcher; the caller prints the link
   }

@@ -21,6 +21,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -33,7 +34,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { extractCommand } from "../supervisor/lib.mjs";
@@ -189,14 +190,27 @@ async function pinned(pin) {
   if (got !== pin.sha256) fail(`${pin.url} has sha256 ${got}, the pin says ${pin.sha256}; refusing it`);
   return file;
 }
+/**
+ * Take `pin.files` (paths under `pin.from`) out of a pinned archive into
+ * `dest/<pin.into>/`. A `.deb` is unpacked with dpkg-deb (tar cannot read one);
+ * `pin.alsoExtract` names files that are only link targets, extracted so the
+ * links in `files` can be copied as the files they point at.
+ */
 function extractPinned(archive, pin, dest) {
   const tmp = join(cache, "x", channelSlug(pin.url.split("/").pop()));
   rmSync(tmp, { recursive: true, force: true });
   mkdirSync(tmp, { recursive: true });
-  const x = extractCommand(process.platform, archive, tmp, process.env.SystemRoot);
-  sh(x.cmd, [...x.args, ...pin.files.map((f) => pin.from + f)]);
-  mkdirSync(dest, { recursive: true });
-  for (const f of pin.files) cpSync(join(tmp, pin.from, f), join(dest, f));
+  if (archive.endsWith(".deb")) {
+    sh("dpkg-deb", ["-x", archive, tmp]);
+  } else {
+    const x = extractCommand(process.platform, archive, tmp, process.env.SystemRoot);
+    sh(x.cmd, [...x.args, ...[...pin.files, ...(pin.alsoExtract ?? [])].map((f) => pin.from + f)]);
+  }
+  const into = join(dest, pin.into ?? "");
+  for (const f of pin.files) {
+    mkdirSync(dirname(join(into, f)), { recursive: true });
+    cpSync(join(tmp, pin.from, f), join(into, f), COPY_OPTS);
+  }
   rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -204,7 +218,36 @@ step(`Node ${pins.node.version}…`);
 // node/node.exe on Windows, node/bin/node elsewhere (that pin lists "bin/node"), as nodeFor() expects.
 extractPinned(await pinned(pins.node), pins.node, join(root, "node"));
 step("pg_dump / pg_restore…");
-extractPinned(await pinned(pins.pgTools), pins.pgTools, join(root, "pgtools"));
+const pgt = pins.pgTools;
+extractPinned(await pinned(pgt), pgt, join(root, "pgtools"));
+// Linux: PostgreSQL's own apt build of the tools, run against the portable
+// libpq the embedded server already ships (its apt libpq needs a different
+// LDAP library on each Ubuntu release). A small wrapper in pgtools/bin points
+// the loader at pgtools/lib, so every caller runs pgtools/bin/pg_dump as-is.
+if (pgt.bundledLibs) {
+  for (const f of pgt.bundledLibs.files) {
+    mkdirSync(join(root, "pgtools", "lib"), { recursive: true });
+    cpSync(join(repoRoot, pgt.bundledLibs.from, f), join(root, "pgtools", "lib", f), COPY_OPTS);
+  }
+  mkdirSync(join(root, "pgtools", "bin"), { recursive: true });
+  for (const f of pgt.files) {
+    const w = join(root, "pgtools", "bin", f);
+    writeFileSync(
+      w,
+      '#!/bin/sh\n# PostgreSQL client tool with the libraries beside it (scripts/package.mjs).\nhere=$(dirname "$0")\n' +
+        'LD_LIBRARY_PATH="$here/../lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" exec "$here/../' +
+        `${pgt.into}/${f}" "$@"\n`
+    );
+    chmodSync(w, 0o755);
+  }
+}
+// Refuse a package whose pg_dump cannot even start here (a missing library).
+{
+  const exe = process.platform === "win32" ? "pg_dump.exe" : "pg_dump";
+  const bin = [join(root, "pgtools", "bin", exe), join(root, "pgtools", exe)].find((p) => existsSync(p));
+  if (!bin) fail("the package has no pg_dump");
+  step(`  ${sh(bin, ["--version"])}`);
+}
 
 // ── 4. What it is, then the archive and its manifest ────────────────────────
 const builtAt = new Date().toISOString();

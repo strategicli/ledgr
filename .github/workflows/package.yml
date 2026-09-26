@@ -34,6 +34,8 @@ on:
       - "scripts/package.mjs"
       - "scripts/package-pins.json"
       - "scripts/ledgr-setup.iss"
+      - "scripts/install.sh"
+      - "scripts/package-install-test.mjs"
       - "src/app/favicon.ico"
       - "supervisor/**"
       - "next.config.ts"
@@ -88,6 +90,15 @@ jobs:
           # Add a platform: an entry here and its pins in scripts/package-pins.json.
           - platform: windows-x64
             runner: windows-latest
+          # Mac and Linux (install plan step 8). Linux builds on the oldest
+          # Ubuntu the package supports (its pg_dump needs glibc 2.34+), so
+          # nothing in it is linked against a newer system than it claims.
+          - platform: macos-arm64
+            runner: macos-latest
+          - platform: macos-x64
+            runner: macos-15-intel
+          - platform: linux-x64
+            runner: ubuntu-22.04
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -134,8 +145,45 @@ jobs:
           retention-days: 7
           compression-level: 0 # already compressed
 
-  publish:
+  # Install each fresh Mac/Linux package on a real machine the way a person
+  # would (curl-free: install.sh reads the archive with a file:// address) and
+  # check setup, start-at-sign-in, pg_dump, updates and uninstall
+  # (scripts/package-install-test.mjs). Apple silicon and Linux only: the Intel
+  # Mac package is built, not installed, here.
+  install-test:
     needs: [meta, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-latest
+          - platform: linux-x64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v5
+        with:
+          name: ledgr-package-${{ matrix.platform }}
+          path: dist
+      # A CI runner has no desktop sign-in, so no systemd user manager runs.
+      # Linger starts one (the same thing "before anyone signs in" asks for).
+      - name: A systemd user manager (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          for i in $(seq 1 30); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - run: node scripts/package-install-test.mjs --dist dist
+
+  publish:
+    needs: [meta, build, install-test]
     if: needs.meta.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -171,12 +219,25 @@ jobs:
           latest=false
           [ "$CHANNEL" = main ] && latest=true
           sum=$(cut -d' ' -f1 dist/Ledgr-Setup.exe.sha256)
-          gh release create "$tag" dist/ledgr-* dist/Ledgr-Setup.exe dist/Ledgr-Setup.exe.sha256 dist/manifest.json \
+          # The Mac/Linux installer, with this release's address and each
+          # archive's sha256 written into it (install plan step 8).
+          TAG="$tag" node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            import { renderInstallScript } from "./supervisor/release.mjs";
+            const base = "https://github.com/" + process.env.GITHUB_REPOSITORY + "/releases/download/" + process.env.TAG;
+            const manifest = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
+            writeFileSync("dist/install.sh", renderInstallScript(readFileSync("scripts/install.sh", "utf8"), { manifest, base }));
+          '
+          one="curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/install.sh | sh"
+          [ "$CHANNEL" = main ] && one="curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh"
+          gh release create "$tag" dist/ledgr-* dist/Ledgr-Setup.exe dist/Ledgr-Setup.exe.sha256 dist/install.sh dist/manifest.json \
             --target "$GITHUB_SHA" \
             --title "Ledgr package $VERSION ($CHANNEL)" \
             --notes "Ready-made Ledgr for the $CHANNEL channel, built from $GITHUB_SHA.
 
           **New on Windows:** download Ledgr-Setup.exe and double-click it. It installs for your Windows account only (no Administrator prompt) and opens Ledgr's setup page in your browser. The installer is not signed, so Windows may say \"Windows protected your PC\": choose More info, then Run anyway. Its sha256 is $sum (also in Ledgr-Setup.exe.sha256).
+
+          **New on a Mac or Linux:** open Terminal and paste this one line: \`$one\`. It installs for your account only (no password), checks the download's sha256, starts Ledgr and opens its setup page. Run the same line again to update; add \`-s -- --uninstall\` after \`sh\` to remove it (your data is kept unless you type DELETE).
 
           Installs that take packages from this channel update to it on their own or with Update now. manifest.json lists each archive's sha256; the supervisor refuses a download that does not match." \
             --latest=$latest

@@ -121,6 +121,7 @@ import {
   shouldUpdate,
   updateSourceOf,
 } from "./release.mjs";
+import { loginItemCommand, queryLoginItem, reconcileStartupRecord, registerLoginItem } from "./login-item.mjs";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
@@ -662,7 +663,9 @@ function startApp(ptr) {
   const pkgRoot = packageRootOf(ptr.dir, existsSync);
   const standalone = existsSync(join(ptr.dir, "server.js"));
   const cmd = appCommand(ptr.dir, cfg.appPort, listenHost, standalone);
-  const pgTools = pkgRoot ? join(pkgRoot, "pgtools") : null;
+  // pgtools/bin on macOS and Linux (their libraries sit in pgtools/lib beside
+  // it), pgtools itself on Windows.
+  const pgTools = pkgRoot ? ([join(pkgRoot, "pgtools", "bin"), join(pkgRoot, "pgtools")].find((d) => existsSync(d)) ?? null) : null;
   const env = {
     ...process.env,
     // The branch the app is told about is the policy's, so Build → Updates
@@ -1223,20 +1226,28 @@ function applyStartupRequest(req) {
     }
   }
 
+  // macOS and Linux (install plan step 8): a launchd user agent or a systemd
+  // user unit, per user, no password. supervisor/login-item.mjs does it, the
+  // same code `ledgr-ctl startup` runs.
   if (!isWin) {
+    const r = registerLoginItem({
+      name: TASK_NAME,
+      enabled: req.enabled,
+      scope: req.scope,
+      ...loginItemCommand({ repoDir: cfg.repoDir, here, execPath: process.execPath, exists: existsSync }),
+      configPath,
+      dataDir: cfg.dataDir,
+    });
     writeFileSync(
       startupStatePath(cfg.dataDir),
-      serializeStartupState({
-        enabled: req.enabled,
-        scope: req.scope,
-        ok: false,
-        detail:
-          "Boot registration is only automated on Windows so far. On macOS use a " +
-          "launchd plist, on Linux a systemd user unit — see supervisor/README.md.",
-      }),
+      serializeStartupState({ enabled: req.enabled, scope: r.scope, ok: r.ok, detail: r.detail ?? null, caveat: r.caveat ?? null }),
       "utf8"
     );
-    log("startup request not automated on this platform", { platform: process.platform });
+    log(r.ok ? "startup login item updated" : "startup login item FAILED", {
+      enabled: req.enabled,
+      scope: r.scope,
+      detail: r.detail ?? r.note ?? null,
+    });
     return;
   }
 
@@ -1327,7 +1338,7 @@ function applyStartupRequest(req) {
  * now the record does too, on every start, so the two cannot disagree.
  */
 function refreshStartupState() {
-  if (!isWin) return;
+  if (!isWin) return refreshLoginItemState();
   const p = startupStatePath(cfg.dataDir);
   if (!existsSync(p)) return;
   let recorded;
@@ -1349,6 +1360,27 @@ function refreshStartupState() {
   );
   log("startup record refreshed from Task Scheduler", { scope, caveat: caveat ? "interactive-only" : null });
 }
+
+/**
+ * The macOS/Linux twin: re-read what launchd or systemd holds and bring the
+ * record in step, including an entry the owner removed by hand or switched off
+ * in the Mac's Login Items. On every start and every few minutes, because
+ * those switches live outside Ledgr.
+ */
+function refreshLoginItemState() {
+  const p = startupStatePath(cfg.dataDir);
+  let recorded = null;
+  try {
+    recorded = parseStartupState(readFileSync(p, "utf8"));
+  } catch {
+    // no record yet
+  }
+  const next = reconcileStartupRecord(recorded, queryLoginItem({ name: TASK_NAME }));
+  if (!next) return;
+  writeFileSync(p, serializeStartupState(next), "utf8");
+  log("startup record refreshed from the login item", { enabled: next.enabled, scope: next.scope, ok: next.ok });
+}
+if (!isWin) setInterval(refreshLoginItemState, 5 * 60_000).unref?.();
 
 setInterval(() => {
   if (!existsSync(startupSignal)) return;

@@ -27,12 +27,16 @@ export type StartupReport = {
   state: StartupState | null;
   // A request is written but the supervisor has not acted on it yet.
   pending: boolean;
+  // Which kind of computer the supervisor runs on, so the box uses its words:
+  // a Windows task and prompt, a Mac login item, a Linux systemd unit.
+  platform: "win32" | "darwin" | "linux" | "other";
 };
 
 export const STARTUP_UNAVAILABLE: StartupReport = {
   available: false,
   state: null,
   pending: false,
+  platform: "other",
 };
 
 export async function readStartupReport(dir: string | null): Promise<StartupReport> {
@@ -65,5 +69,7 @@ export async function readStartupReport(dir: string | null): Promise<StartupRepo
   } catch {
     // absent = nothing outstanding
   }
-  return { available: true, state, pending };
+  // The app runs on the same computer as the supervisor that wrote the record.
+  const p = process.platform;
+  return { available: true, state, pending, platform: p === "win32" || p === "darwin" || p === "linux" ? p : "other" };
 }
