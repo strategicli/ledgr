@@ -28,6 +28,7 @@ import { stdin, stdout } from "node:process";
 import * as readline from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildDbUrl, normalizeConfig } from "../supervisor/lib.mjs";
+import { stopCluster } from "./lib/pg-stop.mjs";
 import {
   buildPeerConfig,
   configSummary,
@@ -478,11 +479,7 @@ async function startEmpty(cfg) {
       if (res.status !== 0) throw new Error(`${name} failed (see output above)`);
     }
   } finally {
-    try {
-      await cluster.stop();
-    } catch {
-      // best-effort
-    }
+    await stopCluster(cluster, pgDir, requireFromRepo);
   }
 }
 

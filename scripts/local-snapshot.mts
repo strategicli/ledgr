@@ -47,6 +47,7 @@ import { localFilesDir } from "@/lib/storage/local";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoDir = resolve(here, "..");
 const requireFromRepo = createRequire(join(repoDir, "package.json"));
+const { stopCluster } = await import(new URL("./lib/pg-stop.mjs", import.meta.url).href);
 const { normalizeConfig, buildDbUrl, tunedPostgresFlags } = await import(
   new URL("../supervisor/lib.mjs", import.meta.url).href
 );
@@ -230,7 +231,10 @@ async function browse(rawTime: string): Promise<void> {
     });
   } finally {
     console.log("\nStopping the throwaway cluster…");
-    await cluster.stop().catch(() => {});
+    // Clean stop, not embedded-postgres's kill: a kill can strand an io_worker
+    // holding this port, and clearStaleScratch cannot reach a worker whose
+    // postmaster is gone (no postmaster.pid). See scripts/lib/pg-stop.mjs.
+    await stopCluster(cluster, join(scratch, "pg"), requireFromRepo);
     const err = rmDirBestEffort(scratch);
     if (err) console.log(`could not delete ${scratch} (delete it by hand): ${err}`);
     if (!ok) process.exitCode = 1;
