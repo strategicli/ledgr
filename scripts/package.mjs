@@ -20,7 +20,19 @@
 // scripts/package-pins.json and refused when it does not match.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -201,9 +213,27 @@ writeFileSync(
   JSON.stringify({ schema: 1, version, commit, channel, platform: key, repo, node: pins.node.version, builtAt }, null, 2) + "\n"
 );
 
-// A package holds plain files only (see COPY_OPTS): refuse to archive a link.
-const links = readdirSync(root, { recursive: true, withFileTypes: true }).filter((d) => d.isSymbolicLink());
-if (links.length > 0) fail(`the package still holds links, e.g. ${join(links[0].parentPath, links[0].name)}`);
+// A package holds plain files only (see COPY_OPTS). cpSync's `dereference`
+// follows only the top-level source, so a link nested inside a copied folder
+// (.next/node_modules/<pkg>-<hash>) is still a link: replace each with a copy
+// of what it points at, then refuse to archive if any is left.
+const linksIn = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((d) => d.isSymbolicLink());
+for (let pass = 0, links = linksIn(root); links.length > 0 && pass < 5; pass += 1, links = linksIn(root)) {
+  for (const d of links) {
+    const link = join(d.parentPath, d.name);
+    const target = realpathSync(link);
+    // Remove the link itself, never what it points at: rmdir on a directory
+    // link drops only the link (and refuses a real, non-empty folder).
+    try {
+      unlinkSync(link);
+    } catch {
+      rmdirSync(link);
+    }
+    cpSync(target, link, COPY_OPTS);
+  }
+}
+const left = linksIn(root);
+if (left.length > 0) fail(`the package still holds links, e.g. ${join(left[0].parentPath, left[0].name)}`);
 
 const archive = join(out, archiveName(version, key));
 step(`archiving ${archive}…`);
