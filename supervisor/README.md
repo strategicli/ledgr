@@ -54,9 +54,17 @@ happened — including a failure, with the exact command to run in an
 Administrator prompt instead. A silent failure here is the expensive kind: you
 would believe your hub survives a reboot when it does not.
 
-**macOS and Linux are still by hand.** The wizard prints the launchd plist and
-the systemd user unit to create; `npm run local:startup` says so rather than
-pretending. Automating those is queued.
+**macOS and Linux (install plan step 8).** The same verbs and the same box
+write and enable a **launchd user agent** (`~/Library/LaunchAgents/org.ledgr.supervisor.plist`,
+or `org.ledgr.app.plist` for a copy put on by install.sh) or a **systemd user
+unit** (`~/.config/systemd/user/ledgr-supervisor.service`, or `ledgr-app.service`),
+per user and with no password (`login-item.mjs`, shared by `ledgr-ctl` and the
+service). Both run `ledgr-ctl boot` at sign-in. `--always` is Linux only: it
+also runs `loginctl enable-linger` so the unit starts before anyone signs in; a
+Mac would need a root LaunchDaemon, so it registers at sign-in and says so. The
+service re-reads what launchd or systemd holds on every start and every 5
+minutes, so an entry removed by hand, or Ledgr switched off in the Mac's Login
+Items, shows as off in the app. Details: `runbook.md` §1u.
 
 ### The tray icon (Windows)
 
@@ -476,7 +484,7 @@ update prunes). Its first start serves the package it came from, with no
 download. Boot and restart then start the supervisor inside whichever build is
 serving, so a package update delivers supervisor fixes after the ordinary
 "restart needed". Snapshots find the package's `pg_dump` through
-`LEDGR_PG_BIN`. How packages are built, published and rolled back:
+`LEDGR_PG_BIN` (`pgtools/bin` on a Mac or Linux, `pgtools` on Windows). How packages are built, published and rolled back:
 `runbook.md` §1s.
 
 ## Set up a new machine without git: `Ledgr-Setup.exe` (install plan step 7)
@@ -491,6 +499,14 @@ the ordinary `ledgr-ctl` verbs, including the new `open` (start if needed, then
 open the browser). A git install on the same machine is detected and left
 alone. Everything else, upgrade and uninstall included: `runbook.md` §1t. The
 path below stays for builders.
+
+**On a Mac or Linux** (install plan step 8), the same thing is one line in a
+terminal: `curl -fsSL https://github.com/strategicli/ledgr/releases/latest/download/install.sh | sh`.
+`scripts/install.sh` (filled with the release's checksums when it is published)
+downloads and checks the package, then calls the same `installer.mjs` verbs,
+plus `launchers` (app bundles in `~/Applications/Ledgr`, or a desktop entry) and
+`uninstall`. Program and data: `~/Library/Application Support/Ledgr/{app,data}`
+or `~/.local/share/ledgr/{app,data}`. `runbook.md` §1u.
 
 ## Set up a new machine: download `install.cmd` (LH4)
 
@@ -631,14 +647,17 @@ the firewall prompt for the app port (step 5).
 
 ## Register at boot (macOS / Linux)
 
-The wizard prints these rather than executing them (Windows is the only
-platform where it offers to run the registration itself):
+`npm run local:startup -- --logon` writes and enables it (install plan step 8;
+before that these were printed for hand-installation):
 
-- **macOS (launchd):** `~/Library/LaunchAgents/org.ledgr.supervisor.plist`
-  with `RunAtLoad` true and `ProgramArguments` =
-  `[node, <repo>/supervisor/ledgr-supervisor.mjs, <repo>/supervisor/config.json]`,
-  then `launchctl load` it.
-- **Linux (systemd user unit):**
-  `~/.config/systemd/user/ledgr-supervisor.service` with
-  `ExecStart=node <repo>/supervisor/ledgr-supervisor.mjs <repo>/supervisor/config.json`
-  and `Restart=always`, then `systemctl --user enable --now ledgr-supervisor`.
+- **macOS (launchd):** `~/Library/LaunchAgents/org.ledgr.supervisor.plist`,
+  `RunAtLoad`, running `node <repo>/supervisor/ledgr-ctl.mjs boot --config=<config>`,
+  loaded at once with `launchctl bootstrap gui/<uid>`. A plist you made by hand
+  under that label is replaced, not joined by a second one.
+- **Linux (systemd user unit):** `~/.config/systemd/user/ledgr-supervisor.service`,
+  a `oneshot` unit running the same `ledgr-ctl boot` (and `ledgr-ctl stop` when it
+  stops), enabled into `default.target.wants`. `--always` adds linger.
+
+`--disable` removes it. The unit runs `boot`, not the supervisor, for the same
+reasons the Windows task does: the supervisor gets its log files, and a stale
+lock is cleared on the way up.

@@ -226,7 +226,7 @@ async function ticketOk(token: unknown): Promise<boolean> {
 }
 
 const TICKET_EXPIRED =
-  "This reset link has expired or was already used. Right-click the Ledgr tray icon and choose Reset sign-in password again.";
+  "This reset link has expired or was already used. On this computer, choose Reset Ledgr sign-in password again (the Start menu or tray icon on Windows, Applications › Ledgr on a Mac, Ledgr's right-click menu on Linux).";
 
 /** Step 1: a new password and a fresh recovery kit. */
 export async function resetAtMachine(token: string, password: string, confirm: string): Promise<SettingsResult> {
@@ -264,7 +264,7 @@ export async function createOwnerAtMachine(
     return {
       ok: false,
       error:
-        "This setup link has expired or was already used. On this computer, choose Reset Ledgr sign-in password from the Start menu or the tray icon again (or run npm run local:setup-owner in a copy built from source).",
+        "This setup link has expired or was already used. On this computer, choose Reset Ledgr sign-in password again: the Start menu or tray icon on Windows, Applications › Ledgr on a Mac, Ledgr's right-click menu on Linux (or run npm run local:setup-owner in a copy built from source).",
     };
   }
   const address = typeof email === "string" ? email.trim() : "";

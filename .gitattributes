@@ -2,3 +2,6 @@
 # the source bytes, so a CRLF checkout would build files whose checksums differ
 # from the ones pinned in tailnet/release.json. (build.sh also runs under sh.)
 tailnet/** text eol=lf
+
+# The Mac/Linux installer runs under sh, which reads a CR as part of each command.
+scripts/install.sh text eol=lf

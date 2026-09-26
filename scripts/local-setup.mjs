@@ -594,19 +594,13 @@ if (process.platform === "win32") {
     }
   }
   console.log("Check it any time with: npm run local:status");
-} else if (process.platform === "darwin") {
-  console.log(
-    "\nTo run at boot on macOS (launchd), create\n" +
-      "~/Library/LaunchAgents/org.ledgr.supervisor.plist with RunAtLoad=true and\n" +
-      `ProgramArguments = [${process.execPath}, ${supervisorScript}, ${configPath}],\n` +
-      "then: launchctl load ~/Library/LaunchAgents/org.ledgr.supervisor.plist"
-  );
 } else {
+  // macOS / Linux: a launchd user agent or systemd user unit, written and
+  // enabled by the same command the app's "Start with the computer" box uses.
   console.log(
-    "\nTo run at boot on Linux (systemd user unit), create\n" +
-      "~/.config/systemd/user/ledgr-supervisor.service with\n" +
-      `ExecStart=${process.execPath} ${supervisorScript} ${configPath} and Restart=always,\n` +
-      "then: systemctl --user enable --now ledgr-supervisor"
+    `\nTo start it when you sign in (${process.platform === "darwin" ? "a launchd user agent" : "a systemd user unit"}, no password):\n` +
+      "  npm run local:startup -- --logon\n" +
+      "or tick Build → Updates → Start with the computer once it is running."
   );
 }
 

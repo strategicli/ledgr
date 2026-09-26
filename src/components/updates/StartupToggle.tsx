@@ -1,6 +1,7 @@
 "use client";
 
-// "Start Ledgr when Windows starts" (ADR-211) — the ordinary checkbox any
+// "Start Ledgr with the computer" (ADR-211; Mac and Linux since install plan
+// step 8, supervisor/login-item.mjs) — the ordinary checkbox any
 // desktop app offers, for a local peer that until now only came back after a
 // reboot if somebody had run a terminal command at install time.
 //
@@ -66,6 +67,20 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
   }
 
   const on = report.state?.enabled === true && report.state.ok;
+  // A Mac can start an app before anyone signs in only with an administrator's
+  // help (a system-wide LaunchDaemon), which Ledgr does not do for you.
+  const mac = report.platform === "darwin";
+  const linux = report.platform === "linux";
+  const help =
+    scope === "always"
+      ? linux
+        ? "What a hub needs: your phone and Claude can reach it whether or not anyone is signed in. Ledgr asks Linux to start your own services when the computer starts (systemd \"linger\"). Most systems allow that without a password; if yours does not, this says so and shows the one command to run."
+        : "What a hub needs: your phone and Claude can reach it whether or not anyone is signed in. Windows asks for an administrator prompt once. No password is stored: the task is registered the passwordless way and runs with nobody signed in."
+      : mac
+        ? "No password needed. Ledgr is added to your Login Items, so it comes up after you log in. For a Mac that must come back by itself after a power cut, also turn on automatic login in System Settings → Users & Groups."
+        : linux
+          ? "No password needed. A systemd user service starts Ledgr after you log in, which is right for a laptop or desktop you use."
+          : "No administrator prompt. The device comes up after you log in, which is right for a laptop or desktop you use.";
   // A registered task Windows will only run while signed in must not read as
   // "before anyone signs in" one line above the box that says otherwise.
   const caveat = on && !!report.state?.caveat;
@@ -93,14 +108,10 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
           onChange={(e) => setScope(e.target.value as Scope)}
         >
           <option value="logon">When I sign in</option>
-          <option value="always">At boot, always on</option>
+          {!mac && <option value="always">At boot, always on</option>}
         </select>
       </label>
-      <p className="ui-meta mt-1 text-ink-subtle">
-        {scope === "always"
-          ? "What a hub needs: your phone and Claude can reach it whether or not anyone is signed in. Windows asks for an administrator prompt once. No password is stored: the task is registered the passwordless way and runs with nobody signed in."
-          : "No administrator prompt. The device comes up after you log in, which is right for a laptop or desktop you use."}
-      </p>
+      <p className="ui-meta mt-1 text-ink-subtle">{help}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
@@ -138,7 +149,9 @@ export default function StartupToggle({ initial }: { initial: StartupReport }) {
           {report.state.command && (
             <>
               <p className="ui-meta mt-2 text-ink-subtle">
-                Run this in an Administrator PowerShell instead:
+                {report.platform === "win32"
+                  ? "Run this in an Administrator PowerShell instead:"
+                  : "Run this in a terminal instead:"}
               </p>
               <code className="ui-meta mt-1 block overflow-x-auto rounded bg-surface-2 px-2 py-1 font-mono text-ink">
                 {report.state.command}

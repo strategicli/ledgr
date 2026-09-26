@@ -28,6 +28,113 @@
           "libwinpthread-1.dll"
         ]
       }
+    },
+    "macos-arm64": {
+      "node": {
+        "version": "24.21.0",
+        "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz",
+        "sha256": "bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057",
+        "from": "node-v24.21.0-darwin-arm64/",
+        "files": [
+          "bin/node",
+          "LICENSE"
+        ]
+      },
+      "pgTools": {
+        "_source": "EDB's PostgreSQL binaries zip for macOS, the build the PostgreSQL download page links (universal: Apple silicon and Intel in one file); the same 18.x as the embedded server and the Windows tools. Only the two client tools and the libraries they load (read from their Mach-O load commands) are taken, keeping EDB's bin/ + lib/ layout because the tools find their libraries at @loader_path/../lib.",
+        "url": "https://get.enterprisedb.com/postgresql/postgresql-18.4-1-osx-binaries.zip",
+        "sha256": "e3af8c3b4a98a790dba60f2733673b35712a81a201b1f9af6e8ebed5d3b64d0c",
+        "from": "pgsql/",
+        "files": [
+          "bin/pg_dump",
+          "bin/pg_restore",
+          "lib/libpq.5.dylib",
+          "lib/libssl.3.dylib",
+          "lib/libcrypto.3.dylib",
+          "lib/libgssapi_krb5.2.2.dylib",
+          "lib/libkrb5.3.3.dylib",
+          "lib/libk5crypto.3.1.dylib",
+          "lib/libcom_err.3.0.dylib",
+          "lib/libkrb5support.1.1.dylib",
+          "lib/libzstd.1.dylib",
+          "lib/liblz4.1.dylib",
+          "lib/libz.1.dylib"
+        ],
+        "alsoExtract": [
+          "lib/libzstd.1.5.7.dylib",
+          "lib/liblz4.1.10.0.dylib",
+          "lib/libz.1.3.2.dylib"
+        ]
+      }
+    },
+    "macos-x64": {
+      "node": {
+        "version": "24.21.0",
+        "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz",
+        "sha256": "1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097",
+        "from": "node-v24.21.0-darwin-x64/",
+        "files": [
+          "bin/node",
+          "LICENSE"
+        ]
+      },
+      "pgTools": {
+        "_source": "EDB's PostgreSQL binaries zip for macOS, the build the PostgreSQL download page links (universal: Apple silicon and Intel in one file); the same 18.x as the embedded server and the Windows tools. Only the two client tools and the libraries they load (read from their Mach-O load commands) are taken, keeping EDB's bin/ + lib/ layout because the tools find their libraries at @loader_path/../lib.",
+        "url": "https://get.enterprisedb.com/postgresql/postgresql-18.4-1-osx-binaries.zip",
+        "sha256": "e3af8c3b4a98a790dba60f2733673b35712a81a201b1f9af6e8ebed5d3b64d0c",
+        "from": "pgsql/",
+        "files": [
+          "bin/pg_dump",
+          "bin/pg_restore",
+          "lib/libpq.5.dylib",
+          "lib/libssl.3.dylib",
+          "lib/libcrypto.3.dylib",
+          "lib/libgssapi_krb5.2.2.dylib",
+          "lib/libkrb5.3.3.dylib",
+          "lib/libk5crypto.3.1.dylib",
+          "lib/libcom_err.3.0.dylib",
+          "lib/libkrb5support.1.1.dylib",
+          "lib/libzstd.1.dylib",
+          "lib/liblz4.1.dylib",
+          "lib/libz.1.dylib"
+        ],
+        "alsoExtract": [
+          "lib/libzstd.1.5.7.dylib",
+          "lib/liblz4.1.10.0.dylib",
+          "lib/libz.1.3.2.dylib"
+        ]
+      }
+    },
+    "linux-x64": {
+      "node": {
+        "version": "24.21.0",
+        "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz",
+        "sha256": "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff",
+        "from": "node-v24.21.0-linux-x64/",
+        "files": [
+          "bin/node",
+          "LICENSE"
+        ]
+      },
+      "pgTools": {
+        "_source": "PostgreSQL's own apt repository (apt.postgresql.org; apt-archive keeps every version, so the pin never moves under us), the Ubuntu 22.04 build of postgresql-client-18 at the embedded server's version. It needs glibc 2.34+ and the system's libcrypto.so.3, liblz4 and libzstd (Ubuntu 22.04+, Debian 12+, Fedora 36+). Its libpq comes from the embedded server's own portable build instead of apt's (which links a different LDAP library on each Ubuntu release); package.mjs writes a wrapper in pgtools/bin that points the loader at pgtools/lib.",
+        "url": "https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/postgresql-18/postgresql-client-18_18.4-1.pgdg22.04%2B1_amd64.deb",
+        "sha256": "ab06b1466c4cfbdf42732a15bb574907a58070544ccd8f99f68c1f944698328a",
+        "from": "usr/lib/postgresql/18/bin/",
+        "files": [
+          "pg_dump",
+          "pg_restore"
+        ],
+        "into": "libexec",
+        "bundledLibs": {
+          "from": "node_modules/@embedded-postgres/linux-x64/native/lib/",
+          "files": [
+            "libpq.so.5",
+            "libssl.so.1.1",
+            "libcrypto.so.1.1"
+          ]
+        }
+      }
     }
   }
 }
