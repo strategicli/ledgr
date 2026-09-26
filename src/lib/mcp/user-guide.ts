@@ -1785,6 +1785,23 @@ remove it in the Tailscale admin console (Machines); remove it before
 connecting again if you want the same name back. The switch is per computer: each computer running Ledgr connects on
 its own.
 
+**Public access (Tailscale Funnel).** Once connected, the same panel can make
+that address work from the public internet too: **Make this reachable from the
+internet**. It is for callers that cannot join your Tailscale network, like
+share links opened by other people and the Claude connector; your own phone
+does not need it. It is offered only when this copy makes everyone sign in (a
+password in User Settings → Sign-in, or Clerk), so a stranger who finds the
+address meets a sign-in page, and Ledgr refuses it otherwise. If you later turn
+sign-in off, public access turns itself off within seconds and stays off until
+you ask again. If your Tailscale network does not allow it yet (HTTPS
+certificates off, or Funnel not permitted for this device), the panel says so
+in words and links the one Tailscale page that fixes it, then **Try again**.
+**Turn off public access** goes back to private only. Neither needs a new
+Tailscale sign-in. While it is on, the panel offers **Use this address for
+share links**, which sets the public address share links are made with (the
+same setting as on Network); turning public access off clears it again, but
+only if it still holds this address.
+
 - **How long a device's history is kept.** For another device to reconnect and
   simply carry on, this instance has to keep the changes it missed. That costs
   storage that cannot be cleaned up while it waits, so each device has a

@@ -34,10 +34,8 @@ Left over from step 1:
   Neon database.
 
 Step 2 (files on local disk) landed. Step 3 (private access through the bundled
-Tailscale helper, ADR-276, runbook §1q) landed. Next: **step 5, Funnel** ("Make this
-reachable from the internet" on the Tailscale module's options): one more listener in
-`tailnet/main.go` (`ListenFunnel`) behind a flag the supervisor passes, refused unless
-sign-in is required; bump `tailnet/release.json` and tag a new `tailnet-v` release.
+Tailscale helper, ADR-276, runbook §1q) landed. Step 5 (public access through Tailscale
+Funnel, only behind sign-in, ADR-279) landed.
 
 Step 6 (ready-made packages, ADR-278, runbook §1s) landed: every push to `main` or
 `prod-brandon` publishes a Windows x64 package as a GitHub Release (`pkg-<channel>-<version>`),

@@ -1858,15 +1858,19 @@ tailnet = createTailnet({
   appPort: cfg.appPort,
   log,
   nextBackoffMs,
+  // Public access (Funnel) needs sign-in, and this is the supervisor's own
+  // answer to "does it?": the same reading that lets the app listen beyond
+  // this machine. The app is asked too; both must agree (ADR-279).
+  signinRequired: () => listenHost !== LOOPBACK_HOST,
   askApp: async () => {
     try {
       const res = await fetch(`http://127.0.0.1:${cfg.appPort}/api/machine/tailscale`, {
         headers: { Authorization: `Bearer ${CRON_TOKEN}` },
         signal: AbortSignal.timeout(10_000),
       });
-      if (res.status === 404) return false; // a build without the module
+      if (res.status === 404) return { run: false }; // a build without the module
       if (!res.ok) return null;
-      return (await res.json())?.run === true;
+      return await res.json();
     } catch {
       return null; // the app is not answering (starting, updating): change nothing
     }

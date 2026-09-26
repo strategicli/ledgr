@@ -11,9 +11,108 @@
 import { renderSVG } from "uqr";
 import CopyAddress from "@/components/network/CopyAddress";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
-import { readTailnetStatus } from "@/modules/tailscale/lib/status";
-import { readTailscaleEnabled } from "@/modules/tailscale/lib/switch";
-import { AutoRefresh, ConnectButton, DisconnectButton } from "./TailscaleActions";
+import { readTailnetStatus, type TailnetStatus } from "@/modules/tailscale/lib/status";
+import { readFunnelWanted, readTailscaleEnabled, signinRequired } from "@/modules/tailscale/lib/switch";
+import { getSettings } from "@/lib/settings";
+import { ActionButton, AutoRefresh, ConnectButton, DisconnectButton, UseForShareLinks } from "./TailscaleActions";
+
+const LINK = "underline underline-offset-2 hover:text-ink";
+
+/**
+ * Public access (Funnel, ADR-279): the same address, also open to the internet.
+ * Offered only once this copy makes everyone sign in; the API and the
+ * supervisor each refuse it otherwise, so this is the explanation, not the lock.
+ */
+async function PublicAccess({ status, ownerId }: { status: TailnetStatus; ownerId: string }) {
+  const [wanted, required] = await Promise.all([readFunnelWanted(), signinRequired()]);
+  const title = <p className="ui-section-label text-ink-subtle">Public access</p>;
+
+  if (!required) {
+    return (
+      <div className="space-y-1 border-t border-line pt-3">
+        {title}
+        <p>
+          You can also make this address work from the public internet, for share links and the Claude connector.
+          That needs sign-in first, so a stranger who finds the address meets a password box.{" "}
+          <a href="/settings#sign-in" className={LINK}>
+            Set a password in User Settings → Sign-in
+          </a>
+          , then come back here.
+        </p>
+      </div>
+    );
+  }
+  if (!wanted) {
+    return (
+      <div className="space-y-2 border-t border-line pt-3">
+        {title}
+        <p>
+          Anyone on the internet could reach this address, and they would still have to sign in. Useful for share
+          links and the Claude connector, which cannot join your Tailscale network. Your phone does not need it.
+        </p>
+        <ActionButton action="funnel-on" label="Make this reachable from the internet" busyLabel="Turning on…" />
+      </div>
+    );
+  }
+  if (status.funnel === "on") {
+    return (
+      <div className="space-y-2 border-t border-line pt-3">
+        {title}
+        <p className="text-ink">
+          On. {status.url} also works from the public internet, and everyone who opens it has to sign in.
+        </p>
+        <ShareLinkAddress url={status.url} ownerId={ownerId} />
+        <ActionButton action="funnel-off" label="Turn off public access" busyLabel="Turning off…" />
+      </div>
+    );
+  }
+  if (status.funnel === "unavailable") {
+    return (
+      <div className="space-y-2 border-t border-line pt-3">
+        {title}
+        <p className="text-ink">Tailscale is not allowing public access yet.</p>
+        <p>
+          {status.funnelMessage}{" "}
+          {status.funnelFixUrl && (
+            <a href={status.funnelFixUrl} target="_blank" rel="noopener noreferrer" className={LINK}>
+              Open the Tailscale page that fixes this
+            </a>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <ActionButton action="funnel-recheck" label="Try again" busyLabel="Trying…" />
+          <ActionButton action="funnel-off" label="Cancel" busyLabel="Turning off…" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 border-t border-line pt-3">
+      {title}
+      <p>Opening this address to the internet… this takes a few seconds.</p>
+      <AutoRefresh />
+    </div>
+  );
+}
+
+/** Whether share links use this address (the one synced public address, ADR-277). */
+async function ShareLinkAddress({ url, ownerId }: { url: string | null; ownerId: string }) {
+  if (!url) return null;
+  const current = (await getSettings(ownerId)).publicUrl;
+  if (current === new URL(url).origin) {
+    return <p>Share links and the Claude connector&apos;s share tool use this address.</p>;
+  }
+  return (
+    <div className="space-y-1">
+      <p>
+        {current
+          ? `Share links use ${current} right now. Switch them to this address?`
+          : "Share links use whichever address you happen to be on. Point them at this one so they open for anyone?"}
+      </p>
+      <UseForShareLinks url={url} />
+    </div>
+  );
+}
 
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -29,7 +128,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export default async function TailscaleSettingsPanel() {
+export default async function TailscaleSettingsPanel({ ownerId }: { ownerId: string }) {
   const dir = process.env.LEDGR_SUPERVISOR_DIR ?? null;
   if (!tailscaleAvailable() || !dir) {
     return <p className="ui-meta text-ink-subtle">Private access runs only on a Ledgr installed on your own computer.</p>;
@@ -76,10 +175,16 @@ export default async function TailscaleSettingsPanel() {
       <div className="space-y-3 text-sm text-ink-muted">
         <p className="text-ink">
           Connected.{" "}
-          <Tip label="Your private address">
-            Works on any device signed in to the same Tailscale account, from anywhere. It is not on the public
-            internet, and it keeps working if this computer&apos;s network address changes.
-          </Tip>
+          {status.funnel === "on" ? (
+            <Tip label="Your address">
+              Works from any device, anywhere, because public access is on. Everyone who opens it has to sign in.
+            </Tip>
+          ) : (
+            <Tip label="Your private address">
+              Works on any device signed in to the same Tailscale account, from anywhere. It is not on the public
+              internet, and it keeps working if this computer&apos;s network address changes.
+            </Tip>
+          )}
           :
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -98,6 +203,7 @@ export default async function TailscaleSettingsPanel() {
             Install the Tailscale app on your phone, sign in with the same account, then scan this.
           </p>
         </div>
+        <PublicAccess status={status} ownerId={ownerId} />
         <DisconnectButton />
       </div>
     );
