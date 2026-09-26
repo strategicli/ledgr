@@ -65,7 +65,8 @@ const CORNER_LABELS: Record<(typeof CORNERS)[number], string> = {
 const EFFECT_LABELS: Record<Effect, string> = {
   none: "None",
   fade: "Fade",
-  "fade-black": "Fade through black",
+  // Key kept for saved designs; it now dips the content only, never the background.
+  "fade-black": "Fade out, then in",
   "fade-up": "Fade up",
   "fade-down": "Fade down",
   "wipe-up": "Wipe up",
@@ -109,6 +110,11 @@ html[data-role="audience"] #presenter{display:none}
 .stage.layout-text h1,.stage.layout-text h2,.stage.layout-text h3{font-weight:700;margin:0 0 .3em}
 .stage-inner ul,.stage-inner ol{padding-left:1.1em;margin:0}
 .stage-inner li{margin:.15em 0}
+.stage-inner li.build-hidden{visibility:hidden}
+.stage-inner table{border-collapse:collapse;font-size:.8em;margin:.2em 0}
+.stage-inner th,.stage-inner td{text-align:left;vertical-align:top;padding:.3em 1.2em .3em 0;border-bottom:2px solid rgba(128,128,128,.35)}
+.stage-inner th{border-bottom:4px solid rgba(128,128,128,.75)}
+.stage-inner tr:last-child td{border-bottom:none}
 .stage-inner h1,.stage-inner h2,.stage-inner h3,.stage-inner h4{color:var(--heading-color,inherit)}
 .stage-bg{position:absolute;inset:0;background-size:cover;background-position:center;background-repeat:no-repeat;display:none}
 .stage-overlay{position:absolute;inset:0;background:#000;display:none}
@@ -117,7 +123,6 @@ html[data-role="audience"] #presenter{display:none}
 .stage-titlebar{position:absolute;display:none;align-items:center;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 #audience{position:fixed;inset:0}
-.xfade-black{position:absolute;inset:0;background:#000;pointer-events:none}
 .blank-overlay{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center;
   color:#f2f2f2;font-size:5vw;font-weight:700;text-align:center}
 .countdown-overlay{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center}
@@ -134,15 +139,22 @@ html[data-role="audience"] #presenter{display:none}
 .notes{height:22%;min-height:120px;overflow-y:auto;background:#0d0d0d;border-top:1px solid #262626;
   padding:1rem 1.25rem;font-size:20px;line-height:1.5;color:#e5e5e5}
 .right{display:flex;flex-direction:column;border-left:1px solid #262626;background:#0a0a0a;overflow-y:auto}
+.right button{background:#262626;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;padding:.35rem .6rem;
+  font-size:13px;cursor:pointer}
+.right button:hover,.controls a:hover,.exp-link:hover{background:#303030}
 .next-label{padding:.5rem 1rem 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#888}
 .right .stage-wrap{height:150px;flex:none;margin:.4rem 1rem}
+.right .stage-wrap.ended .stage{visibility:hidden}
+.next-end{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  border:1px dashed #333;color:#777;font-size:14px}
+.stage-wrap.ended .next-end{display:flex}
 .right .stage{border:1px solid #262626}
 .controls{padding:.75rem 1rem;display:flex;flex-direction:column;gap:.5rem;border-top:1px solid #262626;border-bottom:1px solid #262626}
 .controls button,.controls a{background:#262626;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;
   padding:.45rem .7rem;cursor:pointer;text-align:center;text-decoration:none;display:block}
 .controls label{display:flex;align-items:center;gap:.4rem;font-size:14px}
 .countdown-row{display:flex;gap:.4rem}
-.countdown-row input{width:70px;background:#1a1a1a;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;padding:.4rem}
+.countdown-row input{width:6.5em;background:#1a1a1a;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;padding:.4rem}
 .live-link-row{display:flex;gap:.4rem}
 .live-link-row input{flex:1;min-width:0;background:#1a1a1a;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;padding:.4rem}
 .live-note{font-size:12px;color:#999}
@@ -152,7 +164,7 @@ html[data-role="audience"] #presenter{display:none}
 .slide-list-item.active{background:#26365e;color:#fff}
 
 .design-wrap{border-top:1px solid #262626;padding:.5rem 1rem}
-.design-toggle-row button{width:100%;text-align:left;background:#1a1a1a}
+.design-toggle-row button{width:100%;text-align:left;padding:.45rem .7rem;font-size:14px}
 .design-panel{padding:.5rem 0 0;display:flex;flex-direction:column;gap:.4rem}
 .d-row{display:flex;align-items:center;gap:.5rem;font-size:13px}
 .d-row label{flex:0 0 auto;min-width:96px;color:#ccc}
@@ -218,7 +230,6 @@ export function renderPlayer(opts: PlayerOptions): string {
   <div class="stage-wrap" id="a-wrap">
     <div class="stage" id="a-stage-0">${STAGE_INNER}</div>
     <div class="stage" id="a-stage-1">${STAGE_INNER}</div>
-    <div class="xfade-black" id="a-xfade" style="display:none"></div>
   </div>
   <div class="blank-overlay" id="a-blank"></div>
   <div class="countdown-overlay" id="a-countdown"><div class="countdown-num"></div></div>
@@ -230,6 +241,7 @@ export function renderPlayer(opts: PlayerOptions): string {
       <button id="p-timer-toggle">Pause</button>
       <span id="p-elapsed">0:00</span>
       <button id="p-timer-reset">Reset</button>
+      <span id="p-countdown" style="display:none"></span>
     </div>
     <span id="p-clock"></span>
   </div>
@@ -239,8 +251,8 @@ export function renderPlayer(opts: PlayerOptions): string {
       <div class="notes" id="p-notes"></div>
     </div>
     <div class="right">
-      <div class="next-label">Next</div>
-      <div class="stage-wrap" id="n-wrap"><div class="stage" id="n-stage">${STAGE_INNER}</div></div>
+      <div class="next-label" id="n-label">Next</div>
+      <div class="stage-wrap" id="n-wrap"><div class="stage" id="n-stage">${STAGE_INNER}</div><div class="next-end">End of presentation</div></div>
       <div class="controls">
         <button id="open-audience">Open audience window</button>
         <button id="present-here">Present here</button>
@@ -258,7 +270,7 @@ export function renderPlayer(opts: PlayerOptions): string {
         <a id="save-offline" style="display:none">Save offline</a>
       </div>
       <div class="design-wrap" id="design-wrap" style="display:none">
-        <div class="design-toggle-row"><button id="design-toggle" type="button">Design</button></div>
+        <div class="design-toggle-row"><button id="design-toggle" type="button" aria-expanded="false">&#9656; Design</button></div>
         <div class="design-panel" id="design-panel" style="display:none">
           <div class="d-row"><label>Theme</label><select id="d-theme">${THEME_OPTS}</select></div>
           <div class="d-row"><label>Text color</label><input type="color" id="d-textcolor"><button id="d-textcolor-reset" type="button">Theme</button></div>
@@ -285,7 +297,8 @@ export function renderPlayer(opts: PlayerOptions): string {
           <div class="d-group-label">Transition</div>
           <div class="d-row"><label>Effect</label><select id="d-tr-effect">${EFFECT_OPTS}</select></div>
           <div class="d-row"><label>Speed</label><select id="d-tr-speed">${SPEED_OPTS}</select></div>
-          <div class="d-row"><button id="d-save" type="button">Save</button><button id="d-save-default" type="button">Save as my default</button></div>
+          <div class="d-hint">Changes save automatically.</div>
+          <div class="d-row"><button id="d-save-default" type="button">Save as my default</button></div>
           <div class="d-save-msg" id="d-save-msg"></div>
         </div>
       </div>
@@ -321,6 +334,9 @@ var liveEnded = false; // follow mode only: stops polling once the link 404s
 var audienceActive = 0; // which of the two audience stage layers is on top
 var audienceSlideKey = null; // last slide index rendered to the audience, or null before first paint
 var presenterKey = null; // last slide index rendered to the presenter's current stage
+// Last build step painted on each side: a re-render of the same step (a poll, a
+// resize, a design tweak) must not replay the newest item's fade-in.
+var audienceStepKey = null, presenterStepKey = null;
 var runningAnims = [];
 
 // Build lists rides the synced state so the audience window reveals the same steps.
@@ -455,8 +471,10 @@ function mountStage(stageEl, html, step) {
   var layout = detectLayout(inner);
   stageEl.classList.add("layout-" + layout);
   var lis = listItems(inner);
+  // Unrevealed items keep their space (visibility, not display), so the heading
+  // and earlier items never move and fitText sizes the finished slide once.
   if (lis.length && typeof step === "number") {
-    lis.forEach(function (li, idx) { li.style.display = idx <= step ? "" : "none"; });
+    lis.forEach(function (li, idx) { li.classList.toggle("build-hidden", idx > step); });
   }
   if (layout !== "image") {
     var startSize = layout === "big" ? 120 : layout === "quote" ? 72 : 56;
@@ -492,50 +510,72 @@ function mountDesignedStage(stageEl, slide, slideNumber, step) {
 
 // ---- transitions: two stacked layers + the Web Animations API, so this also
 // works from a file:// download (View Transitions do not) --------------------
+var pendingSwap = null; // "fade out, then in" mid-dip: completes it before a new transition
 function stopRunning() {
+  if (pendingSwap) pendingSwap();
   runningAnims.forEach(function (a) { try { a.finish(); } catch (e) {} });
   runningAnims = [];
 }
 function runAnim(el, keyframes, dur, easing) {
-  var a = el.animate(keyframes, { duration: dur, easing: easing, fill: "forwards" });
+  // No fill: the inline styles playTransition sets already equal each end frame,
+  // and a held fill would pin the old scale (transform) past a later resize.
+  var a = el.animate(keyframes, { duration: dur, easing: easing });
   runningAnims.push(a);
   return a.finished["catch"](function () {});
 }
-function playTransition(oldEl, newEl, effect, dur, wrap) {
+function playTransition(oldEl, newEl, effect, dur) {
   stopRunning();
   var easing = "cubic-bezier(0.2, 0, 0, 1)";
   newEl.style.zIndex = "2"; oldEl.style.zIndex = "1";
   newEl.style.opacity = "1"; newEl.style.clipPath = ""; newEl.style.transform = baseTransform(newEl);
   if (effect === "none") { oldEl.style.opacity = "0"; return; }
+  // Fades lay the new slide over an old one that stays fully opaque, then drop
+  // the old one. Fading both at once let the black page show through mid-way,
+  // so an unchanged background visibly dimmed on every slide change.
+  function dropOld(a) { a.then(function () { if (newEl.style.zIndex === "2") oldEl.style.opacity = "0"; }); }
   if (effect === "fade") {
-    oldEl.style.opacity = "1"; newEl.style.opacity = "0";
-    runAnim(oldEl, [{ opacity: 1 }, { opacity: 0 }], dur, easing);
-    runAnim(newEl, [{ opacity: 0 }, { opacity: 1 }], dur, easing);
+    oldEl.style.opacity = "1";
+    dropOld(runAnim(newEl, [{ opacity: 0 }, { opacity: 1 }], dur, easing));
     return;
   }
   if (effect === "fade-black") {
-    var ov = wrap.querySelector(".xfade-black");
-    ov.style.display = "block"; ov.style.opacity = "0"; ov.style.zIndex = "5";
-    oldEl.style.opacity = "1"; newEl.style.opacity = "0";
+    // "Fade out, then in": only the content dips; background, darken overlay,
+    // logo and title bar hold steady. The fade-out holds with fill:"forwards"
+    // until the layers swap (no flash of old text), then is cancelled.
     var half = dur / 2;
-    var a1 = ov.animate([{ opacity: 0 }, { opacity: 1 }], { duration: half, easing: easing, fill: "forwards" });
-    runningAnims.push(a1);
-    a1.finished.then(function () {
-      oldEl.style.opacity = "0"; newEl.style.opacity = "1";
-      var a2 = ov.animate([{ opacity: 1 }, { opacity: 0 }], { duration: half, easing: easing, fill: "forwards" });
-      runningAnims.push(a2);
-      return a2.finished;
-    }).then(function () { ov.style.display = "none"; })["catch"](function () {});
+    var parts = function (el) { return Array.prototype.slice.call(el.querySelectorAll(".stage-inner")); };
+    oldEl.style.opacity = "1"; newEl.style.opacity = "0";
+    // Kept out of runningAnims: finish()ing a cancelled fill-forwards fade
+    // re-applies it, stranding this layer's content at 0 when it's reused.
+    var outs = parts(oldEl).map(function (p) {
+      return p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: half, easing: easing, fill: "forwards" });
+    });
+    // The swap runs on a timer, not the animations' finished promises: a hidden
+    // tab (a locked phone) freezes animations, and a stalled promise would leave
+    // the old slide up. A newer transition runs a pending swap first (stopRunning).
+    var swapped = false;
+    var swap = function () {
+      if (swapped) return;
+      swapped = true;
+      pendingSwap = null;
+      clearTimeout(swapTimer);
+      outs.forEach(function (a) { a.cancel(); });
+      newEl.style.opacity = "1"; oldEl.style.opacity = "0";
+      parts(newEl).forEach(function (p) {
+        runningAnims.push(p.animate([{ opacity: 0 }, { opacity: 1 }], { duration: half, easing: easing }));
+      });
+    };
+    pendingSwap = swap;
+    var swapTimer = setTimeout(swap, half);
     return;
   }
   if (effect === "fade-up" || effect === "fade-down") {
     var dy = effect === "fade-up" ? 24 : -24;
-    oldEl.style.opacity = "1"; newEl.style.opacity = "0";
-    runAnim(oldEl, [{ opacity: 1 }, { opacity: 0 }], dur, easing);
-    runAnim(newEl, [
+    oldEl.style.opacity = "1";
+    dropOld(runAnim(newEl, [
       { opacity: 0, transform: baseTransform(newEl) + " translateY(" + dy + "px)" },
       { opacity: 1, transform: baseTransform(newEl) },
-    ], dur, easing);
+    ], dur, easing));
     return;
   }
   if (effect === "wipe-up" || effect === "wipe-down") {
@@ -547,12 +587,11 @@ function playTransition(oldEl, newEl, effect, dur, wrap) {
     return;
   }
   if (effect === "grow") {
-    oldEl.style.opacity = "1"; newEl.style.opacity = "0";
-    runAnim(oldEl, [{ opacity: 1 }, { opacity: 0 }], dur, easing);
-    runAnim(newEl, [
+    oldEl.style.opacity = "1";
+    dropOld(runAnim(newEl, [
       { opacity: 0, transform: baseTransform(newEl) + " scale(0.96)" },
       { opacity: 1, transform: baseTransform(newEl) },
-    ], dur, easing);
+    ], dur, easing));
     return;
   }
 }
@@ -593,6 +632,8 @@ function renderAudience() {
   var slide = DECK.slides[state.i];
   var step = state.build ? state.step : null;
 
+  var prevStep = audienceStepKey;
+  audienceStepKey = state.step;
   if (audienceSlideKey === null) {
     audienceSlideKey = state.i;
     mountDesignedStage(layers[audienceActive], slide, state.i + 1, step);
@@ -603,7 +644,7 @@ function renderAudience() {
     var activeEl = layers[audienceActive];
     mountDesignedStage(activeEl, slide, state.i + 1, step);
     scaleStage(wrap, activeEl);
-    revealLastListItem(activeEl);
+    if (state.step > prevStep) revealLastListItem(activeEl);
     return;
   }
   audienceSlideKey = state.i;
@@ -614,7 +655,7 @@ function renderAudience() {
   var reduced = prefersReducedMotion();
   var effect = reduced ? "fade" : DECK.design.transition.effect;
   var dur = reduced ? 150 : META.speedMs[DECK.design.transition.speed];
-  playTransition(oldEl, newEl, effect, dur, wrap);
+  playTransition(oldEl, newEl, effect, dur);
   audienceActive = newIdx;
 }
 
@@ -622,13 +663,27 @@ function renderPresenter() {
   $("p-count").textContent = "Slide " + (state.i + 1) + " / " + slideCount();
   var cur = DECK.slides[state.i], next = DECK.slides[state.i + 1];
   var pStage = $("p-stage"), nStage = $("n-stage");
-  var sameSlide = presenterKey === state.i;
+  var revealed = presenterKey === state.i && state.step > presenterStepKey;
   presenterKey = state.i;
-  mountDesignedStage(pStage, cur, state.i + 1, state.build ? state.step : null);
+  presenterStepKey = state.step;
+  var items = mountDesignedStage(pStage, cur, state.i + 1, state.build ? state.step : null);
   scaleStage($("p-wrap"), pStage);
-  if (sameSlide) revealLastListItem(pStage);
-  mountDesignedStage(nStage, next, state.i + 2, null);
-  scaleStage($("n-wrap"), nStage);
+  if (revealed) revealLastListItem(pStage);
+
+  // "Next" previews what the next click shows: one more item on this slide
+  // while a build has items left, else the next slide (as its build opens).
+  var nWrap = $("n-wrap"), nLabel = $("n-label");
+  var moreItems = state.build && state.step < items - 1;
+  nWrap.classList.toggle("ended", !moreItems && !next);
+  if (moreItems) {
+    nLabel.textContent = "Next: item " + (state.step + 2) + " of " + items;
+    mountDesignedStage(nStage, cur, state.i + 1, state.step + 1);
+  } else {
+    nLabel.textContent = next ? "Next slide" : "Next";
+    mountDesignedStage(nStage, next, state.i + 2, state.build ? 0 : null);
+  }
+  scaleStage(nWrap, nStage);
+  renderCountdownControls();
   $("p-notes").innerHTML = cur ? cur.notesHtml : "";
   renderSlideList();
 }
@@ -757,6 +812,7 @@ function showEnded() {
     'color:#f2f2f2;font-size:24px;text-align:center;padding:2rem">This presentation has ended.</div>';
 }
 function initFollowPolling() {
+  var lastSeen = "";
   setInterval(function () {
     if (liveEnded) return;
     fetch(location.pathname + "?format=state", { cache: "no-store" })
@@ -766,6 +822,10 @@ function initFollowPolling() {
       })
       .then(function (data) {
         if (!data) return;
+        // Most polls change nothing; only a real change repaints.
+        var seen = data.version + "|" + JSON.stringify(data.state);
+        if (seen === lastSeen) return;
+        lastSeen = seen;
         if (data.version !== DECK.version) {
           return fetch(location.pathname + "?format=json", { cache: "no-store" })
             .then(function (r2) { return r2.json(); })
@@ -785,9 +845,20 @@ function updateCountdown() {
     if (!state.countdownEnd) { clearInterval(countdownTick); return; }
     var remaining = Math.max(0, Math.round((state.countdownEnd - Date.now()) / 1000));
     var m = Math.floor(remaining / 60), s = remaining % 60;
+    var text = m + ":" + (s < 10 ? "0" : "") + s;
     var el = document.querySelector("#a-countdown .countdown-num");
-    if (el) el.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+    if (el) el.textContent = text;
+    var pc = $("p-countdown");
+    if (pc) pc.textContent = "Countdown " + text;
   }, 250);
+}
+// Presenter side: the countdown only paints on the audience screen, so the bar
+// mirrors it and the button flips to Stop while one runs.
+function renderCountdownControls() {
+  var running = !!state.countdownEnd;
+  $("p-countdown").style.display = running ? "" : "none";
+  $("start-countdown").textContent = running ? "Stop countdown" : "Start countdown";
+  if (running) updateCountdown();
 }
 
 // ---- design panel: owner mode only, previews immediately, saves via POST --
@@ -815,10 +886,18 @@ function fieldsFromDesign(d) {
   $("d-tr-effect").value = d.transition.effect;
   $("d-tr-speed").value = d.transition.speed;
 }
+// Every design change previews at once and saves itself a second after the
+// last one, so the item (and a live link) always has what's on screen.
+var designSaveTimer = null, designSaving = false;
 function applyDesignChange() {
   render();
   send(KNOWN_PEER, { t: "deck", deck: DECK });
+  if (MODE !== "owner" || location.protocol === "file:") return;
+  clearTimeout(designSaveTimer);
+  $("d-save-msg").textContent = "";
+  designSaveTimer = setTimeout(function () { designSaveTimer = null; saveDesign(false); }, 1000);
 }
+function designPending() { return !!designSaveTimer || designSaving; }
 function fillImageSelect(sel, images, current) {
   // A default design's logo usually lives on another item, so it isn't in this
   // item's list; keep it as a choice rather than showing "None".
@@ -847,24 +926,29 @@ function loadImageChoices() {
 function saveDesign(asDefault) {
   var msg = $("d-save-msg");
   msg.textContent = "Saving\\u2026";
+  designSaving = true;
   fetch(location.pathname + "/design", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(asDefault ? { design: DECK.design, asDefault: true } : { design: DECK.design }),
   })
     .then(function (r) { if (!r.ok) throw new Error("save failed"); return r.json(); })
-    .then(function (data) {
-      DECK.design = data.design;
-      fieldsFromDesign(DECK.design);
-      msg.textContent = "Saved";
+    .then(function () {
+      designSaving = false;
+      // Keep DECK.design as-is: the owner may have kept typing while this was
+      // in flight, and the next autosave carries that.
+      msg.textContent = asDefault ? "Saved as your default" : "Saved";
       setTimeout(function () { msg.textContent = ""; }, 2000);
+      checkForDeckChange(); // picks up the new version so a live link refreshes now
     })
-    ["catch"](function () { msg.textContent = "Couldn't save"; });
+    ["catch"](function () { designSaving = false; msg.textContent = "Couldn't save"; });
 }
 function bindDesignPanel() {
   $("design-toggle").addEventListener("click", function () {
     var opening = $("design-panel").style.display === "none";
     $("design-panel").style.display = opening ? "flex" : "none";
+    this.innerHTML = (opening ? "&#9662;" : "&#9656;") + " Design";
+    this.setAttribute("aria-expanded", opening ? "true" : "false");
     if (opening) loadImageChoices();
   });
   $("d-theme").addEventListener("change", function () { DECK.design.theme = this.value; fieldsFromDesign(DECK.design); applyDesignChange(); });
@@ -894,7 +978,6 @@ function bindDesignPanel() {
   $("d-tb-skip").addEventListener("input", function () { DECK.design.titleBar.skip = this.value; applyDesignChange(); });
   $("d-tr-effect").addEventListener("change", function () { DECK.design.transition.effect = this.value; applyDesignChange(); });
   $("d-tr-speed").addEventListener("change", function () { DECK.design.transition.speed = this.value; applyDesignChange(); });
-  $("d-save").addEventListener("click", function () { saveDesign(false); });
   $("d-save-default").addEventListener("click", function () { saveDesign(true); });
   fieldsFromDesign(DECK.design);
 }
@@ -1105,8 +1188,10 @@ function initPresenter() {
     broadcastAndRender();
   });
   $("start-countdown").addEventListener("click", function () {
-    var mins = parseFloat($("countdown-min").value);
-    if (!mins || mins <= 0) return;
+    if (state.countdownEnd) { state.countdownEnd = null; broadcastAndRender(); return; }
+    var input = $("countdown-min");
+    var mins = parseFloat(input.value);
+    if (!mins || mins <= 0) { input.focus(); return; }
     state.countdownEnd = Date.now() + mins * 60000;
     broadcastAndRender();
   });
@@ -1176,21 +1261,27 @@ if (printMode) {
   // ---- live edits: owner mode only, and never from a file:// download ----
   if (MODE === "owner" && location.protocol !== "file:") {
     setInterval(function () {
-      if (document.visibilityState !== "visible") return;
-      fetch(location.pathname + "?format=json", { cache: "no-store" })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data && data.version && data.version !== DECK.version) {
-            DECK = data;
-            state.i = clamp(state.i, 0, slideCount() - 1);
-            render();
-            send(KNOWN_PEER, { t: "deck", deck: DECK });
-            postLiveState();
-          }
-        })
-        .catch(function () {});
+      if (document.visibilityState === "visible") checkForDeckChange();
     }, 5000);
   }
+}
+
+// Owner mode: refetch the deck when the item changed (an edit, or a design
+// autosave), re-render, and hand the new version to the audience window and
+// any live link. A design still being saved stays as the owner has it.
+function checkForDeckChange() {
+  fetch(location.pathname + "?format=json", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data || !data.version || data.version === DECK.version) return;
+      if (designPending()) data.design = DECK.design;
+      DECK = data;
+      state.i = clamp(state.i, 0, slideCount() - 1);
+      render();
+      send(KNOWN_PEER, { t: "deck", deck: DECK });
+      postLiveState();
+    })
+    .catch(function () {});
 }
 })();
 </script>

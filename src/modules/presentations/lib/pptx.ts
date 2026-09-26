@@ -152,6 +152,19 @@ export async function buildPptx(ownerId: string, source: PptxDeckSource): Promis
         } else if (block.kind === "paragraph") {
           slide.addText(block.text, { x: 0.8, y, w: SLIDE_W_IN - 1.6, h: 0.8, fontSize: 22, color: textHex });
           y += 0.9;
+        } else if (block.kind === "table") {
+          // Same look as the player: header rule, thin row rules, no column lines.
+          const rowH = 0.45;
+          const h = Math.min(rowH * block.rows.length, SLIDE_H_IN - y - 0.5);
+          const none = { type: "none" as const };
+          const rows = block.rows.map((cells, r) => {
+            const rule = { type: "solid" as const, pt: r === 0 ? 2 : 0.75, color: textHex };
+            // [top, right, bottom, left]
+            const border: [typeof rule | typeof none, typeof none, typeof rule, typeof none] = [none, none, rule, none];
+            return cells.map((text) => ({ text, options: { bold: r === 0, border } }));
+          });
+          slide.addTable(rows, { x: 0.8, y, w: SLIDE_W_IN - 1.6, h, fontSize: 18, color: textHex });
+          y += h + 0.2;
         } else if (block.kind === "image") {
           const data = await dataUriFor(ownerId, block.src);
           if (data) {

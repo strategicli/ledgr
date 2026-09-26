@@ -154,8 +154,11 @@ md.core.ruler.after("inline", "task_lists", (state) => {
 // nesting-aware delimiter pairing, so `++a ++b++ c++` pairs shallowly. The
 // editor can't produce that (a mark doesn't nest inside itself) and neither can
 // a person who means it. Upgrade path if it ever bites: port markdown-it-ins's
-// tokenize/postProcess pair. Inner content is re-parsed inline, so **bold** and
-// colors inside an underline survive.
+// tokenize/postProcess pair. Inner content is tokenized in the SAME inline state
+// (narrowing posMax, the way markdown-it's link rule reads a label), so **bold**
+// and colors inside an underline survive. Don't switch this to a nested
+// `md.inline.parse(...)`: that runs its own emphasis/strikethrough post-pass
+// over the shared token array and scrambles every other mark on the line.
 md.inline.ruler.before("emphasis", "ledgr_underline", (state, silent) => {
   const start = state.pos;
   if (state.src.charCodeAt(start) !== 0x2b || state.src.charCodeAt(start + 1) !== 0x2b) {
@@ -166,13 +169,12 @@ md.inline.ruler.before("emphasis", "ledgr_underline", (state, silent) => {
   // run: not ours.
   if (close < 0 || close === start + 2 || close + 2 > state.posMax) return false;
   if (!silent) {
+    const oldMax = state.posMax;
     state.push("u_open", "u", 1);
-    state.md.inline.parse(
-      state.src.slice(start + 2, close),
-      state.md,
-      state.env,
-      state.tokens
-    );
+    state.pos = start + 2;
+    state.posMax = close;
+    state.md.inline.tokenize(state);
+    state.posMax = oldMax;
     state.push("u_close", "u", -1);
   }
   state.pos = close + 2;
