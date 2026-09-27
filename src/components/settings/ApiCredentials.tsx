@@ -79,8 +79,8 @@ export default function ApiCredentials({
   const active = credentials.filter((c) => !c.revokedAt);
 
   return (
-    <section className="mt-10 border-t border-line pt-6">
-      <h2 className="ui-section-label">API credentials</h2>
+    <section id="api-credentials" className="scroll-mt-[calc(var(--nav-pt,0px)+4rem)] pt-2">
+      <h3 className="ui-row font-medium">API credentials</h3>
       <p className="mt-1 text-sm text-ink-muted">
         A credential lets an outside app, a script, or an AI assistant reach your
         Ledgr data over HTTP with no sign-in. You get a key ID and a secret; the

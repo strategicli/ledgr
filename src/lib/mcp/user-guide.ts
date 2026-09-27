@@ -1528,19 +1528,23 @@ Three, all plain Markdown over MCP:
 
 # Settings
 
-**User Settings** is on the Work "More" menu and in the Build sidebar.
+**User Settings** is on the Work "More" menu and in the Build sidebar. It is one
+page in eight groups, with an index down the side (a row of chips on a phone).
+Each group has its own link, such as \`/settings#appearance\`, and the command
+palette jumps straight to a named setting.
 
-| Area | What you can change |
+| Group | What you can change |
 |---|---|
-| You | Display name, timezone |
-| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, interface density (desktop and mobile separately), text size, section style |
-| Navigation | Position (top, bottom, left, right), spacing |
-| Editor | Which toolbar buttons show; collapsible headings; toggle blocks |
-| Capture | Which actions appear on the task capture card |
-| Data | Trash retention, in days |
+| Account | Display name, timezone, sign-in (password and recovery codes) |
+| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style |
+| Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
+| Editing | Which actions appear on the task capture card; which toolbar buttons show; collapsible headings; toggle blocks |
 | Search | Your own synonym dictionary |
-| Feeds | The task calendar (ICS) feed; the web clipper |
+| Notifications | Which events notify you (only while the notification center is on) |
 | AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |
+| Connections & data | Trash retention, in days; the task calendar (ICS) feed; API credentials |
+
+The web clipper is at \`/build/capture\`.
 
 Some settings live where you use them: nav slots and what the Search icon opens
 at \`/build/navigation\`, Home and Today at \`/dashboards\`, type visibility at

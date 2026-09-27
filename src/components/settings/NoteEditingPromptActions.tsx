@@ -39,12 +39,12 @@ export default function NoteEditingPromptActions() {
   }
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={() => void open()}
         disabled={busy !== null}
-        className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+        className="rounded border border-line-strong px-2 py-1 text-xs text-ink-muted hover:bg-surface-2 disabled:opacity-50"
       >
         {busy === "open" ? "Opening…" : "Open the prompt"}
       </button>
@@ -52,11 +52,11 @@ export default function NoteEditingPromptActions() {
         type="button"
         onClick={() => void revert()}
         disabled={busy !== null}
-        className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+        className="rounded border border-line-strong px-2 py-1 text-xs text-ink-muted hover:bg-surface-2 disabled:opacity-50"
       >
         {busy === "revert" ? "Reverting…" : "Revert to default"}
       </button>
-      {msg && <span className="text-xs text-neutral-500">{msg}</span>}
+      {msg && <span className="text-xs text-ink-subtle">{msg}</span>}
     </div>
   );
 }

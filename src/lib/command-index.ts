@@ -70,13 +70,20 @@ const BUILTIN_PAGES: { label: string; href: string; icon: string }[] = [
   { label: "Changelog", href: "/changelog", icon: "changelog" },
 ];
 
-// Named user settings. They all live on /settings for now (no in-page anchors
-// wired yet), but indexing them by name means "trash retention" jumps there.
-const SETTINGS_ENTRIES: { label: string; icon: string }[] = [
-  { label: "Accent color", icon: "tools" },
-  { label: "Trash retention", icon: "archive" },
-  { label: "Nav position", icon: "grid" },
-  { label: "Display name", icon: "person" },
+// Named user settings. Each jumps to its group's anchor on /settings, so
+// "trash retention" lands on Connections & data rather than the page top.
+const SETTINGS_ENTRIES: { label: string; icon: string; anchor: string }[] = [
+  { label: "Accent color", icon: "tools", anchor: "appearance" },
+  { label: "Theme", icon: "tools", anchor: "appearance" },
+  { label: "Trash retention", icon: "archive", anchor: "connections" },
+  { label: "Nav position", icon: "grid", anchor: "layout" },
+  { label: "Display name", icon: "person", anchor: "account" },
+  { label: "Timezone", icon: "person", anchor: "account" },
+  { label: "Sign-in and password", icon: "person", anchor: "sign-in" },
+  { label: "Editor toolbar", icon: "tools", anchor: "editing" },
+  { label: "Search dictionary", icon: "tools", anchor: "search" },
+  { label: "Task calendar feed", icon: "tools", anchor: "calendar-feed" },
+  { label: "API credentials", icon: "tools", anchor: "api-credentials" },
 ];
 
 // The static (data-independent) entries: pages, Build/Maintain sections, and
@@ -107,7 +114,7 @@ export function staticCommandEntries(): DestinationResult[] {
     group: "Build & Settings",
     label: s.label,
     sublabel: "User Settings",
-    href: "/settings",
+    href: `/settings#${s.anchor}`,
     icon: s.icon,
   }));
   return [...pages, ...sections, ...settings];

@@ -87,8 +87,8 @@ export default function SigninSettings(p: SigninSettingsProps) {
   const onPassword = p.method === "builtin";
 
   return (
-    <section id="sign-in" className="mt-10 border-t border-line pt-6">
-      <h2 className="ui-section-label">Sign-in</h2>
+    <section id="sign-in" className="scroll-mt-[calc(var(--nav-pt,0px)+4rem)] pt-2">
+      <h3 className="ui-row font-medium">Sign-in</h3>
       <p className="mt-1 text-sm text-ink-muted">
         Your Ledgr password works on every copy of Ledgr you run, because it syncs. Which way each copy signs in is set
         per copy, here. This copy: <span className="text-ink">{onPassword ? "your password" : (p.defaultLabel ?? "not set up")}</span>.

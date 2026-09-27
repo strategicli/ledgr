@@ -72,9 +72,9 @@ export default async function SettingsPage({
 
   return (
     <main className="min-h-screen">
-      <div className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
+      <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-12">
         <div className="flex items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-100">User Settings</h1>
+          <h1 className="ui-title text-ink">User Settings</h1>
           <BackButton />
         </div>
         <SettingsForm
@@ -82,16 +82,12 @@ export default async function SettingsPage({
           serverDefaultTz={DEFAULT_TIMEZONE}
           notificationsOn={moduleOn(settings, "notification-center")}
           liveContextOn={moduleOn(settings, "live-context")}
-        />
-        {agentAvailable() && (
-          <AgentSettings initial={settings.agent} on={moduleOn(settings, "agent")} />
-        )}
-        {signin && <SigninSettings {...signin} />}
-        <IcsFeed initialToken={settings.icsToken} />
-        <ApiCredentials
-          initial={credentials}
-          scopes={API_SCOPES}
-          origin={origin}
+          signin={signin && <SigninSettings {...signin} />}
+          agent={
+            agentAvailable() && <AgentSettings initial={settings.agent} on={moduleOn(settings, "agent")} />
+          }
+          icsFeed={<IcsFeed initialToken={settings.icsToken} host={host} />}
+          apiCredentials={<ApiCredentials initial={credentials} scopes={API_SCOPES} origin={origin} />}
         />
       </div>
     </main>
