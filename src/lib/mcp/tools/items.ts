@@ -52,13 +52,17 @@ export const itemTools: McpTool[] = [
       "search for it by name before assuming you know nothing about it. Without " +
       "the type filter, memories are buried under notes, transcripts, and " +
       "commentaries. Memory hits render their age, so you can tell a current " +
-      "claim from one that was true a year ago.",
+      "claim from one that was true a year ago. Trashed items are skipped " +
+      "unless you pass trash: \"only\" (search Trash) or \"include\" (both); " +
+      "a trashed hit carries inTrash: true and its deletedAt, and restore_item " +
+      "brings it back.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search words (supports \"quoted phrases\", OR, -exclude)." },
         type: { type: "string", description: "Optional: restrict to one type key (e.g. task, event, note, person)." },
         limit: { type: "integer", description: "Max results (1–50, default 50).", minimum: 1, maximum: 50 },
+        trash: { type: "string", enum: ["only", "include"], description: "Optional: \"only\" searches Trash alone; \"include\" searches live items and Trash together. Omit for live items only." },
       },
       required: ["query"],
       additionalProperties: false,
@@ -68,6 +72,7 @@ export const itemTools: McpTool[] = [
       const found = await searchItems(ownerId, reqString(args, "query"), {
         type: optString(args, "type"),
         limit: optInt(args, "limit"),
+        trash: optEnum(args, "trash", ["only", "include"] as const),
       });
       // Modules that are on may drop or annotate their own hits (the
       // mcpSearchHits slot, ADR-272 step 4): AI Memory hides retired memories
@@ -92,7 +97,9 @@ export const itemTools: McpTool[] = [
       "tool: e.g. open tasks related to a person (type=task, status=open, " +
       "relatedTo=<person>), or events in the next 7 days (type=event, " +
       "dateField=meetingAt, withinDays=7). Bodies are not included; open an item " +
-      "with get_item for its body.",
+      "with get_item for its body. Pass trash: true to list Trash instead, most " +
+      "recently deleted first (type, relatedTo, and limit still apply; each row " +
+      "carries inTrash and deletedAt).",
     inputSchema: {
       type: "object",
       properties: {
@@ -105,11 +112,28 @@ export const itemTools: McpTool[] = [
         sort: { type: "string", enum: [...SORT_FIELDS], description: "Sort field (default updatedAt)." },
         sortDir: { type: "string", enum: ["asc", "desc"], description: "Sort direction (default desc)." },
         limit: { type: "integer", description: "Max results (1–200, default 50).", minimum: 1, maximum: 200 },
+        trash: { type: "boolean", description: "List what's in Trash instead of live items, newest deletion first. Combines with type, relatedTo, and limit only." },
       },
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
+      if (args.trash === true) {
+        // Trash is the app's own list (the Trash page's query), not a view: the
+        // view engine only reads live rows. So the view-only filters are refused
+        // rather than silently ignored.
+        const unsupported = ["status", "due", "withinDays", "dateField", "sort", "sortDir"].filter((k) => args[k] != null);
+        if (unsupported.length > 0) {
+          throw new ItemError("bad_request", `trash: true combines with type, relatedTo, and limit only (drop ${unsupported.join(", ")})`);
+        }
+        const rows = await listItems(ownerId, {
+          trash: true,
+          type: optString(args, "type"),
+          relatedTo: args.relatedTo != null ? asUuid(args.relatedTo, "relatedTo") : undefined,
+          limit: Math.min(Math.max(optInt(args, "limit") ?? 50, 1), 200),
+        });
+        return { count: rows.length, items: rows.map(rowView) };
+      }
       const filter: ViewFilter = {};
       const type = optString(args, "type");
       if (type) filter.type = type;

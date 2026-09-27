@@ -28,6 +28,7 @@ export function rowView(r: {
   properties: unknown;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date | null;
 }) {
   return {
     id: r.id,
@@ -44,6 +45,8 @@ export function rowView(r: {
     properties: r.properties ?? null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    // Only a trashed row carries these, so a live row's shape is unchanged.
+    ...(r.deletedAt ? { inTrash: true, deletedAt: r.deletedAt } : {}),
   };
 }
 
