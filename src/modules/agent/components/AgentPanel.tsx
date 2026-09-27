@@ -14,26 +14,33 @@ import { usePathname } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
 import ChatView, { type Block } from "./ChatView";
 
+// Open/closed is per browser tab (sessionStorage): opening the panel in one tab
+// doesn't open it in every other, while a refresh keeps it where it was.
 const OPEN_KEY = "ledgr:agent-open";
 const WIDTH_KEY = "ledgr:agent-width";
 const TABS_KEY = "ledgr:agent-tabs";
+// When the panel was last in use. Reopening it after longer than STALE_MS
+// starts a fresh chat about what's on screen instead of resuming an old one;
+// the ☰ switcher still reaches the old one.
+const SEEN_KEY = "ledgr:agent-seen";
+const STALE_MS = 30 * 60 * 1000;
 const MAX_TABS = 5;
 const UUID = /^\/items\/([0-9a-f-]{36})/i;
 
 type SessionRow = { id: string; title: string; updatedAt: string };
 type Tab = { id: string; title: string };
 
-function store<T>(key: string, fallback: T): T {
+function store<T>(key: string, fallback: T, area: "local" | "session" = "local"): T {
   try {
-    const v = localStorage.getItem(key);
+    const v = (area === "session" ? sessionStorage : localStorage).getItem(key);
     return v ? (JSON.parse(v) as T) : fallback;
   } catch {
     return fallback;
   }
 }
-function save(key: string, v: unknown) {
+function save(key: string, v: unknown, area: "local" | "session" = "local") {
   try {
-    localStorage.setItem(key, JSON.stringify(v));
+    (area === "session" ? sessionStorage : localStorage).setItem(key, JSON.stringify(v));
   } catch {
     // Private mode or storage full: the panel still works, it just forgets.
   }
@@ -125,7 +132,7 @@ export default function AgentPanel() {
   useEffect(() => {
     queueMicrotask(() => {
       restored.current = true;
-      setOpen(store(OPEN_KEY, false));
+      setOpen(store(OPEN_KEY, false, "session"));
       setWidth(store(WIDTH_KEY, 420));
       const t = store<Tab[]>(TABS_KEY, []);
       setTabs(t);
@@ -133,7 +140,7 @@ export default function AgentPanel() {
     });
   }, []);
   useEffect(() => {
-    if (restored.current) save(OPEN_KEY, open);
+    if (restored.current) save(OPEN_KEY, open, "session");
   }, [open]);
   useEffect(() => {
     if (restored.current) save(TABS_KEY, tabs);
@@ -173,6 +180,35 @@ export default function AgentPanel() {
     },
     [active, newChat]
   );
+
+  // Opening after a break starts a fresh chat, unless the current one is still
+  // empty ("New chat" is the server's title until the first message). A
+  // refresh doesn't count as a break: leaving the page stamps SEEN_KEY.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (!restored.current) return;
+    if (open && !wasOpen.current) {
+      const cur = tabs.find((t) => t.id === active);
+      if (cur && cur.title !== "New chat" && Date.now() - store<number>(SEEN_KEY, 0) > STALE_MS) {
+        queueMicrotask(() => void newChat().catch(fail("start a new chat")));
+      }
+    }
+    if (open || wasOpen.current) save(SEEN_KEY, Date.now());
+    wasOpen.current = open;
+    // Runs on open/close only; tabs/active are read as they stand then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const stamp = () => save(SEEN_KEY, Date.now());
+    const onVis = () => document.visibilityState === "hidden" && stamp();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", stamp);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", stamp);
+    };
+  }, [open]);
 
   // First open with no chats: start one.
   useEffect(() => {

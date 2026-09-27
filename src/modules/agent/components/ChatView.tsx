@@ -364,6 +364,7 @@ export default function ChatView({
           onStop={() => void stop()}
           onSubmit={(s) => void send(s)}
           autoFocus
+          draftKey={side ? undefined : `ledgr:agent-draft:${sessionId}`}
         />
         {data && (
           <p className="mt-1 text-right text-xs text-ink-faint">

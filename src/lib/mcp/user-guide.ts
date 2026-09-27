@@ -1469,7 +1469,11 @@ week of use.
   and edit your items, and an edit to the open note appears in place while you
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
-  as a note, or archives it. Under each reply, **▶ Listen** reads it aloud in the
+  as a note, or archives it. Opening the sidebar in one browser tab leaves your
+  other tabs alone. Come back after half an hour or more and it starts a fresh
+  chat about what you are viewing (the earlier one is still under ☰). Anything
+  you have typed but not sent is kept as a draft for that chat, through a
+  refresh or a closed panel. Under each reply, **▶ Listen** reads it aloud in the
   voice you picked on an item's Listen bar; while it reads, a Speed picker sits
   beside Stop. A chat open on two devices
   stays in step: what you send from your phone appears on your computer within
