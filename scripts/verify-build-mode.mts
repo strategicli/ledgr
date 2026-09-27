@@ -76,7 +76,7 @@ check(
 );
 check(
   "static entries include a named setting (Trash retention)",
-  statics.some((e) => e.label === "Trash retention" && e.href === "/settings")
+  statics.some((e) => e.label === "Trash retention" && e.href === "/settings#connections")
 );
 
 check("matchScore: prefix beats word-boundary", (matchScore("Inbox", "inb") ?? 0) > (matchScore("User Settings", "settings") ?? 0));
