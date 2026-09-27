@@ -44,7 +44,7 @@ async function fetchHealth(): Promise<Health | null> {
 }
 
 const btn =
-  "rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50";
+  "rounded border border-line-strong px-2 py-1 text-xs text-ink-muted hover:bg-surface-2 disabled:opacity-50";
 
 function when(iso: string) {
   return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
@@ -104,15 +104,15 @@ export default function AgentSettings({ initial, on }: { initial: Agent; on: boo
   const days = health?.days ?? [];
 
   return (
-    <section className="mt-10">
-      <h2 className="text-sm font-semibold text-neutral-200">Claude in Ledgr</h2>
-      <p className="mt-0.5 text-sm text-neutral-500">
+    <section id="agent" className="scroll-mt-[calc(var(--nav-pt,0px)+4rem)] rounded-card border border-line bg-surface-1 p-4">
+      <h3 className="ui-row font-medium">Claude in Ledgr</h3>
+      <p className="mt-0.5 text-sm text-ink-subtle">
         A Claude sidebar (Ctrl/Cmd+J), inline editing of selected text (Ctrl/Cmd+Shift+E), slash prompts, and
         @-mentions, all inside Ledgr. It runs on this computer under its own Claude sign-in and uses Ledgr&rsquo;s tools
         only. Deleting or sharing always asks first.
       </p>
 
-      <p className="mt-2 text-sm text-neutral-400">
+      <p className="mt-2 text-sm text-ink-muted">
         Turn the agent on or off at{" "}
         <a href="/build/modules" className="text-[var(--accent)] hover:underline">
           Build → Modules
@@ -127,12 +127,12 @@ export default function AgentSettings({ initial, on }: { initial: Agent; on: boo
             ["inlineModel", "Inline edit model"],
           ] as const
         ).map(([key, label]) => (
-          <label key={key} className="text-xs text-neutral-400">
+          <label key={key} className="text-xs text-ink-muted">
             {label}
             <select
               value={agent[key]}
               onChange={(e) => void save({ [key]: e.target.value })}
-              className="mt-1 block w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200"
+              className="mt-1 block w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink"
             >
               {AGENT_MODELS.map((m) => (
                 <option key={m} value={m}>
@@ -165,10 +165,10 @@ export default function AgentSettings({ initial, on }: { initial: Agent; on: boo
         </div>
       )}
 
-      <div className="mt-3 rounded border border-neutral-800 p-3 text-xs text-neutral-400">
+      <div className="mt-3 rounded border border-line p-3 text-xs text-ink-muted">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`inline-block h-2 w-2 rounded-full ${red ? "bg-red-500" : health?.lastOkAt ? "bg-emerald-500" : "bg-neutral-600"}`} />
-          <span className="text-neutral-300">
+          <span className="text-ink-muted">
             {red ? "Last request failed" : health?.lastOkAt ? `Working, last answer ${when(health.lastOkAt)}` : "Not checked since the last restart"}
           </span>
           <button type="button" onClick={() => void check()} disabled={busy !== null} className={btn}>
@@ -176,18 +176,18 @@ export default function AgentSettings({ initial, on }: { initial: Agent; on: boo
           </button>
         </div>
         {red && health?.lastError && <p className="mt-2 text-red-300">{health.lastError.message}</p>}
-        {msg && <p className="mt-2 text-neutral-300">{msg}</p>}
+        {msg && <p className="mt-2 text-ink-muted">{msg}</p>}
         {red && (
-          <div className="mt-2 text-neutral-400">
+          <div className="mt-2 text-ink-muted">
             To sign in: on this computer, open Windows PowerShell and run
-            <code className="mt-1 block break-all rounded bg-neutral-800 px-1.5 py-1 font-mono text-[11px] text-neutral-300">
+            <code className="mt-1 block break-all rounded bg-surface-3 px-1.5 py-1 font-mono text-[11px] text-ink-muted">
               &amp; &quot;C:\dev\ledgr\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe&quot;
             </code>
             then type <code className="font-mono">/login</code>, choose your Claude account, and finish in the browser. Type{" "}
             <code className="font-mono">/exit</code> when done, then press Check sign-in.
           </div>
         )}
-        <p className="mt-2 text-neutral-500">
+        <p className="mt-2 text-ink-subtle">
           Billing: {health?.authMode === "apikey" ? "API key" : "your Claude plan"}
           {health?.sdkVersion ? ` · Agent SDK ${health.sdkVersion}` : ""}
         </p>
@@ -195,12 +195,12 @@ export default function AgentSettings({ initial, on }: { initial: Agent; on: boo
 
       {on && (
         <div className="mt-3">
-          <div className="text-xs text-neutral-400">Last 7 days (Claude replies per day)</div>
+          <div className="text-xs text-ink-muted">Last 7 days (Claude replies per day)</div>
           <div className="mt-1 flex h-16 items-end gap-1">
             {days.map((d) => (
               <div key={d.key} className="flex flex-1 flex-col items-center gap-1" title={`${d.turns} replies, ${d.tokens.toLocaleString()} new tokens (cache re-reads not counted)`}>
                 <div className="w-full rounded-sm bg-neutral-600" style={{ height: `${(d.turns / maxTurns) * 44}px`, minHeight: d.turns ? 2 : 0 }} />
-                <span className="text-[10px] text-neutral-500">{d.label}</span>
+                <span className="text-[10px] text-ink-subtle">{d.label}</span>
               </div>
             ))}
           </div>

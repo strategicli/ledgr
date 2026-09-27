@@ -1,13 +1,15 @@
-// User Settings form (v5). Display name, highlight accent (solid colors or a
-// gradient), Trash retention, and the nav layout controls (position + spacing) —
-// the same controls offered in the nav "More" menu, mirrored here. Each change
-// saves to /api/settings; the accent updates the live `--accent` /
-// `--accent-gradient` CSS variables immediately, and nav-layout changes
-// router.refresh() so the live nav re-renders without a manual reload.
+// User Settings form (v5). Every per-owner preference on /settings, sorted into
+// eight groups with a section index (the one-page redesign, 2026-09-26). The
+// server-rendered blocks (Sign-in, the agent, the calendar feed, API
+// credentials) arrive as slots so each lands in its group without this client
+// island fetching their data. Each change saves to /api/settings; the accent
+// updates the live `--accent` / `--accent-gradient` CSS variables immediately,
+// and nav-layout changes router.refresh() so the live nav re-renders without a
+// manual reload.
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_GRADIENTS,
@@ -60,6 +62,8 @@ const SECTION_STYLE_LABELS: Record<SectionStyle, string> = {
   unified: "Unified",
 };
 
+const TEXT_SIZE_LABELS: Record<TextSize, string> = { sm: "S", base: "M", lg: "L", xl: "XL" };
+
 // The full IANA zone list from the runtime, with a curated fallback for the rare
 // engine without Intl.supportedValuesOf. Computed once (module scope).
 const ALL_TIMEZONES: string[] = (() => {
@@ -81,11 +85,145 @@ const ALL_TIMEZONES: string[] = (() => {
   ];
 })();
 
+const INPUT =
+  "rounded border border-line bg-surface-2 px-2 py-1 text-sm text-ink outline-none focus:border-line-strong";
+const BTN =
+  "rounded border border-line-strong px-2 py-1 text-xs text-ink-muted hover:bg-surface-2 disabled:opacity-50";
+
+// One group on the page: an uppercase label the index links to, then its body.
+// scroll-mt clears a top nav bar (and the phone's sticky chip row) on a jump.
+function Group({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section id={id} className="flex scroll-mt-[calc(var(--nav-pt,0px)+4rem)] flex-col gap-3">
+      <h2 className="ui-section-label text-ink-subtle">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+// A group's rows share one card, divided by hairlines.
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <div className="divide-y divide-line rounded-card border border-line bg-surface-1">{children}</div>
+  );
+}
+
+// The one row pattern: name + help on the left, the control on the right. It
+// stacks on a phone, and `stack` keeps wide controls (checkbox grids, the
+// dictionary) under the label at every width.
+function Row({
+  label,
+  help,
+  stack,
+  children,
+}: {
+  label: string;
+  help?: ReactNode;
+  stack?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    // Flex, not grid: the label keeps at least 16rem and the controls wrap onto
+    // their own line when both don't fit, instead of crushing the help text.
+    <div
+      className={`flex gap-x-6 gap-y-2 px-4 py-3.5 ${
+        stack ? "flex-col" : "flex-wrap items-center justify-between"
+      }`}
+    >
+      <div className={stack ? "min-w-0" : "min-w-0 flex-1 basis-64"}>
+        <p className="ui-row font-medium">{label}</p>
+        {help && <div className="mt-0.5 max-w-prose text-xs text-ink-subtle">{help}</div>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+// The one choice-of-N control: a segmented bar.
+function Seg<T extends string>({
+  options,
+  value,
+  label,
+  onChange,
+}: {
+  options: readonly T[];
+  value: T | null;
+  label: (v: T) => string;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="inline-flex flex-wrap rounded-md border border-line bg-surface-2 p-0.5">
+      {options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          aria-pressed={value === o}
+          onClick={() => onChange(o)}
+          className={`rounded px-2.5 py-1 text-xs ${
+            value === o
+              ? "bg-surface-0 text-ink shadow-[0_0_0_1px_var(--color-line-strong)]"
+              : "text-ink-muted hover:text-ink"
+          }`}
+        >
+          {label(o)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A checkbox list for "which of these show" settings (a hidden-ids array).
+function ShownChecks({
+  items,
+  hidden,
+  onChange,
+  cols = "sm:grid-cols-3",
+}: {
+  items: readonly { id: string; label: string }[];
+  hidden: string[];
+  onChange: (hidden: string[]) => void;
+  cols?: string;
+}) {
+  return (
+    <div className={`grid w-full grid-cols-2 gap-x-6 gap-y-1.5 ${cols}`}>
+      {items.map((it) => (
+        <label key={it.id} className="flex items-center gap-2 text-sm text-ink-muted">
+          <input
+            type="checkbox"
+            checked={!hidden.includes(it.id)}
+            onChange={() => {
+              const set = new Set(hidden);
+              if (set.has(it.id)) set.delete(it.id);
+              else set.add(it.id);
+              onChange([...set]);
+            }}
+            className="ledgr-check"
+          />
+          {it.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const QUICK_ADD_ITEMS = [
+  { id: "deadline", label: "Deadline (due date)" },
+  { id: "priority", label: "Priority" },
+  { id: "tags", label: "Tag" },
+  { id: "person", label: "Person" },
+  { id: "group", label: "Group" },
+  { id: "assignee", label: "Assignee" },
+] as const;
+
 export default function SettingsForm({
   initial,
   serverDefaultTz,
   notificationsOn,
   liveContextOn,
+  signin,
+  agent,
+  icsFeed,
+  apiCredentials,
 }: {
   initial: UserSettings;
   // Module switches resolved on the server (Build → Modules, ADR-272), so this
@@ -95,9 +233,15 @@ export default function SettingsForm({
   // The zone "Automatic" falls back to (the LEDGR_TIMEZONE env, else
   // America/New_York), shown in the label so the default is legible.
   serverDefaultTz: string;
+  // Server-rendered blocks, placed into their groups (null when not offered here).
+  signin: ReactNode;
+  agent: ReactNode;
+  icsFeed: ReactNode;
+  apiCredentials: ReactNode;
 }) {
   const [settings, setSettings] = useState<UserSettings>(initial);
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<"saved" | "failed" | null>(null);
+  const [trashDays, setTrashDays] = useState(String(initial.trashRetentionDays));
   const router = useRouter();
 
   // The search dictionary (ADR-172) is stored as word -> [synonyms], but edited as
@@ -172,588 +316,533 @@ export default function SettingsForm({
     document.body.setAttribute("data-section-style", style);
   };
 
+  // Show "Saved" only when the server said yes. A refused or dropped request
+  // says so, instead of the old pill that claimed success either way.
   const save = async (patch: Partial<UserSettings>, refresh = false) => {
-    const next = { ...settings, ...patch };
-    setSettings(next);
+    setSettings((s) => ({ ...s, ...patch }));
+    let ok = false;
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1200);
-      // Nav layout is rendered server-side (Nav → NavShell); refresh so a
-      // position/spacing change shows up live, matching the More-menu behavior.
-      if (refresh) router.refresh();
+      ok = res.ok;
     } catch {
-      /* offline; the next change retries */
+      /* offline; reported below */
     }
+    setStatus(ok ? "saved" : "failed");
+    setTimeout(() => setStatus(null), ok ? 1200 : 4000);
+    // Nav layout is rendered server-side (Nav → NavShell); refresh so a
+    // position/spacing change shows up live, matching the More-menu behavior.
+    if (ok && refresh) router.refresh();
   };
 
-  // The segmented-button look from the nav "More" menu.
-  const segBtn = (active: boolean) =>
-    `rounded px-2 py-1.5 text-xs ${
-      active
-        ? "bg-neutral-700 text-neutral-100"
-        : "text-neutral-300 hover:bg-neutral-800"
-    }`;
+  // Trash retention saves when you leave the box, so typing "45" doesn't save 4
+  // first, and an empty or out-of-range entry snaps back to the saved value.
+  const commitTrashDays = () => {
+    const n = Math.round(Number(trashDays));
+    if (!Number.isFinite(n) || n < 1 || n > 365) {
+      setTrashDays(String(settings.trashRetentionDays));
+      return;
+    }
+    setTrashDays(String(n));
+    if (n !== settings.trashRetentionDays) void save({ trashRetentionDays: n });
+  };
 
   const setSpacing = (density: "spread" | "compact", anchor?: RailAnchor) =>
     void save(
       { navDensity: density, ...(anchor ? { railAnchor: anchor } : {}) },
       true
     );
-  const spacingActive = (density: "spread" | "compact", anchor?: RailAnchor) =>
-    settings.navDensity === density && (!anchor || settings.railAnchor === anchor);
+  const spacingValue =
+    settings.navDensity === "spread" ? "spread" : (settings.railAnchor as RailAnchor);
+  const SPACING_OPTIONS = ["spread", "top", "center", "bottom"] as const;
+  const spacingLabel = (v: (typeof SPACING_OPTIONS)[number]) =>
+    v === "spread"
+      ? "Spread"
+      : v === "center"
+        ? "Center"
+        : isRail
+          ? v === "top" ? "Top" : "Bottom"
+          : v === "top" ? "Left" : "Right";
+
+  const groups: { id: string; title: string; show: boolean }[] = [
+    { id: "account", title: "Account", show: true },
+    { id: "appearance", title: "Appearance", show: true },
+    { id: "layout", title: "Layout", show: true },
+    { id: "editing", title: "Editing", show: true },
+    { id: "search", title: "Search", show: true },
+    { id: "notifications", title: "Notifications", show: notificationsOn },
+    { id: "ai", title: "AI", show: true },
+    { id: "connections", title: "Connections & data", show: true },
+  ];
+  const shown = groups.filter((g) => g.show);
+
+  // Light up the index entry for the group at the top of the screen.
+  const [active, setActive] = useState(shown[0].id);
+  useEffect(() => {
+    const els = shown
+      .map((g) => document.getElementById(g.id))
+      .filter((el): el is HTMLElement => !!el);
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting)[0];
+        if (top) setActive(top.target.id);
+      },
+      { rootMargin: "-10% 0px -70% 0px" }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notificationsOn]);
 
   return (
-    <div className="mt-6 flex max-w-xl flex-col gap-6">
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Display name</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Shown wherever your name appears in the app. Leave blank to use your
-          email name.
-        </p>
-        <input
-          type="text"
-          maxLength={60}
-          placeholder="Your name"
-          value={settings.displayName}
-          onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
-          onBlur={() => void save({ displayName: settings.displayName })}
-          className="mt-2 w-48 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
-        />
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Timezone</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Sets what &quot;today&quot; means and the clock times shown throughout
-          the app (meetings, due dates, timestamps). Traveling doesn&apos;t
-          change it, so your times stay put wherever you are.
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select
-            value={settings.timezone ?? ""}
-            onChange={(e) => setTimezone(e.target.value || null)}
-            className="w-64 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+    <div className="mt-6 grid gap-8 lg:grid-cols-[11rem_minmax(0,1fr)]">
+      {/* The section index: a sticky column on wide screens, a sticky row of
+          chips across the top on a phone. Plain anchors, so /settings#layout
+          and the command palette land on the right group. */}
+      <nav
+        aria-label="Settings sections"
+        className="no-scrollbar sticky top-[var(--nav-pt,0px)] z-10 -mx-6 flex gap-1.5 overflow-x-auto bg-surface-0 px-6 py-2 sm:-mx-12 sm:px-12 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:bg-transparent lg:px-0 lg:pt-1"
+      >
+        {shown.map((g) => (
+          <a
+            key={g.id}
+            href={`#${g.id}`}
+            onClick={() => setActive(g.id)}
+            aria-current={active === g.id ? "true" : undefined}
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm lg:rounded-md lg:border-0 lg:px-2 lg:py-1.5 ${
+              active === g.id
+                ? "border-line-strong bg-surface-2 text-ink"
+                : "border-line text-ink-muted hover:bg-surface-2 hover:text-ink"
+            }`}
           >
-            <option value="">Automatic ({serverDefaultTz})</option>
-            {zoneOptions.map((z) => (
-              <option key={z} value={z}>
-                {z.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                if (detected) setTimezone(detected);
-              } catch {
-                /* leave the current value */
-              }
-            }}
-            className="rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
-          >
-            Use this device&apos;s timezone
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Quick Add</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Which actions show on the quick-capture card for tasks.
-        </p>
-        <div className="mt-2 flex flex-col gap-1">
-          {[
-            { id: "deadline", label: "Deadline (due date)" },
-            { id: "priority", label: "Priority" },
-            { id: "tags", label: "Tag" },
-            { id: "person", label: "Person" },
-            { id: "group", label: "Group" },
-            { id: "assignee", label: "Assignee" },
-          ].map((it) => {
-            const shown = !settings.quickAddHidden.includes(it.id);
-            return (
-              <label key={it.id} className="flex items-center gap-2 text-sm text-neutral-300">
-                <input
-                  type="checkbox"
-                  checked={shown}
-                  onChange={() => {
-                    const set = new Set(settings.quickAddHidden);
-                    if (set.has(it.id)) set.delete(it.id);
-                    else set.add(it.id);
-                    void save({ quickAddHidden: [...set] });
-                  }}
-                  className="accent-[var(--accent)]"
-                />
-                {it.label}
-              </label>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Editor toolbar</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Which buttons show in the markdown editor toolbar (every canvas).
-          Unchecking hides one; takes effect on the next page load.
-        </p>
-        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
-          {TOOLBAR_ITEMS.map((it) => {
-            const shown = !settings.editorToolbarHidden.includes(it.id);
-            return (
-              <label key={it.id} className="flex items-center gap-2 text-sm text-neutral-300">
-                <input
-                  type="checkbox"
-                  checked={shown}
-                  onChange={() => {
-                    const set = new Set(settings.editorToolbarHidden);
-                    if (set.has(it.id)) set.delete(it.id);
-                    else set.add(it.id);
-                    void save({ editorToolbarHidden: [...set] });
-                  }}
-                  className="accent-[var(--accent)]"
-                />
-                {it.label}
-              </label>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Editor features</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Optional block behaviors in the markdown editor. Take effect on the
-          next page load.
-        </p>
-        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={settings.collapsibleHeadingsEnabled}
-            onChange={(e) => void save({ collapsibleHeadingsEnabled: e.target.checked })}
-            className="accent-[var(--accent)] mt-0.5"
-          />
-          <span>
-            Collapsible headings
-            <span className="block text-xs text-neutral-500">
-              A fold arrow on each heading hides or shows the section beneath it.
-              View only, nothing changes in the saved note.
-            </span>
-          </span>
-        </label>
-        <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={settings.toggleBlocksEnabled}
-            onChange={(e) => void save({ toggleBlocksEnabled: e.target.checked })}
-            className="accent-[var(--accent)] mt-0.5"
-          />
-          <span>
-            Toggle blocks
-            <span className="block text-xs text-neutral-500">
-              Insert a collapsible block (a summary line that expands to reveal
-              content) from the toolbar or the{" "}
-              <code className="rounded bg-neutral-800 px-1 py-0.5 font-mono text-[11px] text-neutral-400">
-                /toggle
-              </code>{" "}
-              slash command. Existing toggles still show when this is off.
-            </span>
-          </span>
-        </label>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Highlight color</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          The accent used for primary buttons and highlights.
-        </p>
-        <div className="mt-2 flex max-w-md flex-wrap gap-2">
-          {HIGHLIGHT_COLORS.map((c) => {
-            const selected = !settings.highlightGradient && settings.highlightColor === c.value;
-            return (
-              <button
-                key={c.value}
-                onClick={() => {
-                  applyAccent(c.value, null);
-                  void save({ highlightColor: c.value, highlightGradient: null });
-                }}
-                aria-label={c.name}
-                aria-pressed={selected}
-                title={c.name}
-                className={`h-7 w-7 rounded-full border-2 ${selected ? "border-neutral-100" : "border-transparent"}`}
-                style={{ background: c.value }}
-              />
-            );
-          })}
-        </div>
-
-        <p className="mt-3 text-xs font-medium uppercase tracking-wide text-neutral-600">
-          Gradients
-        </p>
-        <p className="mt-0.5 text-xs text-neutral-500">
-          Applied to accent fills (checkboxes, count badges); text and borders use
-          a matching solid tone.
-        </p>
-        <div className="mt-2 flex max-w-md flex-wrap gap-2">
-          {HIGHLIGHT_GRADIENTS.map((g) => {
-            const selected = settings.highlightGradient === g.value;
-            return (
-              <button
-                key={g.value}
-                onClick={() => {
-                  applyAccent(g.accent, g.value);
-                  void save({ highlightColor: g.accent, highlightGradient: g.value });
-                }}
-                aria-label={g.name}
-                aria-pressed={selected}
-                title={g.name}
-                className={`h-7 w-7 rounded-full border-2 ${selected ? "border-neutral-100" : "border-transparent"}`}
-                style={{ background: g.value }}
-              />
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Trash retention</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">Days a trashed item is kept before it is purged.</p>
-        <input
-          type="number"
-          min={1}
-          max={365}
-          value={settings.trashRetentionDays}
-          onChange={(e) => void save({ trashRetentionDays: Number(e.target.value) || 30 })}
-          className="mt-2 w-24 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
-        />
-      </section>
-
-      {/* Notification center paused (ADR-130): the per-source toggles show only
-          while the notification-center module is on (Build → Modules). */}
-      {notificationsOn && (
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Notifications</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Which events show up in your notification center (and send a push when
-          enabled). Turning one off silences both the entry and the push.
-        </p>
-        <div className="mt-2 flex flex-col gap-2">
-          {NOTIFICATION_KINDS.map(({ kind, label, help }) => {
-            const on = notificationEnabled(settings.notificationPrefs, kind);
-            return (
-              <label key={kind} className="flex items-start gap-2 text-sm text-neutral-300">
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={(e) =>
-                    void save({
-                      notificationPrefs: {
-                        ...settings.notificationPrefs,
-                        [kind]: e.target.checked,
-                      },
-                    })
-                  }
-                  className="ledgr-check mt-0.5"
-                />
-                <span>
-                  {label}
-                  <span className="block text-xs text-neutral-500">{help}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </section>
-      )}
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">AI features</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          AI Memory, live editing context, the in-app agent and YouTube
-          transcripts are turned on and off at{" "}
-          <a href="/build/modules" className="text-[var(--accent)] hover:underline">
-            Build → Modules
+            {g.title}
           </a>
-          . Their options stay here.
-        </p>
-        {liveContextOn && (
-          <div className="mt-2">
-            <p className="text-sm text-neutral-300">Note Editing Partner prompt</p>
-            <NoteEditingPromptActions />
-          </div>
-        )}
-      </section>
+        ))}
+      </nav>
 
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Text size</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Font size for the reading and editing canvas.
-        </p>
-        <div className="mt-2 flex gap-1">
-          {TEXT_SIZES.map((size) => {
-            const labels: Record<TextSize, string> = { sm: "S", base: "M", lg: "L", xl: "XL" };
-            return (
-              <button
-                key={size}
-                onClick={() => {
-                  applyTextSize(size);
-                  void save({ textSize: size });
-                }}
-                className={segBtn(settings.textSize === size)}
-              >
-                {labels[size]}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Section style</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          How much weight each panel on an item view carries (People, Open tasks,
-          Properties, Linked here). Heavy is bordered cards; Light is a divider
-          rule; Unified is flat with minimal chrome.
-        </p>
-        <div className="mt-2 flex gap-1">
-          {SECTION_STYLES.map((style) => (
-            <button
-              key={style}
-              onClick={() => {
-                applySectionStyle(style);
-                void save({ sectionStyle: style });
-              }}
-              className={segBtn(settings.sectionStyle === style)}
+      <div className="flex min-w-0 flex-col gap-10">
+        <Group id="account" title="Account">
+          <Card>
+            <Row
+              label="Display name"
+              help="Shown wherever your name appears in the app. Leave blank to use your email name."
             >
-              {SECTION_STYLE_LABELS[style]}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Theme</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          The app&apos;s overall look. Applies everywhere you&apos;re signed in, and
-          new share links open in this theme by default.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-1">
-          {THEMES.map((t) => (
-            <button
-              key={t}
-              onClick={() => void save({ theme: t }, true)}
-              className={segBtn(settings.theme === t)}
-            >
-              {THEME_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Display density</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          How much space the whole interface uses. Menus, buttons, titles, and
-          spacing all scale together, so everything stays easy to read and tap.
-          Set desktop and mobile separately.
-        </p>
-        <div className="mt-3 flex flex-col gap-3">
-          <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-600">
-              Desktop
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {UI_DENSITIES.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => void save({ uiDensity: d }, true)}
-                  className={segBtn(settings.uiDensity === d)}
-                >
-                  {UI_DENSITY_LABELS[d]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-600">
-              Mobile
-            </p>
-            <div className="flex flex-wrap gap-1">
-              <button
-                onClick={() => void save({ mobileUiDensity: null }, true)}
-                className={segBtn(settings.mobileUiDensity === null)}
-              >
-                Same as desktop
-              </button>
-              {UI_DENSITIES.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => void save({ mobileUiDensity: d }, true)}
-                  className={segBtn(settings.mobileUiDensity === d)}
-                >
-                  {UI_DENSITY_LABELS[d]}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Navigation position</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">Where the nav bar sits.</p>
-        <div className="mt-2 grid w-48 grid-cols-2 gap-1">
-          {NAV_POSITIONS.map((p) => (
-            <button
-              key={p}
-              onClick={() => void save({ navPosition: p }, true)}
-              className={segBtn(settings.navPosition === p)}
-            >
-              {POSITION_LABELS[p]}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Where an item opens when you click it from a list. Sits right after the
-          nav position because the two interact: a docked rail owns its edge, so a
-          left rail plus a left panel falls back to the free edge (or the popup). */}
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Opening an item</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Where an item opens when you click it from a list. Automatic docks a
-          panel on wide screens and uses the popup otherwise. A phone always uses
-          the bottom sheet.
-        </p>
-        <div className="mt-2 grid w-48 grid-cols-2 gap-1">
-          {ITEM_OPEN_MODES.map((m) => (
-            <button
-              key={m}
-              onClick={() => void save({ itemOpenMode: m }, true)}
-              className={segBtn(settings.itemOpenMode === m)}
-            >
-              {ITEM_OPEN_LABELS[m]}
-            </button>
-          ))}
-        </div>
-        {/* Name the collision rather than letting it look like the setting was
-            ignored — the exact "invisible behavior" trap ADR-179 came from. */}
-        {(settings.itemOpenMode === "left" || settings.itemOpenMode === "right") &&
-          settings.navPosition === settings.itemOpenMode && (
-            <p className="mt-1.5 text-xs text-amber-400/80">
-              Your nav rail is docked {settings.itemOpenMode}, so the panel opens on
-              the opposite edge instead.
-            </p>
-          )}
-      </section>
-
-      {/* Spacing mirrors the More menu: how the slots pack into the bar/rail.
-          The bottom bar is always compact, so it offers no spacing choice. */}
-      {settings.navPosition !== "bottom" && (
-        <section>
-          <h2 className="text-sm font-semibold text-neutral-200">Spacing</h2>
-          <p className="mt-0.5 text-sm text-neutral-500">
-            Spread the slots across the bar, or group them and anchor the cluster.
-          </p>
-          <div className="mt-2 grid w-48 grid-cols-1 gap-1">
-            <button onClick={() => setSpacing("spread")} className={segBtn(spacingActive("spread"))}>
-              Spread
-            </button>
-            <button
-              onClick={() => setSpacing("compact", "top")}
-              className={segBtn(spacingActive("compact", "top"))}
-            >
-              {isRail ? "Compact (top)" : "Compact (left)"}
-            </button>
-            <button
-              onClick={() => setSpacing("compact", "center")}
-              className={segBtn(spacingActive("compact", "center"))}
-            >
-              Compact (center)
-            </button>
-            <button
-              onClick={() => setSpacing("compact", "bottom")}
-              className={segBtn(spacingActive("compact", "bottom"))}
-            >
-              {isRail ? "Compact (bottom)" : "Compact (right)"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* The owner's personal search dictionary (ADR-172). Fuzzy search already
-          expands a word through WordNet, which knows English but not Edgewood —
-          it will not connect "teaching" to "preaching", or know that "message"
-          means a sermon here. This is the fix, and it's meant to stay small:
-          add a line only when a search actually misses. */}
-      <section>
-        <h2 className="text-sm font-semibold text-neutral-200">Search dictionary</h2>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Extra words fuzzy search should treat as matches for each other. General
-          English synonyms are already built in, so this is for your own
-          vocabulary. Add one when a search misses something you knew was there.
-        </p>
-        <div className="mt-2 flex flex-col gap-1.5">
-          {dictRows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
               <input
                 type="text"
                 maxLength={60}
-                placeholder="teaching"
-                aria-label="Word"
-                value={row.word}
-                onChange={(e) => setDictRow(i, { word: e.target.value })}
-                onBlur={saveDict}
-                className="w-32 shrink-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+                placeholder="Your name"
+                aria-label="Display name"
+                value={settings.displayName}
+                onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
+                onBlur={() => void save({ displayName: settings.displayName })}
+                className={`${INPUT} w-48`}
               />
-              <span className="shrink-0 text-xs text-neutral-600">also matches</span>
-              <input
-                type="text"
-                placeholder="preaching, message, lesson"
-                aria-label="Synonyms, comma separated"
-                value={row.synonyms}
-                onChange={(e) => setDictRow(i, { synonyms: e.target.value })}
-                onBlur={saveDict}
-                className="min-w-0 flex-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 outline-none focus:border-neutral-600"
-              />
+            </Row>
+            <Row
+              label="Timezone"
+              help="Sets what “today” means and the clock times shown throughout the app (meetings, due dates, timestamps). Traveling doesn’t change it, so your times stay put wherever you are."
+            >
+              <select
+                value={settings.timezone ?? ""}
+                aria-label="Timezone"
+                onChange={(e) => setTimezone(e.target.value || null)}
+                className={`${INPUT} w-56`}
+              >
+                <option value="">Automatic ({serverDefaultTz})</option>
+                {zoneOptions.map((z) => (
+                  <option key={z} value={z}>
+                    {z.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
-                aria-label="Remove this entry"
                 onClick={() => {
-                  const next = dictRows.filter((_, j) => j !== i);
-                  setDictRows(next);
-                  commitDict(next);
+                  try {
+                    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (detected) setTimezone(detected);
+                  } catch {
+                    /* leave the current value */
+                  }
                 }}
-                className="rounded px-1.5 text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300"
+                className={BTN}
               >
-                ×
+                Use this device&apos;s timezone
               </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setDictRows((prev) => [...prev, { word: "", synonyms: "" }])}
-            className="w-fit rounded border border-dashed border-neutral-800 px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-          >
-            + add a word
-          </button>
-        </div>
-      </section>
+            </Row>
+          </Card>
+          {signin}
+        </Group>
 
-      {/* Floating, not inline: the form is long and controls live throughout it,
-          so an inline confirmation at the bottom is invisible when you change a
-          mid-form control (e.g. Section style). A fixed pill is seen from any
-          scroll position. */}
-      {saved && (
-        <p className="fixed bottom-4 right-4 z-50 rounded-md bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 shadow-lg ring-1 ring-neutral-700">
-          Saved
+        <Group id="appearance" title="Appearance">
+          <Card>
+            <Row
+              label="Theme"
+              help="The app’s overall look. Applies everywhere you’re signed in, and new share links open in this theme by default."
+            >
+              <Seg
+                options={THEMES}
+                value={settings.theme}
+                label={(t) => THEME_LABELS[t]}
+                onChange={(t) => void save({ theme: t }, true)}
+              />
+            </Row>
+            <Row
+              label="Highlight color"
+              help="The accent used for primary buttons and highlights. Gradients fill checkboxes and count badges; text and borders use a matching solid tone."
+              stack
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {HIGHLIGHT_COLORS.map((c) => {
+                  const selected = !settings.highlightGradient && settings.highlightColor === c.value;
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => {
+                        applyAccent(c.value, null);
+                        void save({ highlightColor: c.value, highlightGradient: null });
+                      }}
+                      aria-label={c.name}
+                      aria-pressed={selected}
+                      title={c.name}
+                      className={`h-7 w-7 rounded-full border-2 ${selected ? "border-ink" : "border-transparent"}`}
+                      style={{ background: c.value }}
+                    />
+                  );
+                })}
+                <span aria-hidden className="mx-1 h-5 w-px bg-line-strong" />
+                {HIGHLIGHT_GRADIENTS.map((g) => {
+                  const selected = settings.highlightGradient === g.value;
+                  return (
+                    <button
+                      key={g.value}
+                      type="button"
+                      onClick={() => {
+                        applyAccent(g.accent, g.value);
+                        void save({ highlightColor: g.accent, highlightGradient: g.value });
+                      }}
+                      aria-label={`${g.name} gradient`}
+                      aria-pressed={selected}
+                      title={`${g.name} gradient`}
+                      className={`h-7 w-7 rounded-full border-2 ${selected ? "border-ink" : "border-transparent"}`}
+                      style={{ background: g.value }}
+                    />
+                  );
+                })}
+              </div>
+            </Row>
+            <Row label="Text size" help="Font size for the reading and editing canvas.">
+              <Seg
+                options={TEXT_SIZES}
+                value={settings.textSize}
+                label={(s) => TEXT_SIZE_LABELS[s]}
+                onChange={(s) => {
+                  applyTextSize(s);
+                  void save({ textSize: s });
+                }}
+              />
+            </Row>
+            <Row
+              label="Display density"
+              help="How much space the whole interface uses. Menus, buttons, titles, and spacing all scale together. Set desktop and mobile separately."
+              stack
+            >
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-14 ui-meta">Desktop</span>
+                  <Seg
+                    options={UI_DENSITIES}
+                    value={settings.uiDensity}
+                    label={(d) => UI_DENSITY_LABELS[d]}
+                    onChange={(d) => void save({ uiDensity: d }, true)}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-14 ui-meta">Mobile</span>
+                  <Seg
+                    options={["same", ...UI_DENSITIES] as const}
+                    value={settings.mobileUiDensity ?? "same"}
+                    label={(d) => (d === "same" ? "Same as desktop" : UI_DENSITY_LABELS[d])}
+                    onChange={(d) => void save({ mobileUiDensity: d === "same" ? null : d }, true)}
+                  />
+                </div>
+              </div>
+            </Row>
+            <Row
+              label="Section style"
+              help="How much weight each panel on an item view carries (People, Open tasks, Properties, Linked here). Heavy is bordered cards; Light is a divider rule; Unified is flat."
+            >
+              <Seg
+                options={SECTION_STYLES}
+                value={settings.sectionStyle}
+                label={(s) => SECTION_STYLE_LABELS[s]}
+                onChange={(s) => {
+                  applySectionStyle(s);
+                  void save({ sectionStyle: s });
+                }}
+              />
+            </Row>
+          </Card>
+        </Group>
+
+        <Group id="layout" title="Layout">
+          <Card>
+            <Row label="Navigation position" help="Where the nav bar sits.">
+              <Seg
+                options={NAV_POSITIONS}
+                value={settings.navPosition}
+                label={(p) => POSITION_LABELS[p]}
+                onChange={(p) => void save({ navPosition: p }, true)}
+              />
+            </Row>
+            {/* The bottom bar is always compact, so it offers no spacing choice. */}
+            {settings.navPosition !== "bottom" && (
+              <Row
+                label="Spacing"
+                help="Spread the slots across the bar, or group them and anchor the cluster."
+              >
+                <Seg
+                  options={SPACING_OPTIONS}
+                  value={spacingValue}
+                  label={spacingLabel}
+                  onChange={(v) => (v === "spread" ? setSpacing("spread") : setSpacing("compact", v))}
+                />
+              </Row>
+            )}
+            {/* Sits after nav position because the two interact: a docked rail
+                owns its edge, so a left rail plus a left panel falls back to the
+                free edge. The note names the collision (ADR-179). */}
+            <Row
+              label="Opening an item"
+              help={
+                <>
+                  Where an item opens when you click it from a list. Automatic docks a panel on
+                  wide screens and uses the popup otherwise. A phone always uses the bottom sheet.
+                  {(settings.itemOpenMode === "left" || settings.itemOpenMode === "right") &&
+                    settings.navPosition === settings.itemOpenMode && (
+                      <span className="mt-1 block text-amber-400/80">
+                        Your nav rail is docked {settings.itemOpenMode}, so the panel opens on the
+                        opposite edge instead.
+                      </span>
+                    )}
+                </>
+              }
+            >
+              <Seg
+                options={ITEM_OPEN_MODES}
+                value={settings.itemOpenMode}
+                label={(m) => ITEM_OPEN_LABELS[m]}
+                onChange={(m) => void save({ itemOpenMode: m }, true)}
+              />
+            </Row>
+          </Card>
+        </Group>
+
+        <Group id="editing" title="Editing">
+          <Card>
+            <Row label="Quick Add" help="Which actions show on the quick-capture card for tasks." stack>
+              <ShownChecks
+                items={QUICK_ADD_ITEMS}
+                hidden={settings.quickAddHidden}
+                onChange={(h) => void save({ quickAddHidden: h })}
+              />
+            </Row>
+            <Row
+              label="Editor toolbar"
+              help="Which buttons show in the markdown editor toolbar on every canvas. Takes effect on the next page load."
+              stack
+            >
+              <ShownChecks
+                items={TOOLBAR_ITEMS}
+                hidden={settings.editorToolbarHidden}
+                onChange={(h) => void save({ editorToolbarHidden: h })}
+              />
+            </Row>
+            <Row
+              label="Collapsible headings"
+              help="A fold arrow on each heading hides or shows the section beneath it. View only, nothing changes in the saved note. Takes effect on the next page load."
+            >
+              <input
+                type="checkbox"
+                aria-label="Collapsible headings"
+                checked={settings.collapsibleHeadingsEnabled}
+                onChange={(e) => void save({ collapsibleHeadingsEnabled: e.target.checked })}
+                className="ledgr-check"
+              />
+            </Row>
+            <Row
+              label="Toggle blocks"
+              help={
+                <>
+                  Insert a collapsible block (a summary line that expands to reveal content) from
+                  the toolbar or the{" "}
+                  <code className="rounded bg-surface-3 px-1 py-0.5 font-mono text-[11px] text-ink-muted">
+                    /toggle
+                  </code>{" "}
+                  slash command. Existing toggles still show when this is off. Takes effect on the
+                  next page load.
+                </>
+              }
+            >
+              <input
+                type="checkbox"
+                aria-label="Toggle blocks"
+                checked={settings.toggleBlocksEnabled}
+                onChange={(e) => void save({ toggleBlocksEnabled: e.target.checked })}
+                className="ledgr-check"
+              />
+            </Row>
+          </Card>
+        </Group>
+
+        {/* The owner's personal search dictionary (ADR-172). Fuzzy search already
+            expands a word through WordNet, which knows English but not Edgewood —
+            it will not connect "teaching" to "preaching", or know that "message"
+            means a sermon here. This is the fix, and it's meant to stay small:
+            add a line only when a search actually misses. */}
+        <Group id="search" title="Search">
+          <Card>
+            <Row
+              label="Search dictionary"
+              help="Extra words fuzzy search should treat as matches for each other. General English synonyms are already built in, so this is for your own vocabulary. Add one when a search misses something you knew was there."
+              stack
+            >
+              <div className="flex w-full flex-col gap-1.5">
+                {dictRows.map((row, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={60}
+                      placeholder="teaching"
+                      aria-label="Word"
+                      value={row.word}
+                      onChange={(e) => setDictRow(i, { word: e.target.value })}
+                      onBlur={saveDict}
+                      className={`${INPUT} w-32 shrink-0`}
+                    />
+                    <span className="shrink-0 text-xs text-ink-faint">also matches</span>
+                    <input
+                      type="text"
+                      placeholder="preaching, message, lesson"
+                      aria-label="Synonyms, comma separated"
+                      value={row.synonyms}
+                      onChange={(e) => setDictRow(i, { synonyms: e.target.value })}
+                      onBlur={saveDict}
+                      className={`${INPUT} min-w-0 flex-1`}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remove this entry"
+                      onClick={() => {
+                        const next = dictRows.filter((_, j) => j !== i);
+                        setDictRows(next);
+                        commitDict(next);
+                      }}
+                      className="rounded px-1.5 text-ink-faint hover:bg-surface-2 hover:text-ink-muted"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setDictRows((prev) => [...prev, { word: "", synonyms: "" }])}
+                  className="w-fit rounded border border-dashed border-line-strong px-2 py-1 text-xs text-ink-subtle hover:bg-surface-2 hover:text-ink-muted"
+                >
+                  + Add a word
+                </button>
+              </div>
+            </Row>
+          </Card>
+        </Group>
+
+        {/* Notification center paused (ADR-130): the per-source toggles show only
+            while the notification-center module is on (Build → Modules). */}
+        {notificationsOn && (
+          <Group id="notifications" title="Notifications">
+            <Card>
+              {NOTIFICATION_KINDS.map(({ kind, label, help }) => (
+                <Row key={kind} label={label} help={help}>
+                  <input
+                    type="checkbox"
+                    aria-label={label}
+                    checked={notificationEnabled(settings.notificationPrefs, kind)}
+                    onChange={(e) =>
+                      void save({
+                        notificationPrefs: {
+                          ...settings.notificationPrefs,
+                          [kind]: e.target.checked,
+                        },
+                      })
+                    }
+                    className="ledgr-check"
+                  />
+                </Row>
+              ))}
+            </Card>
+          </Group>
+        )}
+
+        <Group id="ai" title="AI">
+          <Card>
+            <Row
+              label="AI features"
+              help="AI Memory, live editing context, the in-app agent and YouTube transcripts are turned on and off in Build → Modules. Their options stay here."
+            >
+              <a href="/build/modules" className={BTN}>
+                Open Modules
+              </a>
+            </Row>
+            {liveContextOn && (
+              <Row
+                label="Note Editing Partner prompt"
+                help="The instructions Claude follows while you edit a note."
+              >
+                <NoteEditingPromptActions />
+              </Row>
+            )}
+          </Card>
+          {agent}
+        </Group>
+
+        <Group id="connections" title="Connections & data">
+          <Card>
+            <Row label="Trash retention" help="Days a trashed item is kept before it is purged.">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                aria-label="Trash retention in days"
+                value={trashDays}
+                onChange={(e) => setTrashDays(e.target.value)}
+                onBlur={commitTrashDays}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                className={`${INPUT} w-20`}
+              />
+              <span className="ui-meta">days</span>
+            </Row>
+          </Card>
+          {icsFeed}
+          {apiCredentials}
+        </Group>
+      </div>
+
+      {/* Floating, not inline: the form is long, so an inline confirmation is
+          invisible when you change a control mid-page. */}
+      {status && (
+        <p
+          role="status"
+          className={`fixed bottom-4 right-4 z-50 rounded-md bg-surface-3 px-3 py-1.5 text-xs shadow-lg ring-1 ${
+            status === "saved" ? "text-ink ring-line-strong" : "text-red-300 ring-red-800"
+          }`}
+        >
+          {status === "saved" ? "Saved" : "Couldn’t save that change. Check your connection and try again."}
         </p>
       )}
     </div>
