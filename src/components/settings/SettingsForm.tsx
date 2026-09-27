@@ -206,15 +206,6 @@ function ShownChecks({
   );
 }
 
-const QUICK_ADD_ITEMS = [
-  { id: "deadline", label: "Deadline (due date)" },
-  { id: "priority", label: "Priority" },
-  { id: "tags", label: "Tag" },
-  { id: "person", label: "Person" },
-  { id: "group", label: "Group" },
-  { id: "assignee", label: "Assignee" },
-] as const;
-
 export default function SettingsForm({
   initial,
   serverDefaultTz,
@@ -644,12 +635,15 @@ export default function SettingsForm({
 
         <Group id="editing" title="Editing">
           <Card>
-            <Row label="Quick Add" help="Which actions show on the quick-capture card for tasks." stack>
-              <ShownChecks
-                items={QUICK_ADD_ITEMS}
-                hidden={settings.quickAddHidden}
-                onChange={(h) => void save({ quickAddHidden: h })}
-              />
+            {/* Quick Add chips live with each type on Build → Types (ADR-268),
+                task's built-in chips included; this row only points there. */}
+            <Row
+              label="Quick-add card"
+              help="Which chips show on the quick-add card is set per type, on each type's row in Build → Types."
+            >
+              <a href="/build/types" className={BTN}>
+                Open Types
+              </a>
             </Row>
             <Row
               label="Editor toolbar"

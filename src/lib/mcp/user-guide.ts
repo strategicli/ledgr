@@ -138,7 +138,8 @@ Press **q** or **+ New**. A capture card opens with a type picker.
   statuses can tick **Status** there too, so the card offers its status
   dropdown (or a Done box). On the
   Task row the built-in chips (Deadline, Priority, Tag, Person, Group) are
-  there too. A task's unticked fields wait in the card's ⋯ menu.
+  there too. A task's unticked fields wait in the card's ⋯ menu. Claude can set
+  all of these for you (ask it to change a type's quick-add chips).
 - **Type \`@\` to link something** while capturing. \`@/person bob\` narrows the
   picker to one type. Picking an item adds a removable "Linked" chip.
 - **Offline captures queue up** and send themselves when you reconnect. A pill
@@ -1538,7 +1539,7 @@ palette jumps straight to a named setting.
 | Account | Display name, timezone, sign-in (password and recovery codes) |
 | Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style |
 | Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
-| Editing | Which actions appear on the task capture card; which toolbar buttons show; collapsible headings; toggle blocks |
+| Editing | Which toolbar buttons show; collapsible headings; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
 | Search | Your own synonym dictionary |
 | Notifications | Which events notify you (only while the notification center is on) |
 | AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |

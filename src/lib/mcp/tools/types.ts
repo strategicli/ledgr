@@ -24,6 +24,7 @@ import {
   updateType,
 } from "@/lib/types";
 import { surfacesForType } from "@/lib/modules";
+import { getSettings, TASK_BUILTIN_CHIPS, updateSettings } from "@/lib/settings";
 import { optEnum, reqString } from "./args";
 import { exportsForTypeView } from "./export";
 import { typeView } from "./serializers";
@@ -81,7 +82,10 @@ export const typeTools: McpTool[] = [
     annotations: { readOnlyHint: true, openWorldHint: false },
     handler: async (ownerId, args) => {
       // ownerId drops the types of a module the owner switched off (ADR-272).
-      const defs = await listTypes({ includeHidden: args.includeHidden === true, ownerId });
+      const [defs, settings] = await Promise.all([
+        listTypes({ includeHidden: args.includeHidden === true, ownerId }),
+        getSettings(ownerId),
+      ]);
       return {
         types: defs.map((t) => ({
           key: t.key,
@@ -97,6 +101,15 @@ export const typeTools: McpTool[] = [
           showInQuickCapture: t.showInQuickCapture,
           // The quick-add card shows a Status chip for this type (ADR-268).
           quickCaptureStatus: t.quickCaptureStatus,
+          // The task card's built-in chips that are showing (settings.quickAddHidden,
+          // inverted), so update_type's quickCaptureTaskChips can round-trip.
+          ...(t.key === "task"
+            ? {
+                quickCaptureTaskChips: TASK_BUILTIN_CHIPS.map((c) => c.id).filter(
+                  (id) => !settings.quickAddHidden.includes(id)
+                ),
+              }
+            : {}),
           // The attached bespoke tool, and the surfaces it brings (ADR-260).
           // describe_workspace already reported `capability`; list_types — the
           // read every model is told to call FIRST — did not, so a song and a
@@ -238,6 +251,17 @@ export const typeTools: McpTool[] = [
             "off. Same switch as the 'Chips on the card' checkboxes on Build → " +
             "Types. Omit to leave chips as they are. Unknown keys are ignored.",
         },
+        quickCaptureTaskChips: {
+          type: "array",
+          items: { type: "string", enum: TASK_BUILTIN_CHIPS.map((c) => c.id) },
+          description:
+            "task only. The FULL list of the task quick-add card's BUILT-IN chips " +
+            "to show: " +
+            TASK_BUILTIN_CHIPS.map((c) => `${c.id} (${c.label})`).join(", ") +
+            ". Every built-in chip not listed is hidden; pass [] to hide them all. " +
+            "Same switches as the built-in rows under 'Chips on the card' on the " +
+            "task row of Build → Types. list_types reports the current list.",
+        },
         capability: { type: "string", description: "Bespoke-tool capability id, or omit/empty for the default canvas." },
         hidden: {
           type: "boolean",
@@ -251,8 +275,19 @@ export const typeTools: McpTool[] = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    handler: async (_ownerId, args) => {
+    handler: async (ownerId, args) => {
       const key = reqString(args, "key").toLowerCase();
+      // Validate before any write so a bad call changes nothing.
+      const taskChips = args.quickCaptureTaskChips;
+      const builtinIds: string[] = TASK_BUILTIN_CHIPS.map((c) => c.id);
+      if (taskChips !== undefined) {
+        if (key !== "task") {
+          throw new ItemError("bad_request", "quickCaptureTaskChips applies only to the task type");
+        }
+        if (!Array.isArray(taskChips) || taskChips.some((c) => !builtinIds.includes(c as string))) {
+          throw new ItemError("bad_request", `quickCaptureTaskChips must be a list drawn from: ${builtinIds.join(", ")}`);
+        }
+      }
       // PATCH, not replace. parseTypeInput's "patch" mode is shaped for the Build
       // form, which always posts every field, so an omitted key reads as "clear
       // it" — over MCP that silently destroyed the owner's icon on any edit that
@@ -290,6 +325,15 @@ export const typeTools: McpTool[] = [
           args.quickCaptureProperties.filter((k): k is string => typeof k === "string")
         );
         updated = await getType(key);
+      }
+      if (Array.isArray(taskChips)) {
+        // Rewrite only the built-in ids; any other hidden id (the unshipped
+        // assignee placeholder) keeps its state.
+        const { quickAddHidden } = await getSettings(ownerId);
+        const keep = quickAddHidden.filter((id) => !builtinIds.includes(id));
+        const hide = builtinIds.filter((id) => !(taskChips as string[]).includes(id));
+        await updateSettings(ownerId, { quickAddHidden: [...keep, ...hide] });
+        return { ...typeView(updated), quickCaptureTaskChips: taskChips };
       }
       return typeView(updated);
     },
