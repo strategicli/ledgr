@@ -950,8 +950,8 @@ resizable, tabbed panels holding items, saved views and dashboards. Every panel
 is a live editor, so clicking between them is seamless. Save named workspaces;
 the arrangement survives closing the app.
 
-Send things there from any row menu or mention chip with "Open in Desk" or "Open
-beside".
+Send things there from any row menu or mention chip with "Send to Desk" or "Open
+beside", or from an open item's own ⋯ menu with "Send to Desk".
 
 Each panel's ⋯ menu shows the active item's Created and Updated dates and its
 word count at the top, and ends with **Open outside Desk**, which opens that

@@ -20,6 +20,7 @@ import ActionGlyph from "./action-icons";
 import WordCount from "./WordCount";
 import MoveUnderMenu from "@/components/items/MoveUnderMenu";
 import { showToast } from "@/components/ui/ActionToast";
+import { DeskSendItems } from "@/modules/desk/components/DeskSendMenu";
 import { announceFloatingOpen, onOtherFloatingOpen } from "@/lib/floating";
 
 const rowClass =
@@ -328,6 +329,14 @@ export default function ItemActionsMenu({
             <ActionGlyph icon="markdown" />
             View full markdown
           </a>
+          {/* Send to Desk (ADR-146): the Desk module's own control. Renders
+              nothing while the module is off, on touch, or on a narrow screen. */}
+          <DeskSendItems
+            itemId={itemId}
+            beside={false}
+            className={rowClass}
+            onDone={() => setOpen(false)}
+          />
           {listen && (
             <button
               type="button"
