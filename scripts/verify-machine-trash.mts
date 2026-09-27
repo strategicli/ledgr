@@ -29,6 +29,7 @@ const { createCredential, revokeCredential } = await import("../src/lib/auth/cre
 const { resolveMachineOwner } = await import("../src/lib/machine/owner");
 const { createItem } = await import("../src/lib/item-mutations");
 const { trashTools } = await import("../src/lib/mcp/tools/trash");
+const { itemTools } = await import("../src/lib/mcp/tools/items");
 const listRoute = await import("../src/app/api/machine/items/route");
 const itemRoute = await import("../src/app/api/machine/items/[id]/route");
 const restoreRoute = await import("../src/app/api/machine/items/[id]/restore/route");
@@ -127,6 +128,27 @@ try {
   check("restore_item brings both back (m2 with its child)", res.restored === 2 && ((res.results as { count: number }[])[1].count === 2), JSON.stringify(res));
   check("the child is live again", (await deletedAt(m2kid)) === null);
   check("delete_item is marked destructive, restore_item is not", tool("delete_item").annotations?.destructiveHint === true && tool("restore_item").annotations?.destructiveHint === false);
+
+  // --- MCP search_items / list_items can see Trash --------------------------------
+  const it = (name: string) => itemTools.find((t) => t.name === name)!;
+  type Hits = { count: number; items: { id: string; inTrash?: boolean; deletedAt?: unknown }[] };
+  const live = await mk("searchable live"), gone = await mk("searchable gone");
+  await tool("delete_item").handler(ownerId, { id: gone });
+  const ids = (r: Hits) => r.items.map((x) => x.id);
+  const sDefault = (await it("search_items").handler(ownerId, { query: STAMP, limit: 50 })) as Hits;
+  check("search_items skips Trash by default", ids(sDefault).includes(live) && !ids(sDefault).includes(gone), JSON.stringify(ids(sDefault)));
+  check("…and a live hit carries no inTrash/deletedAt keys", sDefault.items.every((x) => !("inTrash" in x) && !("deletedAt" in x)));
+  const sOnly = (await it("search_items").handler(ownerId, { query: STAMP, trash: "only" })) as Hits;
+  check("search_items trash: only finds just the trashed one", ids(sOnly).includes(gone) && !ids(sOnly).includes(live), JSON.stringify(ids(sOnly)));
+  check("…marked inTrash with its deletedAt", sOnly.items.every((x) => x.inTrash === true && x.deletedAt != null));
+  const sBoth = (await it("search_items").handler(ownerId, { query: STAMP, trash: "include" })) as Hits;
+  const hit = (id: string) => sBoth.items.find((x) => x.id === id);
+  check("search_items trash: include returns both, telling them apart", hit(live) !== undefined && hit(live)!.inTrash === undefined && hit(gone)?.inTrash === true);
+  const lTrash = (await it("list_items").handler(ownerId, { type: "note", trash: true, limit: 200 })) as Hits;
+  check("list_items trash: true lists the trashed note, not the live one", ids(lTrash).includes(gone) && !ids(lTrash).includes(live) && lTrash.items.every((x) => x.inTrash === true));
+  let refused = "";
+  try { await it("list_items").handler(ownerId, { trash: true, status: "open" }); } catch (e) { refused = (e as Error).message; }
+  check("list_items trash: true refuses view-only filters by name", /status/.test(refused), refused);
 } finally {
   if (created.length > 0) await db.delete(items).where(inArray(items.id, created));
   await revokeCredential(ownerId, made.credential.id);
