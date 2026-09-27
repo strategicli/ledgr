@@ -52,6 +52,7 @@ export default function AgentInput({
   placeholder = "Ask Claude…",
   autoFocus = false,
   initialText = "",
+  draftKey,
 }: {
   onSubmit: (s: Submit) => void;
   onBuiltin?: (name: string, rest: string) => void;
@@ -63,8 +64,27 @@ export default function AgentInput({
   placeholder?: string;
   autoFocus?: boolean;
   initialText?: string;
+  // Keeps unsent text in localStorage under this key, so a refresh or a closed
+  // panel doesn't lose it. Cleared when the message is sent.
+  draftKey?: string;
 }) {
-  const [text, setText] = useState(initialText);
+  const [text, setText] = useState(() => {
+    if (initialText || !draftKey || typeof window === "undefined") return initialText;
+    try {
+      return localStorage.getItem(draftKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      if (text) localStorage.setItem(draftKey, text);
+      else localStorage.removeItem(draftKey);
+    } catch {
+      // Storage off: the box still works, it just won't survive a refresh.
+    }
+  }, [text, draftKey]);
   const [prompt, setPrompt] = useState<PromptOption | null>(null);
   const [mentions, setMentions] = useState<Mention[]>([]);
   // The "@" already turned into a mention, so typing after its name doesn't

@@ -7,8 +7,9 @@
 // removing the track deletes the old file so it doesn't linger in storage.
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ConfirmButton from "@/components/ui/ConfirmButton";
+import SpeedSelect, { readSpeed } from "@/components/ui/SpeedSelect";
 import { attachmentUrl } from "@/lib/attachment-url";
 
 type Props = {
@@ -29,6 +30,13 @@ export default function PreviewTrack({ itemId, trackId, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The shared playback speed (Safari's native player has no speed menu).
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [speed, setSpeed] = useState(1);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (a) a.defaultPlaybackRate = a.playbackRate = speed;
+  }, [speed, trackId]);
 
   async function upload(file: File) {
     setError(null);
@@ -84,7 +92,17 @@ export default function PreviewTrack({ itemId, trackId, onChange }: Props) {
       </span>
       {trackId ? (
         <>
-          <audio controls preload="metadata" src={attachmentUrl(trackId)} className="h-8 min-w-0 flex-1 basis-64" />
+          <audio
+            ref={audioRef}
+            controls
+            preload="metadata"
+            src={attachmentUrl(trackId)}
+            // Pick up the saved speed once the file loads (preload="metadata"
+            // makes that happen on mount); a new src resets the rate, too.
+            onLoadedMetadata={() => setSpeed(readSpeed())}
+            className="h-8 min-w-0 flex-1 basis-64"
+          />
+          <SpeedSelect value={speed} onChange={setSpeed} className="text-xs" />
           <button onClick={() => inputRef.current?.click()} disabled={busy} className={BUTTON}>
             {busy ? "Uploading…" : "Replace"}
           </button>

@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MarkdownPreview from "@/components/markdown-editor/MarkdownPreview";
 import { showToast } from "@/components/ui/ActionToast";
-import { RATE_STORAGE_KEY, VOICE_STORAGE_KEY, chunkText, pickableVoices } from "@/modules/listen/components/ListenBar";
+import { VOICE_STORAGE_KEY, chunkText, pickableVoices } from "@/modules/listen/components/ListenBar";
+import SpeedSelect, { readSpeed } from "@/components/ui/SpeedSelect";
 import AgentInput, { type Builtin, type Submit } from "./AgentInput";
 
 export type Block =
@@ -363,6 +364,7 @@ export default function ChatView({
           onStop={() => void stop()}
           onSubmit={(s) => void send(s)}
           autoFocus
+          draftKey={side ? undefined : `ledgr:agent-draft:${sessionId}`}
         />
         {data && (
           <p className="mt-1 text-right text-xs text-ink-faint">
@@ -414,12 +416,14 @@ function Message({ m, canRetry, onRetry, onSave }: { m: Msg; canRetry: boolean; 
   );
 }
 
-// Read a reply aloud with the browser's own voices, using the voice and rate
-// saved by the item Listen bar. One reply speaks at a time: starting another
+// Read a reply aloud with the browser's own voices, using the voice saved by
+// the item Listen bar and the shared playback speed. While a reply is reading,
+// a Speed menu sits beside Stop; a change takes effect from the next chunk. One reply speaks at a time: starting another
 // stops this one.
 let stopSpeaking: (() => void) | null = null;
 function ListenBtn({ text }: { text: string }) {
   const [on, setOn] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const mine = useRef<(() => void) | null>(null);
   // Leaving the chat stops its reading.
   useEffect(() => () => {
@@ -438,10 +442,9 @@ function ListenBtn({ text }: { text: string }) {
       .replace(/[*_#>`~|]/g, "");
     const chunks = chunkText(plain);
     let voiceURI = "";
-    let rate = 1;
+    setSpeed(readSpeed());
     try {
       voiceURI = localStorage.getItem(VOICE_STORAGE_KEY) ?? "";
-      rate = parseFloat(localStorage.getItem(RATE_STORAGE_KEY) ?? "") || 1;
     } catch {
       // Defaults hold.
     }
@@ -460,7 +463,7 @@ function ListenBtn({ text }: { text: string }) {
       if (cancelled) return;
       if (i >= chunks.length) return stop();
       const u = new SpeechSynthesisUtterance(chunks[i]);
-      u.rate = rate;
+      u.rate = readSpeed(); // re-read per chunk so a mid-reply change lands
       if (voice) {
         u.voice = voice;
         u.lang = voice.lang;
@@ -472,9 +475,12 @@ function ListenBtn({ text }: { text: string }) {
   }
   if (typeof window !== "undefined" && !("speechSynthesis" in window)) return null;
   return (
-    <button type="button" onClick={on ? () => stopSpeaking?.() : play} className="hover:text-ink" title={on ? "Stop reading" : "Read this reply aloud"}>
-      {on ? "■ Stop" : "▶ Listen"}
-    </button>
+    <>
+      <button type="button" onClick={on ? () => stopSpeaking?.() : play} className="hover:text-ink" title={on ? "Stop reading" : "Read this reply aloud"}>
+        {on ? "■ Stop" : "▶ Listen"}
+      </button>
+      {on && <SpeedSelect value={speed} onChange={setSpeed} />}
+    </>
   );
 }
 
