@@ -9,6 +9,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+// The task card's built-in chips, hidden per id in settings.quickAddHidden.
+// Shown only on the task row, the one place that list is edited, so every
+// quick-add switch for a type lives in one place (ADR-268).
+import { TASK_BUILTIN_CHIPS } from "@/lib/settings";
 
 function Switch({
   checked,
@@ -65,17 +69,6 @@ function Help({ text }: { text: string }) {
     </span>
   );
 }
-
-// The task card's built-in chips, hidden per id in settings.quickAddHidden
-// (the same list Settings → Quick Add edits). Shown here only on the task row
-// so every quick-add switch for a type lives in one place (ADR-268).
-const TASK_BUILTIN_CHIPS = [
-  { id: "deadline", label: "Deadline (due date)" },
-  { id: "priority", label: "Priority" },
-  { id: "tags", label: "Tag" },
-  { id: "person", label: "Person" },
-  { id: "group", label: "Group" },
-];
 
 function Chevron({ open }: { open: boolean }) {
   return (

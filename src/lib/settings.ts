@@ -310,12 +310,25 @@ function parseAgent(raw: unknown): AgentSettings {
   };
 }
 
+// The task quick-add card's built-in chips, hideable by id in quickAddHidden.
+// One list for Build → Types (the task row's "Chips on the card") and the MCP
+// update_type/list_types fields, so the two can't drift. The card also knows an
+// "assignee" placeholder chip that stays unshipped (AddTaskCard
+// PLACEHOLDERS_READY), so it isn't offered here.
+export const TASK_BUILTIN_CHIPS = [
+  { id: "deadline", label: "Deadline (due date)" },
+  { id: "priority", label: "Priority" },
+  { id: "tags", label: "Tag" },
+  { id: "person", label: "Person" },
+  { id: "group", label: "Group" },
+] as const;
+
 export type UserSettings = {
   // Configurable editor toolbar (app-wide): ids the user hid from the markdown
   // toolbar. Empty = show all. See toolbar-icons / TOOLBAR_ITEMS.
   editorToolbarHidden: string[];
-  // Configurable Quick Add: capture-card action ids the user hid (deadline,
-  // priority, assignee). Empty = show all.
+  // The task quick-add card's built-in chip ids the user hid (TASK_BUILTIN_CHIPS,
+  // edited on Build → Types and via MCP update_type). Empty = show all.
   quickAddHidden: string[];
   highlightColor: string; // solid hex (a HIGHLIGHT_COLORS value, or a gradient's representative accent)
   // When set, an accent gradient (a HIGHLIGHT_GRADIENTS value) layered over fills;
