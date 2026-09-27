@@ -984,7 +984,10 @@ is on, turn it on per type at \`/build/types\` (expand a type's row and flip the
 "Listen" switch). A type with it on gets a **Listen** entry in the item's ⋯
 menu, which reads the note aloud
 using your browser's own read-aloud voice. Choosing it opens a small strip
-with Play, pause, stop, and a reading-speed picker. It works best in Microsoft
+with Play, pause, stop, and a Speed picker (0.5× to 3×). The speed is
+remembered on that device and shared by everything that plays in Ledgr:
+Claude's read-aloud replies and a song's preview track use the same setting.
+It works best in Microsoft
 Edge, which has noticeably better free voices than most other browsers — an
 optional second setting next to Listen, "Open in Edge," sends the ⋯ menu's
 Listen straight to Edge instead of playing locally when you are not already
@@ -1037,7 +1040,7 @@ cloud copy within a few seconds (making or revoking a link checks in at once).
 
 A shared **song** opens as the two-column chord chart. If the song has a
 **Preview track** (the "Add audio file" control above the chart on the song
-itself), the share page plays it above the chart, so the person gets the chords
+itself, with a Speed picker beside the player), the share page plays it above the chart, so the person gets the chords
 and the recording together. Revoking the link stops the audio too.
 
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
@@ -1467,7 +1470,8 @@ week of use.
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
   as a note, or archives it. Under each reply, **▶ Listen** reads it aloud in the
-  voice and speed you picked on an item's Listen bar. A chat open on two devices
+  voice you picked on an item's Listen bar; while it reads, a Speed picker sits
+  beside Stop. A chat open on two devices
   stays in step: what you send from your phone appears on your computer within
   a few seconds, reply and all.
 - **Inline edit** — highlight text in a note and press **Ctrl/Cmd+Shift+E** (or
