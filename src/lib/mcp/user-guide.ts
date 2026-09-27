@@ -200,6 +200,12 @@ module, so it can be switched off at \`/build/modules\`.
   Trash: soft, 30 days, children travel with their parent. An assistant that
   filed a duplicate can clean up after itself without you clicking through
   Trash, and nothing over these doors hard-deletes.
+- **Looking in Trash over MCP:** ask an assistant "did I delete that?" and it
+  can check. \`search_items\` takes \`trash: "only"\` (search Trash) or
+  \`"include"\` (live and Trash together), and \`list_items\` takes
+  \`trash: true\` to list Trash, newest deletion first. Every trashed result is
+  marked \`inTrash\` with the date it was deleted, and \`restore_item\` brings it
+  back.
 
 ## Video transcripts
 

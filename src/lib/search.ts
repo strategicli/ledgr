@@ -4,7 +4,7 @@
 // OR, -exclusions) and never throws on user input, so the raw query string
 // binds straight in. Filters: type, relatedTo (confirmed relations, either
 // direction), and an updated-at date window.
-import { and, desc, eq, gte, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db";
 import { items } from "@/db/schema";
 import { listColumns } from "@/lib/items";
@@ -21,6 +21,10 @@ export type SearchOptions = {
   // Recency weighting folded into ts_rank (see @/lib/recency). Defaults to the
   // mild full-search curve; quick search passes the strong one.
   recency?: RecencyWeight;
+  // Trash scope. Omitted = live items only (every app caller). "only" searches
+  // Trash alone; "include" searches both, and each row's deletedAt says which.
+  // Lets MCP answer "did I delete that?" (search_items trash arg).
+  trash?: "only" | "include";
 };
 
 const SEARCH_LIMIT = 50;
@@ -39,12 +43,13 @@ export function searchItemsQuery(
   const query = sql`websearch_to_tsquery('english', ${q})`;
   const where: SQL[] = [
     eq(items.ownerId, ownerId),
-    isNull(items.deletedAt),
     // Template prototypes stay out of search/FTS (ADR-093) — app search,
     // MCP search_items, and the typeaheads that ride this query.
     eq(items.isTemplate, false),
     sql`${items.search} @@ ${query}`,
   ];
+  if (opts.trash === "only") where.push(isNotNull(items.deletedAt));
+  else if (opts.trash !== "include") where.push(isNull(items.deletedAt));
   if (opts.type) where.push(eq(items.type, opts.type));
   if (opts.relatedTo) {
     where.push(sql`exists (
