@@ -323,17 +323,15 @@ export const coreModule: ModuleManifest = {
     { key: "person", label: "Person", icon: "user", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
-  // Canvas tabs (ADR-095): a default-canvas behavior, not a separate canvas
-  // (canvasId stays the default markdown canvas — MarkdownCanvas turns tabs on
-  // when a type carries this capability). Auto-on for `note`; attach to any
-  // other type from the Build bespoke-tool catalog. Tabs are sections of the
-  // same markdown body, so the canonical format is unchanged.
+  // Canvas tabs (ADR-095): a default-canvas behavior, not a separate canvas, and
+  // on for every markdown-bodied type since 2026-09-28 (tabsEnabledForType). The
+  // `tabs` capability below is a hidden leftover from when it was opt-in. Tabs
+  // are sections of the same markdown body, so the canonical format is unchanged.
   capabilities: [
     {
       // Longform document canvas (ADR-157): the body is the star, with a compact
       // metadata byline under the title. Its canvas (LongformCanvas) enables tabs
-      // itself, so a type that wants both a document layout and tabs attaches this
-      // one capability (the single-capability slot can't hold "tabs" as well).
+      // itself, like every other markdown canvas.
       id: "longform",
       label: "Longform document",
       description: "A document-shaped canvas: the markdown body runs the full width, with a compact metadata byline under the title.",
@@ -343,8 +341,12 @@ export const coreModule: ModuleManifest = {
       canonicalFormat: MARKDOWN_FORMAT,
     },
     {
+      // `hidden` since tabs became the default for every type (2026-09-28): there
+      // is nothing left to attach. Kept registered so a type that still carries
+      // it resolves (and validates) exactly as before.
       id: "tabs",
       label: "Tabs",
+      hidden: true,
       description: "Split the canvas into named tabs, each a section of the same note.",
       usage:
         "Keep related-but-separate content apart on one item — e.g. several lyric versions plus notes on one song's note, or research vs. draft on a paper.",
@@ -559,6 +561,27 @@ export function surfacesForType(
     if (cap) return cap.surfaces ?? defaultSurfaces(cap.canonicalFormat);
   }
   return defaultSurfaces();
+}
+
+// Canvas tabs are on for every type by default (Tyler, 2026-09-28). ADR-095 made
+// them auto-on for notes and opt-in everywhere else through the `tabs`
+// capability; now the default is flipped, and the capability is kept only so
+// types that already carry it resolve the same. The exceptions are canvases
+// whose body is not a plain markdown document the ItemEditor owns: a song's
+// ChordPro chart, a paper's footnoted draft, a mindmap's nested list, the
+// reference canvas. A tab marker written into any of those would corrupt the
+// artifact its canvas or exporter parses.
+const TABBED_CANVASES = new Set([DEFAULT_CANVAS, "task", "event", "file", "longform", "widgets"]);
+
+export function tabsEnabledForType(
+  type: string,
+  ownerId?: string,
+  capability?: string | null
+): boolean {
+  return (
+    canonicalFormatForType(type, ownerId, capability) === MARKDOWN_FORMAT &&
+    TABBED_CANVASES.has(canvasIdForType(type, ownerId, capability))
+  );
 }
 
 // One surface by id, or undefined. The lookup a write path uses to turn

@@ -375,8 +375,9 @@ list. Put a backslash in front to keep a token literal.
 - **Collapsible headings** — fold a heading to hide its section. View only;
   nothing is written into the body.
 - **Table** — a real Markdown table, with drag-resizable columns.
-- **Canvas tabs** — split one body into named tabs. Everyone else reading the
-  item sees the whole document as titled sections.
+- **Canvas tabs** — split one body into named tabs, on any type whose body is a
+  plain document (not a song's chart, a paper's draft or a mindmap). Everyone
+  else reading the item sees the whole document as titled sections.
 - **Outline** — an automatic table of contents built from your headings, at the
   right edge. It can be pinned open as a resizable sidebar, remembered per item,
   and it lists your comments too.
@@ -448,7 +449,7 @@ Build your own kinds of item at \`/build/types\`.
 - **Change an item's type** from its ⋯ menu, with a preview of what carries over.
   Properties the new type does not have are kept in the body rather than lost.
 - **Bespoke tools** at \`/build/tools\` attach a ready-made capability — chord
-  chart, paper workspace, tabs, longform document, widget homepage — to a type
+  chart, paper workspace, longform document, widget homepage — to a type
   you name yourself.
 - **Modules** at \`/build/modules\` hold every on/off switch you have, in two
   groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off

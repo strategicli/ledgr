@@ -163,10 +163,10 @@ export function useDoc(id: string): DocState | undefined {
 }
 
 // --- Canvas-tabs enablement (ADR-147 D4) -----------------------------------
-// Mirror MarkdownCanvas's rule (`item.type === "note" || typeDef.capability ===
-// "tabs"`) on the client so a panel's writer renders TabbedBody. `note` is
-// auto-on and known from the doc alone; any other type opts in via the `tabs`
-// capability, which we learn from the type registry (fetched once, cached).
+// The canvases' rule (`tabsEnabledForType`, on for every markdown-bodied type)
+// reaches the client as the `tabs` flag on each /api/types row, so a panel's
+// writer renders TabbedBody. `note` is known from the doc alone; every other
+// type resolves from the type registry (fetched once, cached).
 const tabsCapableTypes = new Set<string>();
 let tabsTypesLoaded = false;
 let tabsTypesInFlight = false;
@@ -178,12 +178,12 @@ function ensureTabsTypes(): void {
     .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
     .then((d) => {
       for (const t of Array.isArray(d?.types) ? d.types : []) {
-        if (t?.capability === "tabs" && typeof t.key === "string") {
+        if (t?.tabs === true && typeof t.key === "string") {
           tabsCapableTypes.add(t.key);
         }
       }
       tabsTypesLoaded = true;
-      emit(); // re-read: a tabs-capability type flips on once the registry lands
+      emit(); // re-read: a tabbed type flips on once the registry lands
     })
     .catch(() => {})
     .finally(() => {
@@ -192,7 +192,7 @@ function ensureTabsTypes(): void {
 }
 
 // True when an item of this type edits its body as canvas tabs. `note` resolves
-// synchronously; a custom tabs-capability type resolves once the registry loads
+// synchronously; every other type resolves once the registry loads
 // (a brief false → true flip on first ever open, then cached for the session).
 export function useTabsEnabled(type: string | undefined): boolean {
   ensureTabsTypes();

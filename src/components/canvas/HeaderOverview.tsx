@@ -13,10 +13,12 @@ export default function HeaderOverview({
   itemId,
   body,
   hasContent,
+  tabsEnabled = false,
 }: {
   itemId: string;
   body: unknown;
   hasContent: boolean;
+  tabsEnabled?: boolean;
 }) {
   const [open, setOpen] = useState(hasContent);
 
@@ -42,6 +44,7 @@ export default function HeaderOverview({
       slot="body"
       collapsibleToolbar
       compactBody
+      tabsEnabled={tabsEnabled}
     />
   );
 }

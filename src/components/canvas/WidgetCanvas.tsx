@@ -35,7 +35,7 @@ import ProjectStatusChip from "@/components/canvas/widgets/ProjectStatusChip";
 import CanvasSection from "@/components/canvas/CanvasSection";
 import CustomProperties from "@/components/build/CustomProperties";
 import RelationProperties from "@/components/relations/RelationProperties";
-import type { CanvasProps } from "@/lib/modules";
+import { tabsEnabledForType, type CanvasProps } from "@/lib/modules";
 import { bodyMarkdown } from "@/lib/body";
 import { resolveComposition, widgetLimit, widgetTitle, type Composition } from "@/lib/composition";
 import { progressPct } from "@/lib/project-progress";
@@ -181,7 +181,7 @@ function CardOverflowLink({ recordId, defId, shown, total }: { recordId: string;
   );
 }
 
-function CardBody(props: { data: RecordWidgetData; recordId: string; projectTitle: string; body: unknown }) {
+function CardBody(props: { data: RecordWidgetData; recordId: string; projectTitle: string; body: unknown; tabsEnabled: boolean }) {
   const { data, recordId } = props;
   const isTimeline = data.def.id === "timeline";
   const shown = isTimeline
@@ -213,11 +213,13 @@ function WidgetInner({
   recordId,
   projectTitle,
   body,
+  tabsEnabled,
 }: {
   data: RecordWidgetData;
   recordId: string;
   projectTitle: string;
   body: unknown;
+  tabsEnabled: boolean;
 }) {
   switch (data.def.id) {
     case "tasks":
@@ -294,6 +296,7 @@ function WidgetInner({
           slot="body"
           collapsibleToolbar
           compactBody
+          tabsEnabled={tabsEnabled}
         />
       );
     case "nextAction": {
@@ -417,6 +420,7 @@ function addableSections(
 
 export default async function WidgetCanvas({ item, ownerId, variant }: CanvasProps) {
   const typeDef = await getType(item.type).catch(() => null);
+  const tabsEnabled = tabsEnabledForType(item.type, ownerId, typeDef?.capability);
   const { composition } = resolveComposition(item.composition, typeDef?.defaultWidgets, item.type);
   const [widgets, customDefs] = await Promise.all([
     resolveRecordWidgets(ownerId, item, composition),
@@ -496,6 +500,7 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
             itemId={item.id}
             body={item.body}
             hasContent={hasOverviewText}
+            tabsEnabled={tabsEnabled}
           />
         </div>
       )}
@@ -555,7 +560,7 @@ export default async function WidgetCanvas({ item, ownerId, variant }: CanvasPro
               title: customTitle ?? defaultTitle,
               defaultTitle,
               customTitle,
-              body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} />,
+              body: <CardBody data={data} recordId={item.id} projectTitle={item.title} body={item.body} tabsEnabled={tabsEnabled} />,
               // Collection/related cards and the Timeline get the "show N"
               // count section in the gear (default 5); Status / derived
               // single-value cards get the gear (Rename) without it.
