@@ -33,7 +33,7 @@ import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { bodyMarkdown } from "@/lib/body";
-import type { CanvasProps } from "@/lib/modules";
+import { tabsEnabledForType, type CanvasProps } from "@/lib/modules";
 
 export default async function EventCanvas(canvasProps: CanvasProps) {
   const { item, ownerId, arrange = false, variant } = canvasProps;
@@ -51,7 +51,7 @@ export default async function EventCanvas(canvasProps: CanvasProps) {
   const propertySchema = typeDef?.propertySchema ?? [];
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const today = appTodayYmd();
-  const tabsEnabled = typeDef?.capability === "tabs";
+  const tabsEnabled = tabsEnabledForType(item.type, ownerId, typeDef?.capability);
   const promotedRefs = await promotedBlockRefs(ownerId, item.id);
 
   // The meeting byline: when it's scheduled, under the title (the date Brandon

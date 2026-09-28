@@ -150,16 +150,12 @@ export default function TypeBuilder({
   const editing = !!initial;
   const isSystem = initial?.isSystem ?? false;
   const capability = attached?.id ?? null;
-  // Tabs (ADR-095) are surfaced here as a plain per-type toggle rather than only
-  // via the bespoke-tool catalog, so ANY type — new or existing — can turn the
-  // canvas tabs strip on/off without the "create a bespoke type" detour. Under
-  // the hood it's still the "tabs" capability; we keep any OTHER attached
-  // capability (a real bespoke canvas like the chord grid) untouched, since
-  // `capability` is single-valued.
+  // Canvas tabs are on for every type now (tabsEnabledForType), so there is no
+  // tabs toggle here. A type still carrying the old `tabs` capability drops it
+  // on its next save, which changes nothing it shows. Any OTHER attached
+  // capability (a real bespoke canvas like the chord grid) is kept untouched,
+  // since `capability` is single-valued.
   const otherCapability = capability && capability !== "tabs" ? capability : null;
-  // The built-in Note type always has tabs (MarkdownCanvas hardcodes it), so the
-  // toggle is shown checked + locked there for honesty rather than hidden.
-  const isNote = initial?.key === "note";
   const hasItems = itemCount > 0;
   const [deleteItems, setDeleteItems] = useState(false);
   // A brief "Saved" toast after an edit-save. We stay on the page (no bounce to
@@ -190,7 +186,6 @@ export default function TypeBuilder({
   const [showInQuickCapture, setShowInQuickCapture] = useState(
     initial?.showInQuickCapture ?? true
   );
-  const [tabsEnabled, setTabsEnabled] = useState(capability === "tabs");
   // Project-style page: EXPLICIT opt-in (Tyler, 2026-08-18/19 — ADR-204). New
   // custom types used to get the widget homepage silently, which read as "my
   // type got treated as a Project"; now it's this checkbox. A type that already
@@ -299,19 +294,16 @@ export default function TypeBuilder({
       icon: icon.trim() || null,
       showInQuickCapture,
       propertySchema: schema,
-      // One capability slot, three explicit claimants: the "tabs" toggle, the
-      // "Project-style page" checkbox (widget-home — an OPT-IN since ADR-204;
-      // it used to be the silent default for custom types), then any real
-      // bespoke canvas the type already borrowed. None of them → null, the
-      // plain document canvas (core/system types resolve their module canvas
-      // regardless).
-      capability: tabsEnabled
-        ? "tabs"
-        : projectStyle
-          ? "widget-home"
-          : otherCapability !== "widget-home"
-            ? otherCapability
-            : null,
+      // One capability slot, two explicit claimants: the "Project-style page"
+      // checkbox (widget-home — an OPT-IN since ADR-204; it used to be the
+      // silent default for custom types), then any real bespoke canvas the type
+      // already borrowed. Neither → null, the plain document canvas (core/system
+      // types resolve their module canvas regardless).
+      capability: projectStyle
+        ? "widget-home"
+        : otherCapability !== "widget-home"
+          ? otherCapability
+          : null,
       ...(editing ? {} : { key: finalKey }),
     };
     try {
@@ -461,42 +453,14 @@ export default function TypeBuilder({
           />
           Show in quick capture
         </label>
-        <label className="group relative flex items-center gap-2 pb-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={isNote || tabsEnabled}
-            disabled={isNote}
-            onChange={(e) => {
-              setTabsEnabled(e.target.checked);
-              // One capability slot: tabs and the project-style page can't
-              // both be on.
-              if (e.target.checked) setProjectStyle(false);
-            }}
-            className="ledgr-check"
-          />
-          <span className="cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">
-            Enable tabs
-          </span>
-          <span
-            role="tooltip"
-            className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs normal-case text-neutral-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
-          >
-            {isNote
-              ? "Notes always have canvas tabs."
-              : "Split this type's canvas into named tabs, each a section of the same body — e.g. research vs. draft on one item."}
-          </span>
-        </label>
       </div>
 
       {projectStyleAvailable && (
         <label className="group relative flex items-center gap-2 pb-2 text-sm text-neutral-300">
           <input
             type="checkbox"
-            checked={projectStyle && !tabsEnabled}
-            onChange={(e) => {
-              setProjectStyle(e.target.checked);
-              if (e.target.checked) setTabsEnabled(false);
-            }}
+            checked={projectStyle}
+            onChange={(e) => setProjectStyle(e.target.checked)}
             className="ledgr-check"
           />
           <span className="cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">

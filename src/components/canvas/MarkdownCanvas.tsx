@@ -56,7 +56,7 @@ import { getType } from "@/lib/types";
 import { resolveStatusSchema } from "@/lib/status";
 import { parseRecurrence } from "@/lib/recurrence";
 import { appTodayYmd } from "@/lib/recurrence-service";
-import { isModuleEnabled, type CanvasProps } from "@/lib/modules";
+import { isModuleEnabled, tabsEnabledForType, type CanvasProps } from "@/lib/modules";
 
 export default async function MarkdownCanvas({ item, ownerId, arrange = false }: CanvasProps) {
   // A locked item (items.properties.locked, set from the canvas "⋯" menu)
@@ -82,10 +82,9 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
   // The type's resolved statuses (S2) for the status dropdown (labels + colors).
   const statuses = resolveStatusSchema(typeDef?.statusSchema ?? null);
   const savedLayout = typeDef?.canvasLayout ?? null;
-  // Canvas tabs (ADR-095): auto-on for notes; opt-in for any other type via the
-  // bespoke-tool catalog (the `tabs` capability, ADR-051). Tabs are sections of
-  // the same markdown body, so this only changes the body editor.
-  const tabsEnabled = item.type === "note" || typeDef?.capability === "tabs";
+  // Canvas tabs (ADR-095): on for every markdown-bodied type (tabsEnabledForType).
+  // Tabs are sections of the same markdown body, so this only changes the editor.
+  const tabsEnabled = tabsEnabledForType(item.type, ownerId, typeDef?.capability);
   // Today (app timezone) anchors a newly-enabled repeat; computed once for both
   // the classic mount and the grid card.
   const today = appTodayYmd();

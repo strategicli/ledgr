@@ -18,7 +18,7 @@ import ItemUtilitiesFooter from "@/components/canvas/ItemUtilitiesFooter";
 import { listAttachments } from "@/lib/attachments";
 import { getType } from "@/lib/types";
 import { bodyMarkdown } from "@/lib/body";
-import type { CanvasProps } from "@/lib/modules";
+import { tabsEnabledForType, type CanvasProps } from "@/lib/modules";
 
 export default async function FileCanvas(canvasProps: CanvasProps) {
   const { item, ownerId, arrange = false } = canvasProps;
@@ -58,6 +58,7 @@ export default async function FileCanvas(canvasProps: CanvasProps) {
         fields={filePanel}
         collapsibleToolbar
         locked={locked}
+        tabsEnabled={tabsEnabledForType(item.type, ownerId, typeDef?.capability)}
       />
       <RelatedPanel ownerId={ownerId} itemId={item.id} />
       <ModuleItemPanel id="discover" itemId={item.id} title={item.title} />

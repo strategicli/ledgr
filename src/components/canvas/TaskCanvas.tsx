@@ -33,7 +33,7 @@ import { parseScheduledTime } from "@/lib/scheduled-time";
 import { isFocusedOn } from "@/lib/focus";
 import { isDuePinned } from "@/lib/date-anchor";
 import { bodyMarkdown } from "@/lib/body";
-import type { CanvasProps } from "@/lib/modules";
+import { tabsEnabledForType, type CanvasProps } from "@/lib/modules";
 
 export default async function TaskCanvas(canvasProps: CanvasProps) {
   const { item, ownerId, arrange = false } = canvasProps;
@@ -120,6 +120,7 @@ export default async function TaskCanvas(canvasProps: CanvasProps) {
                 slot="body"
                 collapsibleToolbar
                 compactBody
+                tabsEnabled={tabsEnabledForType("task", ownerId, typeDef?.capability)}
               />
             </div>
             <div className="mt-4">

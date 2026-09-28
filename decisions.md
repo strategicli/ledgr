@@ -4995,3 +4995,18 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Rejected.** Running seed.mjs from the supervisor or the installers: it also creates an owner row from an env var, which the `/setup` flow now owns, and it would put a second writer in front of the same rows.
 
 **Affects:** `drizzle/0067_core_types.sql`, `drizzle/meta/_journal.json`, `scripts/verify-core-types-migrated.mts`, `scripts/package-install-test.mjs`, runbook §1a.
+
+## ADR-284: canvas tabs are on for every type, not opt-in
+
+**Date:** 2026-09-28
+**Status:** accepted (Tyler). Reverses the opt-in half of ADR-095. **No migration.**
+
+**Context.** ADR-095 made canvas tabs auto-on for notes and opt-in everywhere else, through a `tabs` capability attached in Build. Tyler had asked for tabs to be the default on every type, and found it had never happened when his Teaching type had no tab control. The opt-in also had a real cost: `capability` is single-valued, so a type could not have tabs and a project-style page at once.
+
+**Decision.** One pure rule, `tabsEnabledForType` in `src/lib/modules.ts`: tabs are on when the type's canonical format is markdown and its canvas is one whose body is a plain ItemEditor document (default, task, event, file, longform, widgets). Every canvas that renders a body editor asks it (Markdown, Event, Task, File, the Widget page's Overview), and `/api/types` returns it as `tabs` so the Desk reads the same answer instead of re-deriving it. Nothing changes for an item until its owner adds a tab: an untabbed body is still a single document.
+
+**Exceptions.** A song's ChordPro chart, a paper's footnoted draft, a mindmap's nested list and the reference canvas stay without tabs, as does any user type borrowing one of those capabilities. A tab marker in any of them would corrupt what the canvas or exporter parses.
+
+**The old capability.** `tabs` stays registered but `hidden`, so types that carry it still resolve and validate; Build → Types drops its "Enable tabs" checkbox, and a type saved there sheds the leftover `tabs` capability, which changes nothing it shows.
+
+**Affects:** `src/lib/modules.ts`, the five canvases above, `src/components/canvas/HeaderOverview.tsx`, `src/app/api/types/route.ts`, `src/modules/desk/components/desk-doc-store.ts`, `src/components/build/TypeBuilder.tsx`, `src/lib/mcp/user-guide.ts`, `scripts/verify-bespoke-capability.mts`.

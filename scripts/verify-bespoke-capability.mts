@@ -9,6 +9,7 @@
 //  3. A real module type still wins over a passed capability (no regression).
 //  4. No capability / unknown capability falls back to the default canvas.
 //  5. parseTypeInput validates the capability against the live registry.
+//  6. Canvas tabs are on for every markdown-bodied type, off for bespoke bodies.
 //
 //   npx tsx scripts/verify-bespoke-capability.mts
 import { CHORDPRO_FORMAT } from "../src/lib/chordpro/types";
@@ -20,6 +21,7 @@ import {
   canvasIdForType,
   capabilityById,
   exportersForType,
+  tabsEnabledForType,
 } from "../src/lib/modules";
 // Registers Songs + Papers onto core for their side effect (the canvas path does
 // this via module-wiring; here we do it directly).
@@ -100,6 +102,21 @@ try {
   threw = true;
 }
 check("parseTypeInput rejects an unknown capability", threw);
+
+// --- 6. canvas tabs everywhere a body is a plain document -------------------
+for (const t of ["note", "task", "event", "link", "person", "project", "file", "teaching"]) {
+  check(`tabs are on for ${t}`, tabsEnabledForType(t));
+}
+check("tabs stay on for a type still carrying the old capability", tabsEnabledForType("teaching", undefined, "tabs"));
+check("tabs are on for a project-style custom type", tabsEnabledForType("pursuit", undefined, "widget-home"));
+for (const t of ["song", "paper", "mindmap"]) {
+  check(`tabs are off for ${t} (its body is a bespoke artifact)`, !tabsEnabledForType(t));
+}
+check("tabs are off for a type borrowing the chord chart", !tabsEnabledForType("worship_set", undefined, "chord-chart"));
+check("tabs are off for a type borrowing the paper workspace", !tabsEnabledForType("worship_set", undefined, "paper-workspace"));
+check("the tabs capability is no longer offered in the catalog", !caps.some((c) => c.id === "tabs"));
+check("the tabs capability still validates for types that carry it",
+  parseTypeInput({ key: "t", label: "T", capability: "tabs" }, "create").capability === "tabs");
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);
