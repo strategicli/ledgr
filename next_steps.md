@@ -478,7 +478,7 @@ Live on `main` and `prod-brandon` (module **off by default**; Tyler turns it on 
 Next, in Tyler's order of interest:
 1. **Module-off safeguard.** A Website Page opened while the module is off shows the plain note canvas (Tyler hit this). Show "Website Pages is off. Turn it on in Build → Modules" on the page instead, and find where he could create one with the module off (the type should be hidden from creation then; ask which button he used).
 2. **Instance defaults (ADR-272 step 6)**, offered to Tyler: his copy starts with his own modules on, Brandon's with them off.
-3. **Starters: Portfolio, Event, Project.** Boards are in the Claude Design project; mostly new combinations of existing blocks.
+3. ~~**Starters: Portfolio, Event, Project.**~~ Built 2026-09-29 from existing blocks. Optional polish where the boards ask for more than the blocks do: a `gallery` mosaic, skill chips, round avatars on cards, a big-number stats variant (details in `explorations/website-pages.md`).
 4. **Collection "See all" pages** (`/share/<token>/<collection>`), so "3 newest" can link to the full list.
 5. **Live checks Tyler owns:** a look change reaching a shared link within ~1 min (edge cache), the help card's hover feel, rails beside pictures.
 

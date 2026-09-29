@@ -166,6 +166,345 @@ Still Water · Grace Hill Church
 :::
 `;
 
+const PORTFOLIO = `::: menu
+
+- [Work](#films-courses-and-campaigns)
+- [Experience](#where-ive-worked)
+- [Contact](#working-on-something-that-matters)
+
+:::
+
+::: hero
+
+![portrait · behind the camera](placeholder)
+
+Communications director · Teacher · Filmmaker
+
+# Helping the church tell the truth well
+
+I lead communications at Cornerstone Fellowship in Tulsa and teach media at Harbor Seminary. Twelve years of films, campaigns and classrooms.
+
+[See the work](#films-courses-and-campaigns) [Résumé (PDF)](https://example.com/resume.pdf)
+
+:::
+
+:::: row
+
+::: columns
+
+Summary
+
+## Announcements into testimony
+
+Most church communication is announcements. I try to make it testimony. My team of four handles Sunday media, the weekly email and every story Cornerstone tells, and I bring what we learn back into the classroom, where future pastors practice interviewing, editing and telling the truth without spin.
+
+:::
+
+::: stats
+
+- **Story** Documentary, interviewing, podcasting
+- **Systems** Brand identity, email strategy
+- **People** Volunteer training, teaching
+- **Tools** Premiere, Resolve
+
+:::
+
+::::
+
+::: collection
+
+label: Work
+title: Films, courses and campaigns
+tag: work
+show: 6 newest
+
+:::
+
+::: timeline
+
+Experience
+
+## Where I've worked
+
+- **2021** Director of Communications, Cornerstone Fellowship. _Lead a team of four across Sunday media, email, social and print_
+- **2019** Adjunct Instructor, Harbor Seminary. _Teach Storytelling for the Local Church to about 30 students a year_
+- **2016** Media Producer, Northside Church. _200+ short films, the church's first podcast, a volunteer crew of 25_
+- **2013** Staff Photographer, Lakeland Tribune. _Daily news and features; learned to find the story in forty minutes_
+
+:::
+
+::: cta
+
+## Working on something that matters?
+
+I take two outside projects a year for churches and ministries. Now booking spring 2027.
+
+[Email me](mailto:you@example.com) [Download my résumé](https://example.com/resume.pdf)
+
+:::
+
+::: footer
+
+© 2026 Maya Brooks · you@example.com
+
+:::
+`;
+
+const EVENT = `::: menu
+
+- [Schedule](#the-day)
+- [Getting there](#getting-there)
+- [RSVP](#save-your-seat)
+
+:::
+
+::: hero
+
+![last year's workshop · filming in pairs](placeholder)
+
+One-day workshop · Free for church staff and volunteers
+
+# Tell Your Church's Story
+
+A hands-on Saturday on testimony, interviewing and phone video. Bring a story from your congregation; leave with a finished two-minute film.
+
+[RSVP by email](mailto:you@example.com?subject=RSVP) [Add to calendar](https://example.com/event.ics)
+
+:::
+
+::: stats
+
+- **When** Sat, Nov 14 · 9 a.m. to 3 p.m.
+- **Where** Harbor Seminary, Room 204
+- **Cost** Free, lunch included
+
+:::
+
+::: callout
+
+**28 of 40 seats taken.** Reply by Friday, Nov 6 with your name and church. Lunch is provided, so tell us about any allergies.
+
+:::
+
+::: timeline
+
+Schedule
+
+## The day
+
+- **9:00** Coffee and introductions. _Bring the story you want to tell. One sentence is enough_
+- **9:30** What makes a testimony true. _Maya Brooks on specificity, restraint and letting people sound like themselves_
+- **10:30** Interviewing in pairs. _Practice the one-question interview with a partner. Phones only_
+- **12:00** Lunch. _In the commons, with vegetarian and gluten-free options_
+- **1:00** Cutting to two minutes. _Sam Whitaker walks through a free phone editor, step by step_
+- **2:30** Screening. _We watch everyone's film together. Nobody has to show theirs_
+
+:::
+
+::: cards
+
+## Leading the day
+
+### Maya Brooks
+
+Communications at Cornerstone. Teaches Storytelling for the Local Church at Harbor Seminary.
+
+### Sam Whitaker
+
+Filmmaker. Has shot more than 200 church films, most of them on a phone.
+
+### Rev. Ruth Adeyemi
+
+Pastor at Grace Hill. Will share how her church began telling one member story a month.
+
+:::
+
+## Getting there
+
+![map · links to your maps app](placeholder)
+
+**Harbor Seminary**, 1400 S. Lewis Ave, Tulsa. Park in Lot C; Room 204 is up the stairs past the library. [Open in Maps →](https://maps.example.com)
+
+::: cards
+
+## Good to know
+
+### What does it cost?
+
+Nothing for church staff and volunteers. Lunch is included.
+
+### What should I bring?
+
+A charged phone, earbuds with a mic, and one person's story in mind.
+
+### I've never edited video.
+
+Most people haven't. The afternoon assumes no experience.
+
+### Can I bring my team?
+
+Yes, up to four from one church. Include their names in your email.
+
+:::
+
+::: cta
+
+## Save your seat
+
+Email your name and church. You'll get a confirmation and a prep sheet within a day.
+
+[RSVP by email](mailto:you@example.com?subject=RSVP) [Download .ics](https://example.com/event.ics)
+
+:::
+
+::: footer
+
+Questions? you@example.com
+
+:::
+`;
+
+const PROJECT = `::: menu
+
+- [Outcomes](#what-changed)
+- [Team](#team)
+- [Deliverables](#deliverables)
+
+:::
+
+::: hero
+
+![volunteers at the food pantry · launch week](placeholder)
+
+Project review · January to April 2026
+
+# Serve Tulsa: a place for everyone to help
+
+We replaced clipboards, three spreadsheets and a lot of guilt with one page where 2,000 people can find a way to serve in under a minute.
+
+[Open the live site](https://example.com) [Final report](https://example.com/report.pdf)
+
+:::
+
+::: cards
+
+Outcomes · first 90 days
+
+## What changed
+
+### 412
+
+People signed up to serve, up from 150 the previous spring.
+
+### 9 days
+
+To fill every Easter volunteer shift.
+
+### 38%
+
+Of new sign-ups were members of less than a year.
+
+### 0
+
+Paper cards left in the lobby.
+
+:::
+
+::: columns
+
+### The problem
+
+Serving meant finding the right staff member, filling out a paper card and waiting. Half of the cards were never followed up. New members told us they wanted to help but didn't know how to start.
+
+### What we built
+
+One page listing every open role, with the time it takes, who leads it and what to expect on the first day. Each ministry leader owns their own listing and gets a text when someone signs up.
+
+:::
+
+::: cards
+
+## Gallery
+
+### The serve page on a phone
+
+![the serve page on a phone](placeholder)
+
+### The lobby kiosk
+
+![lobby kiosk](placeholder)
+
+### A leader's text alert
+
+![leader text alert](placeholder)
+
+:::
+
+::: timeline
+
+Milestones
+
+## Sixteen weeks, start to launch
+
+- **Jan 6** Listening. _Twenty-two interviews with ministry leaders and new members about how serving actually starts_
+- **Jan 27** One page, not an app. _Leaders edit their own listings, so it stays current_
+- **Feb 17** Pilot at the 9 a.m. service. _Three ministries, a lobby kiosk and a QR code in the bulletin: 61 sign-ups in two weeks_
+- **Mar 16** Every ministry listed. _Thirty-four roles live, each with a time commitment, a leader and a first-day note_
+- **Apr 20** Launch Sunday. _Announced from the stage at all services with a two-minute film_
+
+:::
+
+::: cards
+
+## Team
+
+### Maya Brooks
+
+Project lead, communications
+
+### Daniel Ortiz
+
+Pastor of Serving
+
+### Priya Nair
+
+Web and Ledgr setup
+
+### Sam Whitaker
+
+Film and photography
+
+:::
+
+::: cards
+
+## Deliverables
+
+### [Serve Tulsa, the live site](https://example.com)
+
+The published page, with all 34 roles.
+
+### [Final report (12 pages)](https://example.com/report.pdf)
+
+Research, decisions, results and what we'd change.
+
+### [Launch Sunday film · 2:04](https://example.com/film)
+
+The announcement film shown at all services.
+
+### [Ministry leader handbook](https://example.com/handbook)
+
+How to write a listing and respond within 48 hours.
+
+:::
+
+::: footer
+
+Written up by Maya Brooks · April 2026
+
+:::
+`;
+
 export const STARTERS: Starter[] = [
   {
     id: "personal-site",
@@ -182,6 +521,30 @@ export const STARTERS: Starter[] = [
       "A devotional or blog site: a featured piece up top, the latest list, topics with counts, and a series read in order. Publish your devotionals or posts to it, and tag them featured or with a series tag to fill those spots.",
     design: { language: "editorial", palette: "dusk", font: "serif" },
     body: JOURNAL,
+  },
+  {
+    id: "portfolio",
+    name: "Portfolio",
+    description:
+      "A résumé with your work: who you are, a summary and skills, a Work collection where each piece gets its own page (add a video or link to it), an experience timeline, and a way to hire you. Publish items tagged work to fill it.",
+    design: { language: "modern", palette: "slate", font: "public" },
+    body: PORTFOLIO,
+  },
+  {
+    id: "event",
+    name: "Event",
+    description:
+      "A seminar, party or gathering on one page: when and where up front, RSVP as plain links (email, calendar, or an outside ticket page), the schedule, who's leading, getting there, and questions people ask.",
+    design: { language: "warm", palette: "tide", font: "figtree" },
+    body: EVENT,
+  },
+  {
+    id: "project",
+    name: "Project",
+    description:
+      "A finished project written up for review: the headline, outcome numbers, the problem and what you built, pictures, milestones, the team, and links to what you delivered.",
+    design: { language: "bold", palette: "navy", font: "montserrat" },
+    body: PROJECT,
   },
 ];
 
