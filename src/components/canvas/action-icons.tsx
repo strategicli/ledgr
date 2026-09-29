@@ -33,6 +33,7 @@ export const ACTION_ICONS = {
   // View full markdown — angle brackets over a slash, the conventional "source"
   // glyph. Reads as "the underlying text," distinct from `grid` (arrange) and
   // `network` (relations) beside it in the menu.
+  expand: '<path d="M8 9l4-4 4 4"/><path d="M8 15l4 4 4-4"/>',
   markdown: '<path d="M8.5 8.5 5 12l3.5 3.5"/><path d="M15.5 8.5 19 12l-3.5 3.5"/><path d="M13.5 5.5l-3 13"/>',
   // Template pair: a page with a + badge (save) or a ✓ badge (apply).
   templateSave:

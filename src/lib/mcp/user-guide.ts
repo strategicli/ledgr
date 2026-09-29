@@ -376,9 +376,15 @@ list. Put a backslash in front to keep a token literal.
 ## Blocks and structure
 
 - **Toggle** — a collapsible block with a chevron. From the toolbar or \`/toggle\`.
-  It stays a real disclosure on print, share and export.
-- **Collapsible headings** — fold a heading to hide its section. View only;
-  nothing is written into the body.
+  It stays a real disclosure on print, share and export. Toggles can sit inside
+  other toggles, bullets and quotes. Whether a toggle is open or closed is saved
+  in the note, so it looks the same on every device.
+- **Collapsible headings** — fold a heading to hide its section.
+- **Collapsible bullets** — any bullet, numbered or checklist item with something
+  nested under it gets the same fold arrow; click the arrow (or the bullet) to
+  hide everything beneath it. Heading and bullet folds are remembered on this
+  device only and never written into the body. **Expand all** in the item's ⋯
+  menu opens every fold at once. Both switch on or off in User Settings.
 - **Table** — a real Markdown table, with drag-resizable columns.
 - **Canvas tabs** — split one body into named tabs. Everyone else reading the
   item sees the whole document as titled sections.
@@ -1663,7 +1669,7 @@ palette jumps straight to a named setting.
 | Account | Display name, timezone, sign-in (password and recovery codes) |
 | Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style, page width (Standard, Wide, Full: how much of a big monitor an item page and each Desk panel use), comments (in the margin or as icons) |
 | Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
-| Editing | Which toolbar buttons show; collapsible headings; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
+| Editing | Which toolbar buttons show; collapsible headings; collapsible bullets; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
 | Search | Your own synonym dictionary |
 | Notifications | Which events notify you (only while the notification center is on) |
 | AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |
@@ -2129,5 +2135,4 @@ Listed so you do not go looking.
   it is the one surface that keeps \`[^id]\` markers and their \`[^id]:\` definitions
   intact through a save, because the .docx export reads them. Typed anywhere
   else, that syntax is just literal text.
-- **Nested toggles** are a known limitation.
 `;

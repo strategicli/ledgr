@@ -22,6 +22,7 @@ import MoveUnderMenu from "@/components/items/MoveUnderMenu";
 import { showToast } from "@/components/ui/ActionToast";
 import { DeskSendItems } from "@/modules/desk/components/DeskSendMenu";
 import { announceFloatingOpen, onOtherFloatingOpen } from "@/lib/floating";
+import { EXPAND_ALL_EVENT } from "@/lib/editor/fold-events";
 
 const rowClass =
   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-800";
@@ -305,6 +306,21 @@ export default function ItemActionsMenu({
           >
             <ActionGlyph icon={locked ? "lockOpen" : "lockClosed"} />
             {locked ? "Unlock item" : "Lock item"}
+          </button>
+          {/* Open every collapsed heading and bullet in this item's editor
+              (folds are remembered per device, so this also forgets them).
+              Toggle blocks are left alone: their state is saved in the note. */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent(EXPAND_ALL_EVENT, { detail: { itemId } }));
+              setOpen(false);
+            }}
+            className={rowClass}
+          >
+            <ActionGlyph icon="expand" />
+            Expand all
           </button>
           {/* Hard nav (plain <a>) so ?arrange=1 escapes the intercept modal. */}
           <a role="menuitem" href={`/items/${itemId}?arrange=1`} className={rowClass}>

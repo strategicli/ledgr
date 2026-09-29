@@ -601,6 +601,54 @@
   display: none;
 }
 
+/* Collapsible list items (bullets, numbers, checklists). The arrow sits LEFT of
+   the li's box, past the bullet/number marker (--fold-gap), and unlike the
+   heading arrow it takes pointer events: a click on it targets the li itself,
+   which collapsible-headings.ts reads as "clientX left of the li" (the marker
+   counts too, a bigger tap target). Only the innermost hovered item shows its
+   arrow, so hovering a nested bullet doesn't light up every ancestor. */
+.ledgr-prose li.ledgr-foldable-li {
+  position: relative;
+  --fold-gap: 1.2rem;
+}
+.ledgr-prose ul[data-type="taskList"] li.ledgr-foldable-li {
+  --fold-gap: 0.1rem;
+}
+.ledgr-prose li.ledgr-foldable-li::before {
+  content: "▸";
+  position: absolute;
+  right: calc(100% + var(--fold-gap));
+  top: 0;
+  width: 1.2rem;
+  height: 1.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--ink-subtle);
+  opacity: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: rotate(90deg);
+}
+.ledgr-prose li.ledgr-foldable-li:hover:not(:has(li:hover))::before {
+  opacity: 0.55;
+}
+.ledgr-prose li.ledgr-foldable-li.is-collapsed::before {
+  opacity: 0.7;
+  transform: rotate(0deg);
+}
+/* A collapsed item's marker fills in darker, a quiet "there's more here" cue. */
+.ledgr-prose li.ledgr-foldable-li.is-collapsed::marker {
+  color: var(--ink);
+}
+@media (pointer: coarse) {
+  .ledgr-prose li.ledgr-foldable-li::before {
+    opacity: 0.4;
+  }
+}
+
 /* The "/" slash-command menu — mirrors the mention/token popups. */
 .ledgr-slash-popup {
   position: absolute;
