@@ -70,9 +70,11 @@ import {
 } from "./collapsible-headings";
 import {
   SlashCommands,
+  setSlashEditorItem,
   setSlashFilePicker,
   setSlashToggleEnabled,
 } from "./slash-suggestion";
+import { LayoutBlocksView } from "./layout-blocks-view";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -751,6 +753,9 @@ export default function MarkdownEditor({
       // The "/" slash-command menu (headings + toggle). Toggle entry gated by
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
+      // Layout blocks (ADR-284) drawn as labeled frames with hover help, on
+      // items registered as pages only; display-only decorations.
+      LayoutBlocksView,
       // Live in-place updates: the fading highlight over a patched range.
       LiveFlash,
     ],
@@ -1192,6 +1197,13 @@ export default function MarkdownEditor({
     );
     return () => setSlashFilePicker(editor, null);
   }, [editor, hasUploader]);
+  // Tell the slash menu which item this editor holds, so page blocks show only
+  // on items registered for them (setLayoutBlocksFor, the Website Pages control).
+  useEffect(() => {
+    if (!editor) return;
+    setSlashEditorItem(editor, itemId ?? null);
+    return () => setSlashEditorItem(editor, null);
+  }, [editor, itemId]);
   // Scrub deleted files out of the live doc (see scrubDeletedFile above).
   useEffect(() => {
     if (!editor || !itemId) return;

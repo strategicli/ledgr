@@ -129,7 +129,16 @@ export default async function LongformCanvas(canvasProps: CanvasProps) {
     <>
       <ItemEditor
         item={{ id: item.id, title: item.title, body: item.body }}
-        fields={byline}
+        fields={
+          <>
+            {byline}
+            {/* A module's controls that belong above the body (a Website Page's
+                link, Design and published pages); renders nothing elsewhere. */}
+            <div className="px-2 sm:px-8 md:px-12">
+              <ModuleItemPanel id="page-header" itemId={item.id} />
+            </div>
+          </>
+        }
         tabsEnabled={tabsEnabled}
         collapsibleToolbar
         locked={locked}

@@ -4995,3 +4995,20 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Rejected.** Running seed.mjs from the supervisor or the installers: it also creates an owner row from an env var, which the `/setup` flow now owns, and it would put a second writer in front of the same rows.
 
 **Affects:** `drizzle/0067_core_types.sql`, `drizzle/meta/_journal.json`, `scripts/verify-core-types-migrated.mts`, `scripts/package-install-test.mjs`, runbook §1a.
+
+## ADR-284: layout blocks join the body dialect as Pandoc fenced divs (`::: name` … `:::`)
+
+**Date:** 2026-09-28
+**Status:** accepted (built on `feat/website-pages`; the first slice of Website Pages, `explorations/website-pages.md`).
+
+**Context.** Website Pages (Tyler) turn items into shared pages that read like web pages: a hero, cards, a carousel, sections pulled from other items. The layout has to live in the markdown body, because the body is the only source of truth (ADR-037/040) and a second stored layout document would be exactly the second source those ADRs forbid. The dialect has no block container today, so this adds one.
+
+**Decision.**
+1. **Syntax: Pandoc fenced divs.** A line `::: name [args]` opens a block, a line of three or more colons closes the innermost open one, and blocks nest by giving the outer fence more colons (`:::: carousel` around `::: slide`). The name is lowercase letters, digits and dashes. Collection sections configure themselves with `key: value` lines inside the block (`readBlockSettings`).
+2. **Only complete, named pairs count.** An opener without a name, a closer with nothing open, and an opener that never closes all stay literal text, so a stray `:::` someone typed is never reinterpreted. Lines inside a ``` or ~~~ code fence are never fences. Parser: `src/lib/editor/fenced-blocks.ts`.
+3. **The document render strips the fences and keeps the content.** `prepare()` in `markdown-render.ts` runs `stripFencedBlocks`, so share, print, Save Offline, export and the FTS document all read a page body as plain prose. This is dialect-wide: any type's body gets the strip. The *layout* render (`markdownToBlockHtml`, which emits nested `<section class="lb lb-<name>">` with `data-args`) is used only by the Website Page type. It emits structure and class names only; the look belongs to the design-language stylesheet.
+4. **The editor needs no extension.** Fence lines live in the rich editor as ordinary paragraph text and survive a rich-to-source flip. The one normalization (a blank line added after an opener that sits on a heading; a closer typed tight under a paragraph rides it as a soft break) is stable after the first flip and keeps every fence at the start of its own line, which is all the line-based parser needs. Pinned by `scripts/verify-fenced-blocks.mts`.
+
+**Rejected.** *`{hero}` / `{slide 1}` tokens* (Tyler's first sketch): they show as literal text, invite the serializer escape churn the color marks already had to be patched against (`MarkdownEscapeFix`), "slide" already means the ADR-176 screen mark, and inferring a layout from scattered tokens is fragile. *HTML-comment markers like canvas tabs (`<!-- tab: -->`)*: invisible in other readers, which is right for tabs but wrong for layout, and comments do not nest. *`markdown-it-container`*: a dependency for ~60 lines of line classification (Principle 5), and it would only cover the server render, not the strip or the tree the page render needs.
+
+**Consequences.** A body can now carry page structure that every non-page reader drops cleanly. Pandoc's own `.docx` path keeps a fenced div as a div, so an exported page body degrades the same way outside Ledgr. The editor shows fences as plain lines until a later slice adds node views that frame each block.

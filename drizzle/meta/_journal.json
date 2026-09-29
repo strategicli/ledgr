@@ -477,6 +477,13 @@
       "when": 1790400000000,
       "tag": "0067_core_types",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1790486400000,
+      "tag": "0068_website_page_type",
+      "breakpoints": true
     }
   ]
 }

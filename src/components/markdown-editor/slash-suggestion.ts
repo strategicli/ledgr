@@ -19,6 +19,8 @@ import {
 import { PluginKey } from "@tiptap/pm/state";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 import { insertToggle, wrapSelectionInToggle } from "./toggle-extension";
+import { LAYOUT_SNIPPETS } from "@/lib/editor/layout-snippets";
+import { openIconPicker } from "./icon-picker";
 
 // A unique key: @tiptap/suggestion defaults every instance to the same
 // "suggestion$" key, so a second default-keyed Suggestion (the "{{" token menu
@@ -46,6 +48,29 @@ export function setSlashFilePicker(
   if (open) filePickers.set(editor, open);
   else filePickers.delete(editor);
 }
+
+// Layout blocks (ADR-284) are offered only on items that lay out as a page. The
+// page's own control (a module's client component) registers its item id here,
+// and each editor registers which item it edits, so the core editor never has
+// to know about the Website Pages module or thread a flag through its hosts.
+const layoutItems = new Set<string>();
+// Fired when the set changes, so an editor already open redraws its block frames.
+export const LAYOUT_BLOCKS_EVENT = "ledgr-layout-blocks";
+export function setLayoutBlocksFor(itemId: string, on: boolean): void {
+  if (on) layoutItems.add(itemId);
+  else layoutItems.delete(itemId);
+  // Best effort: a redraw nudge, never worth failing a registration over.
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(LAYOUT_BLOCKS_EVENT));
+  } catch {}
+}
+const editorItems = new WeakMap<Editor, string>();
+export function setSlashEditorItem(editor: Editor, itemId: string | null): void {
+  if (itemId) editorItems.set(editor, itemId);
+  else editorItems.delete(editor);
+}
+export const layoutBlocksOn = (editor: Editor) => layoutItems.has(editorItems.get(editor) ?? "");
+const layoutOn = layoutBlocksOn;
 
 type SlashCommand = {
   id: string;
@@ -187,7 +212,37 @@ const COMMANDS: SlashCommand[] = [
       filePickers.get(editor)?.();
     },
   },
+  {
+    id: "icon",
+    label: "Icon",
+    hint: "Pick one of Ledgr's icons and a size",
+    keywords: ["icon", "symbol", "emoji", "glyph", "picture"],
+    enabled: layoutOn,
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      openIconPicker(editor);
+    },
+  },
+  ...LAYOUT_SNIPPETS.map(
+    (b): SlashCommand => ({
+      id: `block-${b.id}`,
+      label: b.label,
+      hint: b.hint,
+      keywords: [b.id, "block", "page", "section", ...b.keywords],
+      enabled: layoutOn,
+      run: (editor, range) => insertMarkdown(editor, range, b.markdown),
+    })
+  ),
 ];
+
+// Replace the "/query" with parsed markdown: the block's fence lines and sample
+// content land as ordinary paragraphs, exactly as if typed.
+function insertMarkdown(editor: Editor, range: Range, markdown: string): void {
+  const manager = (editor as unknown as { markdown?: { parse: (md: string) => { content?: unknown[] } } }).markdown;
+  const doc = manager?.parse(markdown);
+  const chain = editor.chain().focus().deleteRange(range);
+  (doc?.content?.length ? chain.insertContent(doc.content as never) : chain.insertContent(markdown)).run();
+}
 
 function filterCommands(query: string, editor: Editor): SlashCommand[] {
   const q = query.trim().toLowerCase();

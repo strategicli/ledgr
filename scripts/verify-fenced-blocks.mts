@@ -1,0 +1,264 @@
+// Website Pages layout blocks (`::: hero` … `:::`, Pandoc fenced divs) must
+// survive the rich editor untouched, because the markdown body is the only
+// source of truth (ADR-037/040): if a rich⇄source flip escaped the fence, merged
+// it into a paragraph, or dropped it, the page would silently lose its layout.
+//
+// Drives the real editor headlessly (linkedom DOM shim, the same harness as
+// verify-markdown-escape.mts) with the core of the canvas's extension list, and
+// checks that each body serializes back byte-identical and stays stable across
+// repeated flips.
+// Run: npx tsx scripts/verify-fenced-blocks.mts
+/* eslint-disable @typescript-eslint/no-explicit-any -- dev-only harness: the
+   linkedom DOM shim and Tiptap editor construction need loose typing at the
+   library boundary; this script never ships in the app bundle. */
+import { parseHTML } from "linkedom";
+
+const { window, document } = parseHTML("<!doctype html><html><body></body></html>");
+for (const k of ["window","document","HTMLElement","Node","DocumentFragment","getComputedStyle","Text","Element","MutationObserver"]) {
+  try { (globalThis as any)[k] = (window as any)[k] ?? (document as any)[k]; } catch {}
+}
+try { Object.defineProperty(globalThis, "navigator", { value: { userAgent: "node" }, configurable: true }); } catch {}
+(globalThis as any).window = window;
+(globalThis as any).document = document;
+(globalThis as any).innerHeight = 768;
+(globalThis as any).innerWidth = 1024;
+(globalThis as any).requestAnimationFrame ??= (cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 0);
+(globalThis as any).cancelAnimationFrame ??= (id: number) => clearTimeout(id);
+
+const { Editor } = await import("@tiptap/core");
+const StarterKit = (await import("@tiptap/starter-kit")).default;
+const { Markdown } = await import("@tiptap/markdown");
+const { TextColor, Highlight, SlideMark, LedgrImage, MarkdownEscapeFix, EmptyListItemFix, OrderedListTextFix } =
+  await import("../src/components/markdown-editor/extensions");
+
+let failures = 0;
+function check(name: string, ok: boolean, detail = "") {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail && !ok ? `\n      ${detail}` : ""}`);
+  if (!ok) failures += 1;
+}
+
+function flip(md: string): string {
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el as any,
+    extensions: [
+      StarterKit.configure({ code: false }),
+      Markdown.configure({ indentation: { style: "space", size: 4 } }),
+      MarkdownEscapeFix,
+      EmptyListItemFix,
+      OrderedListTextFix,
+      TextColor,
+      Highlight,
+      SlideMark,
+      LedgrImage,
+    ] as any,
+    content: md,
+    contentType: "markdown",
+  } as any);
+  const out = ed.getMarkdown();
+  ed.destroy();
+  return out;
+}
+
+const CASES: Record<string, string> = {
+  "hero, blank lines around fences": [
+    "::: hero",
+    "",
+    "![](/files/abc123)",
+    "",
+    "# Fall Retreat 2026",
+    "",
+    "A weekend away to rest and reset.",
+    "",
+    "[Register now](https://example.com/register)",
+    "",
+    ":::",
+  ].join("\n"),
+  "hero, fences tight against content": [
+    "::: hero",
+    "# Fall Retreat 2026",
+    "A weekend away.",
+    ":::",
+  ].join("\n"),
+  "nested carousel > slide": [
+    ":::: carousel",
+    "",
+    "::: slide",
+    "",
+    "### Friday",
+    "",
+    "Arrive, dinner, campfire.",
+    "",
+    ":::",
+    "",
+    "::: slide",
+    "",
+    "### Saturday",
+    "",
+    "Sessions, lake, worship night.",
+    "",
+    ":::",
+    "",
+    "::::",
+  ].join("\n"),
+  "collection section with key: value lines": [
+    "::: list",
+    "",
+    "title: Latest",
+    "",
+    "source: Devotional",
+    "",
+    "show: 4 newest",
+    "",
+    ":::",
+  ].join("\n"),
+};
+
+// The canonical shape (and what the /section slash command inserts) is a blank
+// line around every fence line; that shape round-trips byte-identical. A tight
+// hand-typed block is normalized once (the editor opens a blank line after an
+// opener that sits on a heading, and a closing fence under a paragraph rides it
+// as a soft break) and is stable from then on. Either way every fence stays at
+// the start of its own line, which is all the block parser needs.
+const TIGHT = new Set(["hero, fences tight against content"]);
+const fenceLines = (md: string) => md.split("\n").filter((l) => /^:{3,}/.test(l));
+
+for (const [name, src] of Object.entries(CASES)) {
+  const once = flip(src);
+  const twice = flip(once);
+  if (TIGHT.has(name)) {
+    check(`${name}: every fence still starts its own line`, JSON.stringify(fenceLines(once)) === JSON.stringify(fenceLines(src)), JSON.stringify(once));
+  } else {
+    check(`${name}: one flip is byte-identical`, once === src, JSON.stringify(once));
+  }
+  check(`${name}: stable across a second flip`, twice === once, JSON.stringify(twice));
+  check(`${name}: no fence was escaped`, !/\\:/.test(once), JSON.stringify(once));
+}
+
+// --- Part B: the parser, the document strip, and the page render ------------
+console.log("\nPart B: parser and renders");
+const { parseFencedBlocks, stripFencedBlocks, hasFencedBlocks, readBlockSettings } =
+  await import("../src/lib/editor/fenced-blocks");
+const { markdownToHtml, markdownToBlockHtml, markdownToText } = await import("../src/lib/markdown-render");
+
+{
+  const tree = parseFencedBlocks(CASES["nested carousel > slide"]);
+  const top = tree[0] as any;
+  check("nested: one top-level carousel", tree.length === 1 && top.kind === "block" && top.name === "carousel");
+  check("nested: two slides inside it", top.children.length === 2 && top.children.every((c: any) => c.name === "slide"));
+  check("nested: slide keeps its markdown", top.children[0].children[0].text === "### Friday\n\nArrive, dinner, campfire.");
+}
+{
+  const tree = parseFencedBlocks("Intro para.\n\n::: hero dark\n# Title\n:::\n\nOutro.");
+  check("mixed: markdown, block, markdown", tree.map((n: any) => n.kind).join(",") === "markdown,block,markdown");
+  check("mixed: args captured", (tree[1] as any).args === "dark");
+}
+{
+  const tight = "::: hero\n\n# Fall Retreat 2026\n\nA weekend away.\n:::";
+  const tree = parseFencedBlocks(tight);
+  check("closer under a paragraph (editor-normalized) still closes", tree.length === 1 && (tree[0] as any).children[0].text.endsWith("A weekend away."));
+}
+{
+  const md = "Before\n\n```\n::: hero\n:::\n```\n\nAfter";
+  check("fences inside a code block are not blocks", !hasFencedBlocks(md));
+  check("strip leaves code-block fences alone", stripFencedBlocks(md) === md);
+}
+{
+  check("stray ::: typed as text is left alone", stripFencedBlocks("a\n:::\nb") === "a\n:::\nb");
+  check("unclosed opener is left alone", stripFencedBlocks("::: hero\ntext") === "::: hero\ntext");
+  check("unnamed opener is not a block", !hasFencedBlocks("::: \ntext\n:::"));
+}
+{
+  const { settings, rest } = readBlockSettings("title: Latest\n\nsource: Devotional\nshow: 4 newest\n\nA note.");
+  check("settings: key/value lines read", settings.title === "Latest" && settings.source === "Devotional" && settings.show === "4 newest");
+  check("settings: other lines kept as content", rest === "A note.");
+  check("settings: a bare URL is not a setting", Object.keys(readBlockSettings("https://example.com").settings).length === 0);
+}
+{
+  const body = CASES["hero, blank lines around fences"];
+  const doc = markdownToHtml(body, undefined, { comments: false });
+  check("document render drops the fence lines", !doc.includes(":::"), doc);
+  check("document render keeps the content", doc.includes("Fall Retreat 2026") && doc.includes("Register now"), doc);
+  check("search text drops the fence lines", !markdownToText(body).includes(":::"));
+  const page = markdownToBlockHtml(body);
+  check("page render wraps the block", page.startsWith('<section class="lb lb-hero">') && page.endsWith("</section>"), page);
+  const nested = markdownToBlockHtml(CASES["nested carousel > slide"]);
+  check("page render nests blocks", /^<section class="lb lb-carousel"><section class="lb lb-slide">/.test(nested), nested);
+  const withArgs = markdownToBlockHtml('::: hero "x" <y>\n\nHi\n\n:::');
+  check("page render escapes args", withArgs.includes('data-args="&quot;x&quot; &lt;y>"'), withArgs);
+  const comment = markdownToBlockHtml("::: hero\n\nHello {>>private note<<}\n\n:::");
+  check("page render strips comments", !comment.includes("private note"), comment);
+}
+
+// --- Part C: every "/" page-block snippet survives the editor and renders ----
+console.log("\nPart C: slash-command snippets");
+const { LAYOUT_SNIPPETS } = await import("../src/lib/editor/layout-snippets");
+for (const snip of LAYOUT_SNIPPETS) {
+  const once = flip(snip.markdown.trimEnd());
+  check(`/${snip.id}: fences survive the editor`, JSON.stringify(fenceLines(once)) === JSON.stringify(fenceLines(snip.markdown)), JSON.stringify(once));
+  check(`/${snip.id}: parses as one "${snip.id}" block`, (parseFencedBlocks(once)[0] as any)?.name === snip.id, JSON.stringify(once));
+}
+
+// --- Part D: block frames in the writing surface are display-only -----------
+console.log("\nPart D: block frames");
+{
+  const { LayoutBlocksView } = await import("../src/components/markdown-editor/layout-blocks-view");
+  const { setLayoutBlocksFor, setSlashEditorItem } = await import("../src/components/markdown-editor/slash-suggestion");
+  const src = "::: columns\n\n### One\n\nText\n\n:::\n\n::: collection\n\ntitle: Latest\n\n:::";
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el as any,
+    extensions: [StarterKit.configure({ code: false }), Markdown.configure({ indentation: { style: "space", size: 4 } }), MarkdownEscapeFix, LayoutBlocksView] as any,
+    content: src,
+    contentType: "markdown",
+  } as any);
+  const html = () => (ed.view.dom as any).innerHTML as string;
+  setSlashEditorItem(ed as any, "page-1");
+  ed.view.dispatch(ed.state.tr.setMeta("noop", true));
+  check("frames: none on an item that isn't a page", !html().includes("lb-ed-open"), html());
+  setLayoutBlocksFor("page-1", true);
+  ed.view.dispatch(ed.state.tr.setMeta("noop", true));
+  const h = html();
+  check("frames: opening fence gets a labeled chip with a hint", /class="lb-ed-open[^"]*"[^>]*data-label="Columns"/.test(h) || (h.includes('data-label="Columns"') && h.includes("lb-ed-open")), h);
+  check("frames: hover hint explains the block", h.includes("Each ### heading starts a column"), h);
+  check("frames: closing fence becomes a rule", h.includes("lb-ed-close"), h);
+  check("frames: content inside gets the block edge", h.includes("lb-ed-inner"), h);
+  check("frames: collection settings look like form rows", h.includes("lb-ed-setting"), h);
+  check("frames: the saved markdown is untouched", ed.getMarkdown() === src, JSON.stringify(ed.getMarkdown()));
+  setLayoutBlocksFor("page-1", false);
+  ed.destroy();
+}
+
+// --- Part E: "/icon" inserts the picked icon's code at the caret -------------
+console.log("\nPart E: /icon picker");
+{
+  const { openIconPicker } = await import("../src/components/markdown-editor/icon-picker");
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el as any,
+    extensions: [StarterKit.configure({ code: false }), Markdown.configure({ indentation: { style: "space", size: 4 } }), MarkdownEscapeFix] as any,
+    content: "### Home",
+    contentType: "markdown",
+  } as any);
+  (ed.view as any).coordsAtPos = () => ({ left: 10, right: 10, top: 10, bottom: 20 });
+  ed.commands.setTextSelection(1); // the start of the heading text, before "Home"
+  const press = (node: any) => node.dispatchEvent(new (window as any).Event("mousedown", { bubbles: true, cancelable: true }));
+  try {
+    openIconPicker(ed as any);
+    const popup = document.querySelector(".ledgr-icon-picker") as any;
+    check("/icon: the picker opens with the icon grid", !!popup && popup.querySelectorAll(".ledgr-icon-picker-grid button").length > 100);
+    press([...popup.querySelectorAll(".ledgr-icon-picker-sizes button")].find((b: any) => b.textContent === "Large"));
+    press(popup.querySelector('.ledgr-icon-picker-grid button[aria-label="home"]'));
+    check("/icon: picking inserts the code with its size", ed.getMarkdown().startsWith("### :home:large: Home"), JSON.stringify(ed.getMarkdown()));
+    check("/icon: the picker closes after a pick", !document.querySelector(".ledgr-icon-picker"));
+  } catch (err) {
+    check("/icon: headless run", false, String(err));
+  }
+  ed.destroy();
+}
+
+console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
+process.exit(failures ? 1 : 0);

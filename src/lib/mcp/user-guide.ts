@@ -1043,11 +1043,109 @@ A shared **song** opens as the two-column chord chart. If the song has a
 itself, with a Speed picker beside the player), the share page plays it above the chart, so the person gets the chords
 and the recording together. Revoking the link stops the audio too.
 
+A shared **Website Page** opens as a designed web page instead of a
+document; see **Website pages** below.
+
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
 same theme and icon options) and hands back the URL to paste into an email, a
 Teams message, or another item; \`list_share_links\` answers "is this shared,
 since when, how many links"; \`revoke_share_link\` kills one link or every live
 link on an item. Ledgr does not count how many times a link was opened.
+
+## Website pages
+
+A **Website Page** turns your notes into a small website. The page is the
+site's home; anything you **publish** to it gets its own page under the same
+link, inside the same header, menu and footer. Switch it on under Build →
+Modules (**Website Pages**; it needs Sharing).
+
+**Make one.** Create an item of type Website Page. Its options sit at the top,
+above the writing area:
+
+- **The link bar** is always there: **Make link** the first time, then **View
+  page**, **Copy link**, and the address itself. Anyone with the link can see
+  the site; nobody can see anything you haven't published.
+- **Design** (click to open or close): while the page is still empty, pick a
+  **starter** and the page fills with sample sections you type over:
+  **Personal site** (who you are, your work, writing, a Now list, kind words, a
+  way to say hello) or **Journal** (a devotional or blog site: a featured piece,
+  the latest list, topics with counts, a series read in order). Then pick the
+  look: a **Style** (Modern, Minimal, Bold, Warm or Editorial, each with a line on
+  what it suits), **Colors** (Slate, Navy, Forest, Dusk, Tide) and a **Font**.
+  The look is a setting, so changing it never touches your writing, and every
+  page of the site wears it. Pages follow the reader's light or dark setting.
+  **Icons** shows Ledgr's icon set; click one to copy its code.
+- **Pages on this site** (click to open or close) lists everything published
+  here in a row, each with **View** and **Unpublish**.
+
+**Write it like a note.** Type **/** for a section: Hero, Cards, Columns,
+Collection, Timeline, Stats, Quotes, Call to action, Callout, or Video or link.
+Each arrives with sample text showing its parts. **/icon** opens an icon picker
+right where you are: search, choose a size, click one, and its code lands at
+the cursor. In the page, each section's
+first line shows as a small labeled tag; **hover it** to see how that section
+works, and click into it to edit the line itself. You can also type the lines
+yourself: a section is a line \`::: name\` above its content and a line \`:::\`
+below it. A misspelled or unfinished section never breaks the page; its
+content just shows as plain text.
+
+- \`::: hero\`: the opening section. Its first picture becomes the art, a
+  short line above the heading becomes the small eyebrow, the heading is the
+  headline, and a line that is only links becomes buttons (the first solid).
+- \`::: cards\` and \`::: columns\`: each \`###\` heading starts one (add
+  another \`###\` for another column).
+- \`::: collection\`: a list of things you've published here, set up with
+  lines inside it: \`title:\`, \`label:\`, \`type:\`, \`tag:\`, \`show: 6 newest\`
+  (or \`3 oldest\`), and \`layout:\` grid, list, hero (a featured piece as the
+  page's opening) or series (a numbered row read in order).
+- \`::: topics\`: every tag on what you've published, with counts
+  (\`exclude: featured\` leaves tags out).
+- \`::: timeline\`: rows written \`- **2024** What happened. _a detail_\`.
+- \`::: stats\`: key facts, \`- **Started** March 2023\`.
+- \`::: quotes\`: kind words, each a \`>\` quote ending \`> — Who said it\`.
+- \`::: cta\`: a closing band with a heading, a line and link buttons.
+- \`::: callout\`: a tinted aside.
+- \`::: embed\`: a YouTube or Vimeo link plays on the page; any other link
+  shows as a card. The next line is the caption.
+- \`:::: row\` around two sections sets them side by side.
+- \`::: menu\` on the home page is the menu on every page: one line per entry,
+  a link, an @-mention of something published here, a \`#heading\` on the page,
+  or plain text. Without one, the menu is Home plus any Website Pages you
+  published (an About page, say).
+- \`::: footer\` on the home page is the footer of every page, exactly as you
+  write it; leave it out for none.
+
+A short line right above a section's \`##\` heading becomes its small label.
+\`![what goes here](placeholder)\` draws a striped stand-in picture until you
+add a real one. \`:home:\`, \`:heart:\` and the rest of Ledgr's icons draw
+that icon in the page's colors; at the start of a card or column heading it
+becomes the heading's badge. Icons work anywhere on a page, including the
+site name, the menu and the footer, and everyday names like \`:star:\`,
+\`:mail:\` or \`:music:\` work too. Add a size after the name: \`:home:large:\`
+(small, medium, large or xl, which scale with the page) or \`:home:48:\` for
+exact pixels. To align a section, add a word to its first line:
+\`::: columns center\`, \`::: columns split\` (first column left, middle
+centered, last right) or \`::: cards center\`.
+
+**Publish things to it.** In any item's **Export & sharing**, **Publish to**
+lists your Website Pages; click one to publish, click again to unpublish. The
+item then says **Public on: …** so you always know. Nothing reaches a site any
+other way: tagging a note never publishes it, and a collection only ever shows
+what you published. Each published item gets its own page with its date, a
+reading time, its first paragraph as a lede, Previous / Next, and **Keep
+reading** (other published items, those sharing a tag first). Unpublishing, or
+moving the item to Trash, takes its page down at once. On a public page, an
+@-mention links to a Link item's address, a published item's page, or another
+item's share link, and otherwise shows as plain text, so nothing points into
+your Ledgr.
+
+**Assistants and apps.** Over MCP, an assistant can list your sites, make one
+from a starter, change its look, and publish or unpublish items
+(\`list_website_pages\`, \`create_website_page\`, \`set_page_design\`,
+\`publish_to_page\`, \`unpublish_from_page\`, \`page_design_options\`), and
+reads the full reference at \`ledgr://guide/website-pages\`. Apps with an API
+credential use \`/api/machine/website-pages\` and
+\`/api/machine/items/<id>/publish\`; \`/build/api\` has the details.
 
 ## Presentation export
 
