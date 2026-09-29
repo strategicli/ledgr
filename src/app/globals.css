@@ -603,6 +603,17 @@ mark.hl-accent {
   max-width: 64rem;
 }
 
+/* Page width setting (User Settings → Appearance), for wide monitors. Applies to
+   every item surface that carries [data-toc-scope]: the full page, the Desk
+   panels, and the modal (whose panel still caps it). "standard" keeps the widths
+   above; the block can never exceed its own panel either way. */
+body[data-page-width="wide"] [data-toc-scope] .max-w-3xl {
+  max-width: 100rem;
+}
+body[data-page-width="full"] [data-toc-scope] .max-w-3xl {
+  max-width: none;
+}
+
 /* Pinned table of contents (ADR-167). FloatingToc sets --toc-pin-w on its own
    [data-toc-scope] while the outline is pinned open; this turns that one
    variable into the content's right inset, so the sidebar's width and the room

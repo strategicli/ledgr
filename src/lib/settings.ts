@@ -133,6 +133,17 @@ export const UI_SCALE: Record<UiDensity, number> = {
 export const SECTION_STYLES = ["heavy", "light", "unified"] as const;
 export type SectionStyle = (typeof SECTION_STYLES)[number];
 
+// How wide an item's page runs, set as `data-page-width` on <body> (globals.css).
+// "standard" is the 64rem reading column; "wide" and "full" are for big monitors.
+export const PAGE_WIDTHS = ["standard", "wide", "full"] as const;
+export type PageWidth = (typeof PAGE_WIDTHS)[number];
+
+// Where body comments (ADR-170) show, set as `data-comments` on <body>
+// (markdown-editor.css). "margin" = cards in a right gutter on a wide screen;
+// "icons" = a speech-bubble icon in the text at every width, note on hover.
+export const COMMENT_DISPLAYS = ["margin", "icons"] as const;
+export type CommentDisplay = (typeof COMMENT_DISPLAYS)[number];
+
 export const NAV_POSITIONS = ["top", "bottom", "left", "right"] as const;
 export type NavPosition = (typeof NAV_POSITIONS)[number];
 
@@ -378,6 +389,8 @@ export type UserSettings = {
   // Item-canvas section style (heavy/light/unified). Maps to the
   // `data-section-style` attribute on <body>; the CanvasSection CSS reads it.
   sectionStyle: SectionStyle;
+  pageWidth: PageWidth;
+  commentDisplay: CommentDisplay;
   // Ordered item ids the owner has starred (the Favorites flyout). Order is the
   // list order; a missing/deleted id is silently dropped when the list resolves.
   favorites: string[];
@@ -632,6 +645,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   mobileUiDensity: null,
   theme: "dark",
   sectionStyle: "light",
+  pageWidth: "standard",
+  commentDisplay: "margin",
   favorites: [],
   listTabs: {},
   tocByType: {},
@@ -987,6 +1002,12 @@ export function parseSettings(raw: unknown): UserSettings {
   const sectionStyle = (SECTION_STYLES as readonly string[]).includes(r.sectionStyle as string)
     ? (r.sectionStyle as SectionStyle)
     : DEFAULT_SETTINGS.sectionStyle;
+  const pageWidth = (PAGE_WIDTHS as readonly string[]).includes(r.pageWidth as string)
+    ? (r.pageWidth as PageWidth)
+    : DEFAULT_SETTINGS.pageWidth;
+  const commentDisplay = (COMMENT_DISPLAYS as readonly string[]).includes(r.commentDisplay as string)
+    ? (r.commentDisplay as CommentDisplay)
+    : DEFAULT_SETTINGS.commentDisplay;
   const favorites = parseItemIdList(r.favorites, FAVORITES_HARD_CAP);
   const listTabs = parseListTabs(r.listTabs);
   const tocByType = parseTocByType(r.tocByType);
@@ -1041,6 +1062,8 @@ export function parseSettings(raw: unknown): UserSettings {
     mobileUiDensity,
     theme,
     sectionStyle,
+    pageWidth,
+    commentDisplay,
     favorites,
     listTabs,
     tocByType,

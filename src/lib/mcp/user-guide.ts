@@ -323,6 +323,10 @@ Select some text and press the comment button. Your note shows as a card in the
 margin, or as a tappable speech bubble on a narrow screen. Hovering either one
 lights up both.
 
+- **Margin or icons.** User Settings → Appearance → Comments picks where they
+  show. *As icons* puts a small speech bubble in the text at every width, so a
+  comment never narrows the page: hover it to read the note, click it to edit.
+  The comment popup has the same switch (*Show as icons* / *Show in margin*).
 - **Notes are Markdown** — bold, links, and \`@\` mentions all work inside one.
 - **A comment can span several paragraphs** and stays one comment.
 - **Comments never reach a reader.** Print, share and Word exports strip them.
@@ -1656,7 +1660,7 @@ palette jumps straight to a named setting.
 | Group | What you can change |
 |---|---|
 | Account | Display name, timezone, sign-in (password and recovery codes) |
-| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style |
+| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style, page width (Standard, Wide, Full: how much of a big monitor an item page and each Desk panel use), comments (in the margin or as icons) |
 | Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
 | Editing | Which toolbar buttons show; collapsible headings; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
 | Search | Your own synonym dictionary |
