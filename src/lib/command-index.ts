@@ -7,7 +7,7 @@
 // The result model is a union from the start (`destination | action`) so adding
 // command-results later ("New Sermon", "Clean up unused") is a populate, not a
 // refactor. Only `destination` results are produced this phase.
-import { BUILD_ENTRIES } from "@/lib/build-nav";
+import { buildNavFor, CORE_BUILD_NAV } from "@/lib/build-nav";
 
 // Which mode the palette opened in. The active mode only shifts ranking — the
 // same entries are always searchable from both sides.
@@ -61,44 +61,102 @@ export type DestinationResult = Extract<CommandResult, { kind: "destination" }>;
 // footer button for it instead (CommandPalette), which is always visible and
 // carries the typed query across via ?q=. A row would be a second, worse door to
 // the same place — it would compete for the arrow-key selection and lose the query.
-const BUILTIN_PAGES: { label: string; href: string; icon: string }[] = [
+// `moduleId` marks a page that belongs to a module: it is left out while that
+// module is off, so a switched-off feature leaves no door behind (ADR-272).
+type StaticEntry = {
+  label: string;
+  href: string;
+  icon: string;
+  keywords?: string[];
+  moduleId?: string;
+};
+
+const BUILTIN_PAGES: StaticEntry[] = [
+  { label: "Home", href: "/", icon: "home", keywords: ["start"] },
+  { label: "Today", href: "/today", icon: "calendar", keywords: ["agenda", "day"] },
   { label: "Inbox", href: "/inbox", icon: "inbox" },
-  { label: "Tasks", href: "/tasks", icon: "tasks" },
+  { label: "Triage", href: "/inbox/triage", icon: "inbox", keywords: ["process inbox", "one at a time"], moduleId: "triage" },
+  { label: "Tasks", href: "/tasks", icon: "tasks", keywords: ["to do", "todo"] },
+  { label: "Planner", href: "/planner", icon: "calendar", keywords: ["calendar", "schedule", "time block"] },
+  { label: "Desk", href: "/desk", icon: "grid", keywords: ["workspace", "panels"], moduleId: "desk" },
+  { label: "Notifications", href: "/notifications", icon: "bell", keywords: ["alerts"], moduleId: "notification-center" },
+  { label: "Notes", href: "/notes", icon: "notes" },
+  { label: "Links", href: "/links", icon: "links", keywords: ["bookmarks"] },
+  { label: "Events", href: "/events", icon: "meetings", keywords: ["meetings"] },
   { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
+  { label: "Views", href: "/views", icon: "views", keywords: ["saved views"] },
+  { label: "Types directory", href: "/list", icon: "layers", keywords: ["types", "all types"] },
   { label: "All items", href: "/items", icon: "items" },
-  { label: "Trash", href: "/trash", icon: "archive" },
-  { label: "Changelog", href: "/changelog", icon: "changelog" },
+  { label: "Search page", href: "/search", icon: "search", keywords: ["advanced search", "search"] },
+  { label: "Trash", href: "/trash", icon: "archive", keywords: ["deleted", "restore"] },
+  { label: "Changelog", href: "/changelog", icon: "changelog", keywords: ["what's new", "release notes"] },
+  { label: "New type", href: "/build/types/new", icon: "layers", keywords: ["create type", "add type"] },
+  { label: "New view", href: "/views/new", icon: "views", keywords: ["create view", "add view"] },
+  { label: "New template", href: "/build/templates/new", icon: "document", keywords: ["create template", "add template"] },
 ];
 
 // Named user settings. Each jumps to its group's anchor on /settings, so
 // "trash retention" lands on Connections & data rather than the page top.
-const SETTINGS_ENTRIES: { label: string; icon: string; anchor: string }[] = [
-  { label: "Accent color", icon: "tools", anchor: "appearance" },
-  { label: "Theme", icon: "tools", anchor: "appearance" },
-  { label: "Trash retention", icon: "archive", anchor: "connections" },
-  { label: "Nav position", icon: "grid", anchor: "layout" },
+type SettingEntry = { label: string; icon: string; anchor: string; keywords?: string[]; moduleId?: string };
+const SETTINGS_ENTRIES: SettingEntry[] = [
+  // The groups themselves, so a section name lands on its heading.
+  { label: "Account", icon: "person", anchor: "account" },
+  { label: "Appearance", icon: "tools", anchor: "appearance" },
+  { label: "Layout", icon: "grid", anchor: "layout" },
+  { label: "Editing", icon: "tools", anchor: "editing" },
+  { label: "Search settings", icon: "search", anchor: "search" },
+  { label: "Notification settings", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "AI settings", icon: "bolt", anchor: "ai" },
+  { label: "Connections & data", icon: "tools", anchor: "connections" },
+  // The rows inside them.
   { label: "Display name", icon: "person", anchor: "account" },
   { label: "Timezone", icon: "person", anchor: "account" },
   { label: "Sign-in and password", icon: "person", anchor: "sign-in" },
+  { label: "Theme", icon: "tools", anchor: "appearance", keywords: ["dark mode", "light mode"] },
+  { label: "Highlight color", icon: "tools", anchor: "appearance", keywords: ["accent color"] },
+  { label: "Text size", icon: "tools", anchor: "appearance", keywords: ["font size"] },
+  { label: "Display density", icon: "tools", anchor: "appearance", keywords: ["compact"] },
+  { label: "Section style", icon: "tools", anchor: "appearance" },
+  { label: "Navigation position", icon: "grid", anchor: "layout", keywords: ["nav position"] },
+  { label: "Spacing", icon: "grid", anchor: "layout" },
+  { label: "Opening an item", icon: "grid", anchor: "layout", keywords: ["open in modal", "open in page"] },
+  { label: "Quick-add card", icon: "tools", anchor: "editing" },
   { label: "Editor toolbar", icon: "tools", anchor: "editing" },
-  { label: "Search dictionary", icon: "tools", anchor: "search" },
-  { label: "Task calendar feed", icon: "tools", anchor: "calendar-feed" },
+  { label: "Collapsible headings", icon: "tools", anchor: "editing" },
+  { label: "Toggle blocks", icon: "tools", anchor: "editing" },
+  { label: "Search dictionary", icon: "tools", anchor: "search", keywords: ["synonyms"] },
+  { label: "Morning agenda", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "Event prep ready", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "Task due", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "Event starting soon", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "Sync & system errors", icon: "bell", anchor: "notifications", moduleId: "notification-center" },
+  { label: "AI features", icon: "bolt", anchor: "ai" },
+  { label: "Note Editing Partner prompt", icon: "bolt", anchor: "ai", moduleId: "live-context" },
+  { label: "Trash retention", icon: "archive", anchor: "connections" },
+  { label: "Task calendar feed", icon: "tools", anchor: "calendar-feed", keywords: ["ics"] },
   { label: "API credentials", icon: "tools", anchor: "api-credentials" },
 ];
 
 // The static (data-independent) entries: pages, Build/Maintain sections, and
 // named settings. Build sections come straight from build-nav.ts so the palette
-// and the sidebar never drift.
-export function staticCommandEntries(): DestinationResult[] {
-  const pages: DestinationResult[] = BUILTIN_PAGES.map((p) => ({
+// and the sidebar never drift. `off` is the owner's switched-off module ids;
+// pass `null` while they are still loading, which leaves out every module entry
+// so a disabled module never flashes into the list (ADR-272).
+export function staticCommandEntries(off: readonly string[] | null = []): DestinationResult[] {
+  const on = (moduleId?: string) => !moduleId || (off !== null && !off.includes(moduleId));
+  const pages: DestinationResult[] = BUILTIN_PAGES.filter((p) => on(p.moduleId)).map((p) => ({
     kind: "destination",
     id: `page:${p.href}`,
     group: "Pages",
     label: p.label,
     href: p.href,
     icon: p.icon,
+    keywords: p.keywords,
   }));
-  const sections: DestinationResult[] = BUILD_ENTRIES.map((e) => ({
+  // buildNavFor(off) is the same filtered taxonomy the sidebar renders. While
+  // `off` is unknown, only the core entries.
+  const buildEntries = (off === null ? CORE_BUILD_NAV : buildNavFor(off)).flatMap((g) => g.entries);
+  const sections: DestinationResult[] = buildEntries.map((e) => ({
     kind: "destination",
     id: `section:${e.href}`,
     group: "Build & Settings",
@@ -108,7 +166,7 @@ export function staticCommandEntries(): DestinationResult[] {
     icon: e.icon,
     keywords: e.keywords,
   }));
-  const settings: DestinationResult[] = SETTINGS_ENTRIES.map((s) => ({
+  const settings: DestinationResult[] = SETTINGS_ENTRIES.filter((s) => on(s.moduleId)).map((s) => ({
     kind: "destination",
     id: `setting:${s.label}`,
     group: "Build & Settings",
@@ -116,19 +174,23 @@ export function staticCommandEntries(): DestinationResult[] {
     sublabel: "User Settings",
     href: `/settings#${s.anchor}`,
     icon: s.icon,
+    keywords: s.keywords,
   }));
   return [...pages, ...sections, ...settings];
 }
 
-// The dynamic entries from owner data. A type jumps to *editing* it in Build,
-// or to its item list in Work (mode-aware href — the spec's "a type name jumps
-// to editing it" in Build, content elsewhere). Views open to run; a template
-// opens its prototype item's canvas — the same target the templates index links
-// to (ADR-093), since a template *is* a real item and has no separate editor.
+// The dynamic entries from owner data. A type's name always opens its home
+// page (its item list), in both modes, so typing a type's exact name lands
+// there; Build mode adds a second "Edit <type>" row for the type editor. Hidden
+// types are included (they drop out of everyday nav, but typing the name is
+// deliberate). Views open to run; a dashboard opens itself; a template opens
+// its prototype item's canvas — the same target the templates index links to
+// (ADR-093), since a template *is* a real item and has no separate editor.
 export function dynamicCommandEntries(
   data: {
-    types: { key: string; label: string; icon: string | null }[];
+    types: { key: string; label: string; icon: string | null; hidden?: boolean }[];
     views: { id: string; name: string }[];
+    dashboards?: { id: string; name: string }[];
     templates: {
       id: string;
       name: string;
@@ -139,14 +201,38 @@ export function dynamicCommandEntries(
   },
   mode: CommandMode
 ): DestinationResult[] {
-  const types: DestinationResult[] = data.types.map((t) => ({
+  const types: DestinationResult[] = data.types.flatMap((t): DestinationResult[] => {
+    const home: DestinationResult = {
+      kind: "destination",
+      id: `type:${t.key}`,
+      group: "Types",
+      label: t.label,
+      sublabel: t.hidden ? "Hidden type · View items" : "View items",
+      href: `/list/${t.key}`,
+      icon: t.icon ?? "layers",
+    };
+    if (mode !== "build") return [home];
+    return [
+      home,
+      {
+        kind: "destination",
+        id: `type-edit:${t.key}`,
+        group: "Types",
+        label: `Edit ${t.label}`,
+        sublabel: "Edit type",
+        href: `/build/types/${t.key}/edit`,
+        icon: t.icon ?? "layers",
+      },
+    ];
+  });
+  const dashboards: DestinationResult[] = (data.dashboards ?? []).map((d) => ({
     kind: "destination",
-    id: `type:${t.key}`,
-    group: "Types",
-    label: t.label,
-    sublabel: mode === "build" ? "Edit type" : "View items",
-    href: mode === "build" ? `/build/types/${t.key}/edit` : `/list/${t.key}`,
-    icon: t.icon ?? "layers",
+    id: `dashboard:${d.id}`,
+    group: "Views",
+    label: d.name,
+    sublabel: "Dashboard",
+    href: `/dashboards/${d.id}`,
+    icon: "dashboard",
   }));
   const views: DestinationResult[] = data.views.map((v) => ({
     kind: "destination",
@@ -173,7 +259,7 @@ export function dynamicCommandEntries(
     href: `/search?saved=${s.id}`,
     icon: "search",
   }));
-  return [...types, ...views, ...templates, ...savedSearches];
+  return [...types, ...views, ...dashboards, ...templates, ...savedSearches];
 }
 
 // Match a query against a label. Higher is better; null means no match. Prefix
@@ -183,6 +269,8 @@ export function matchScore(label: string, q: string): number | null {
   const l = label.toLowerCase();
   const query = q.trim().toLowerCase();
   if (!query) return 0;
+  // An exact name outranks a prefix, so "task" picks the Task type over Tasks.
+  if (l === query) return 120;
   if (l.startsWith(query)) return 100;
   // Word-boundary prefix (e.g. "settings" matches "User Settings").
   if (l.split(/[\s&/·]+/).some((w) => w.startsWith(query))) return 80;
@@ -218,11 +306,17 @@ function groupWeight(group: CommandGroup, mode: CommandMode): number {
 }
 
 // The display order of groups for a mode (Items-first in Work, Build-first in
-// Build). Groups with no matches are simply skipped by the renderer.
-export function groupOrder(mode: CommandMode): CommandGroup[] {
-  return mode === "build"
-    ? ["Build & Settings", "Types", "Views", "Saved searches", "Items", "Pages", "Actions"]
-    : ["Items", "Pages", "Views", "Saved searches", "Types", "Build & Settings", "Actions"];
+// Build). Groups with no matches are simply skipped by the renderer. When a
+// non-item entry's name is exactly the query, its group moves to the front so
+// Enter opens it: typing a type's (or page's) exact name goes straight there.
+export function groupOrder(mode: CommandMode, ranked: CommandResult[] = [], q = ""): CommandGroup[] {
+  const base: CommandGroup[] =
+    mode === "build"
+      ? ["Build & Settings", "Types", "Views", "Saved searches", "Items", "Pages", "Actions"]
+      : ["Items", "Pages", "Views", "Saved searches", "Types", "Build & Settings", "Actions"];
+  const query = q.trim().toLowerCase();
+  const exact = query ? ranked.find((r) => r.label.toLowerCase() === query) : undefined;
+  return exact ? [exact.group, ...base.filter((g) => g !== exact.group)] : base;
 }
 
 // Rank a set of entries against the query for a mode. With an empty query the

@@ -27,8 +27,10 @@ import { pushSearchHistory, readSearchHistory } from "@/lib/search-history";
 
 type ItemHit = { id: string; title: string; type: string };
 type IndexData = {
-  types: { key: string; label: string; icon: string | null }[];
+  types: { key: string; label: string; icon: string | null; hidden: boolean }[];
   views: { id: string; name: string }[];
+  dashboards: { id: string; name: string }[];
+  offModules: string[];
   templates: { id: string; name: string; type: string; prototypeItemId: string }[];
   savedSearches: { id: string; name: string }[];
 };
@@ -112,7 +114,9 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
     };
   }, [q, parsed]);
 
-  const staticEntries = useMemo(() => staticCommandEntries(), []);
+  // Module entries wait for the owner's off-list, so a switched-off module
+  // never shows (ADR-272).
+  const staticEntries = useMemo(() => staticCommandEntries(data?.offModules ?? null), [data]);
   const dynamicEntries = useMemo(
     () => (data ? dynamicCommandEntries(data, mode) : []),
     [data, mode]
@@ -144,7 +148,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
   // dropping empties. Items come pre-ranked from the API; the rest are ranked.
   const grouped = useMemo(() => {
     const cap = q.trim() ? QUERY_GROUP_CAP : EMPTY_GROUP_CAP;
-    return groupOrder(mode)
+    return groupOrder(mode, ranked, q)
       .map((group) => {
         // A "/type" token is an item-scoped query — the pages/views/sections
         // groups don't apply, so drop them and show only matching items.
