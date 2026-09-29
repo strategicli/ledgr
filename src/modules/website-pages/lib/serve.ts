@@ -6,19 +6,12 @@ import { bodyMarkdown } from "@/lib/body";
 import { addShareTokenToAttachmentUrls } from "@/lib/attachment-url";
 import { resolveItemBodyTokens } from "@/lib/item-tokens-service";
 import { moduleIsOn } from "@/lib/modules/gate";
-import { getSettings } from "@/lib/settings";
 import type { ResolvedShare } from "@/modules/sharing/lib/share";
 import { WEBSITE_PAGE_TYPE } from "@/modules/website-pages/manifest";
 import { renderWebPage } from "@/modules/website-pages/lib/page-html";
 import { loadSite } from "@/modules/website-pages/lib/site";
 import { readDesign } from "@/modules/website-pages/lib/theme";
 import { readPublications } from "@/modules/website-pages/lib/publications";
-
-async function footerFor(ownerId: string): Promise<string> {
-  const name = (await getSettings(ownerId)).displayName.trim()
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `Shared from ${name ? `${name}${/s$/i.test(name) ? "'" : "'s"} Ledgr` : "Ledgr"}`;
-}
 
 async function isSite(shared: ResolvedShare): Promise<boolean> {
   return shared.type === WEBSITE_PAGE_TYPE && (await moduleIsOn(shared.ownerId, "website-pages"));
@@ -48,7 +41,6 @@ export async function renderSiteHome(shared: ResolvedShare, token: string): Prom
     site,
     design: readDesign(shared.properties),
     currentHref: site.homeHref,
-    footerHtml: await footerFor(shared.ownerId),
   });
 }
 
@@ -99,7 +91,6 @@ export async function renderSiteSubpage(
         .slice(0, 3)
         .map((x) => x.i),
     },
-    footerHtml: await footerFor(shared.ownerId),
   });
 }
 

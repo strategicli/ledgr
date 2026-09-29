@@ -31,4 +31,27 @@ export const websitePagesModule: ModuleManifest = {
     },
   ],
   exporters: [],
+  mcpTools: {
+    names: [
+      "list_website_pages",
+      "page_design_options",
+      "create_website_page",
+      "set_page_design",
+      "publish_to_page",
+      "unpublish_from_page",
+    ],
+    instructions:
+      "Website Pages: an item of type website-page is a site's home; its share link opens as a " +
+      "designed web page. Lay pages out with markdown blocks (::: hero … :::) and set the look " +
+      "with set_page_design, never in the markdown. Items reach a site only through " +
+      "publish_to_page. Read ledgr://guide/website-pages before building or editing a page.",
+  },
+  routes: [
+    "src/app/share/[token]/[slug]/route.ts",
+    "src/app/api/items/[id]/publish/route.ts",
+    "src/app/api/items/[id]/starter/route.ts",
+    "src/app/api/machine/items/[id]/publish/route.ts",
+    "src/app/api/machine/website-pages/route.ts",
+    "src/app/api/machine/website-pages/[id]/route.ts",
+  ],
 };

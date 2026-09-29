@@ -71,7 +71,8 @@ check("self-contained document", html.startsWith("<!doctype html>") && html.incl
 check("no scripts on the page", !/<script/i.test(html));
 check("title in <title>", html.includes("<title>Fall Retreat</title>"));
 check("dark palette via the viewer's system setting", html.includes("prefers-color-scheme:dark"));
-check("footer rendered", html.includes("<footer class=\"page-foot\"><span></span><span>Shared from Tyler's Ledgr</span></footer>"), html);
+check("footer: a caller's footer line renders on its own", html.includes("<footer class=\"page-foot\"><span>Shared from Tyler's Ledgr</span></footer>"), html);
+check("footer: a site with no ::: footer has no footer at all (the owner decides)", !renderWebPage("x", "Hi", { site: { name: "x", homeHref: "/share/t", homeMarkdown: "Hi", items: [] } }).includes("<footer"));
 
 // Hero guesses
 check("hero with an image gets the art layout", html.includes('<section class="lb-hero lb-hero--art">'), html);

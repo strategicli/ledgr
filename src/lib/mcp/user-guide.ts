@@ -1043,74 +1043,101 @@ A shared **song** opens as the two-column chord chart. If the song has a
 itself, with a Speed picker beside the player), the share page plays it above the chart, so the person gets the chords
 and the recording together. Revoking the link stops the audio too.
 
-A shared **Website Page** opens as a designed web page instead of a document
-(the Website Pages module, off until you turn it on under Build → Modules; it
-needs Sharing). The quickest way to make one: create a Website Page, open
-**Export & sharing**, and pick a **starter** (Personal site): the page fills
-with sample sections you simply type over. In the same place, pick the look:
-a **Style** (Modern, Minimal, Bold, Warm, Editorial, each with a line on what
-it's for), **Colors** (Slate, Navy, Forest, Dusk, and Tide) and a **Font**.
-The look is a setting, so changing it never touches your writing, and every
-page of the site wears it; pages follow the reader's light or dark setting.
-**View page** opens the live page once it has a share link.
-
-To add a section, type **/** in the page and pick one (Hero, Cards, Columns,
-Collection, Timeline, Stats, Quotes, Call to action, Callout, Video or link):
-it arrives with sample text showing each part. You can also type the lines
-yourself: each block is a line \`::: name\` above the content and a line
-\`:::\` below it:
-
-- \`::: hero\`: the opening section. Its first image becomes the picture, the
-  heading becomes the headline, and a paragraph that is only a link becomes a
-  button, so \`[Register](https://…)\` on its own line is a button.
-- \`::: cards\`: each \`###\` heading inside starts a card; any text before
-  the first one is an intro above them.
-- \`::: callout\`: a tinted aside for something readers should not miss.
-
-**Publishing turns a page into a site.** In any item's Export & sharing
-section, **Publish to** lists your Website Pages: click one to publish the item
-there, click again to unpublish. The item then lives at its own address under
-the page's share link, inside the page's header and menu, and it says
-"Public on: …" so you always know. Nothing reaches a page any other way: a tag
-never publishes anything. On a Website Page itself, the same spot lists
-everything it publishes, each with **Unpublish**.
-
-- \`::: collection\`: a list of published items, set with lines inside it:
-  \`title: Latest\`, \`type: Devotional\`, \`tag: psalms-of-ascent\`,
-  \`show: 6 newest\` (or \`3 oldest\`), and \`layout: grid\` or \`list\`. Each
-  card shows the date, title, first picture and a short excerpt, and opens the
-  item's page. It only ever lists what you published to this page.
-- \`::: menu\`: a bullet list of links that becomes the site's menu on every
-  page. An @-mention of a published item goes to its page, \`#heading\` jumps to
-  a section of the home page, and a web address goes out. Without one, the menu
-  is Home plus any Website Pages you published there (an About page, say).
-
-- \`::: columns\`: side-by-side points, each \`###\` one column.
-- \`::: timeline\`: rows written \`- **2024** What happened. _a detail_\`.
-- \`::: stats\`: key facts, \`- **Started** March 2023\`.
-- \`::: quotes\`: kind words, each a \`>\` quote ending \`> — Who said it\`.
-- \`::: cta\`: a closing band with a heading, a line and link buttons.
-- \`::: embed\`: a YouTube or Vimeo link (plays on the page) or any other
-  link (shown as a card), with a caption on the next line.
-- \`:::: row\` around two blocks sets them side by side.
-- \`::: footer\` on the home page fills the footer of every page.
-- A short line above a block's \`##\` heading becomes its small label, and
-  \`![what goes here](placeholder)\` draws a striped stand-in picture until
-  you add a real one.
-
-Everything inside a block is ordinary markdown. Any other block name still
-shows its content as a plain section. On the page, an @-mention of a Link item
-links to that link's address, a mention of an item you have shared links to
-its share page, and any other mention is plain text, so nothing on a public page
-points into your Ledgr. Pages follow the reader's light or dark setting. In an
-ordinary note, printed page or export, the \`:::\` lines simply drop out and the
-content reads as normal text.
+A shared **Website Page** opens as a designed web page instead of a
+document; see **Website pages** below.
 
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
 same theme and icon options) and hands back the URL to paste into an email, a
 Teams message, or another item; \`list_share_links\` answers "is this shared,
 since when, how many links"; \`revoke_share_link\` kills one link or every live
 link on an item. Ledgr does not count how many times a link was opened.
+
+## Website pages
+
+A **Website Page** turns your notes into a small website. The page is the
+site's home; anything you **publish** to it gets its own page under the same
+link, inside the same header, menu and footer. Switch it on under Build →
+Modules (**Website Pages**; it needs Sharing).
+
+**Make one.** Create an item of type Website Page. Its options sit at the top,
+above the writing area:
+
+- **The link bar** is always there: **Make link** the first time, then **View
+  page**, **Copy link**, and the address itself. Anyone with the link can see
+  the site; nobody can see anything you haven't published.
+- **Design** (click to open or close): while the page is still empty, pick a
+  **starter** and the page fills with sample sections you type over:
+  **Personal site** (who you are, your work, writing, a Now list, kind words, a
+  way to say hello) or **Journal** (a devotional or blog site: a featured piece,
+  the latest list, topics with counts, a series read in order). Then pick the
+  look: a **Style** (Modern, Minimal, Bold, Warm or Editorial, each with a line on
+  what it suits), **Colors** (Slate, Navy, Forest, Dusk, Tide) and a **Font**.
+  The look is a setting, so changing it never touches your writing, and every
+  page of the site wears it. Pages follow the reader's light or dark setting.
+  **Icons** shows Ledgr's icon set; click one to copy its code.
+- **Pages on this site** (click to open or close) lists everything published
+  here in a row, each with **View** and **Unpublish**.
+
+**Write it like a note.** Type **/** for a section: Hero, Cards, Columns,
+Collection, Timeline, Stats, Quotes, Call to action, Callout, or Video or link.
+Each arrives with sample text showing its parts. In the page, each section's
+first line shows as a small labeled tag; **hover it** to see how that section
+works, and click into it to edit the line itself. You can also type the lines
+yourself: a section is a line \`::: name\` above its content and a line \`:::\`
+below it. A misspelled or unfinished section never breaks the page; its
+content just shows as plain text.
+
+- \`::: hero\`: the opening section. Its first picture becomes the art, a
+  short line above the heading becomes the small eyebrow, the heading is the
+  headline, and a line that is only links becomes buttons (the first solid).
+- \`::: cards\` and \`::: columns\`: each \`###\` heading starts one (add
+  another \`###\` for another column).
+- \`::: collection\`: a list of things you've published here, set up with
+  lines inside it: \`title:\`, \`label:\`, \`type:\`, \`tag:\`, \`show: 6 newest\`
+  (or \`3 oldest\`), and \`layout:\` grid, list, hero (a featured piece as the
+  page's opening) or series (a numbered row read in order).
+- \`::: topics\`: every tag on what you've published, with counts
+  (\`exclude: featured\` leaves tags out).
+- \`::: timeline\`: rows written \`- **2024** What happened. _a detail_\`.
+- \`::: stats\`: key facts, \`- **Started** March 2023\`.
+- \`::: quotes\`: kind words, each a \`>\` quote ending \`> — Who said it\`.
+- \`::: cta\`: a closing band with a heading, a line and link buttons.
+- \`::: callout\`: a tinted aside.
+- \`::: embed\`: a YouTube or Vimeo link plays on the page; any other link
+  shows as a card. The next line is the caption.
+- \`:::: row\` around two sections sets them side by side.
+- \`::: menu\` on the home page is the menu on every page: one line per entry,
+  a link, an @-mention of something published here, a \`#heading\` on the page,
+  or plain text. Without one, the menu is Home plus any Website Pages you
+  published (an About page, say).
+- \`::: footer\` on the home page is the footer of every page, exactly as you
+  write it; leave it out for none.
+
+A short line right above a section's \`##\` heading becomes its small label.
+\`![what goes here](placeholder)\` draws a striped stand-in picture until you
+add a real one. \`:home:\`, \`:heart:\` and the rest of Ledgr's icons draw
+that icon in the page's colors; at the start of a card or column heading it
+becomes the heading's badge.
+
+**Publish things to it.** In any item's **Export & sharing**, **Publish to**
+lists your Website Pages; click one to publish, click again to unpublish. The
+item then says **Public on: …** so you always know. Nothing reaches a site any
+other way: tagging a note never publishes it, and a collection only ever shows
+what you published. Each published item gets its own page with its date, a
+reading time, its first paragraph as a lede, Previous / Next, and **Keep
+reading** (other published items, those sharing a tag first). Unpublishing, or
+moving the item to Trash, takes its page down at once. On a public page, an
+@-mention links to a Link item's address, a published item's page, or another
+item's share link, and otherwise shows as plain text, so nothing points into
+your Ledgr.
+
+**Assistants and apps.** Over MCP, an assistant can list your sites, make one
+from a starter, change its look, and publish or unpublish items
+(\`list_website_pages\`, \`create_website_page\`, \`set_page_design\`,
+\`publish_to_page\`, \`unpublish_from_page\`, \`page_design_options\`), and
+reads the full reference at \`ledgr://guide/website-pages\`. Apps with an API
+credential use \`/api/machine/website-pages\` and
+\`/api/machine/items/<id>/publish\`; \`/build/api\` has the details.
 
 ## Presentation export
 

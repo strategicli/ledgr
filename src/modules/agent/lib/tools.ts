@@ -33,6 +33,8 @@ export const TOOL_TIERS: Record<string, Tier> = {
   list_share_links: "R",
   export_item: "R",
   link_to_line: "R",
+  list_website_pages: "R",
+  page_design_options: "R",
 
   create_item: "W",
   update_item: "W",
@@ -49,10 +51,16 @@ export const TOOL_TIERS: Record<string, Tier> = {
   move_item_type: "W",
   add_calendar_event: "W",
   restore_item: "W",
+  set_page_design: "W",
 
   delete_item: "D",
   share_item: "D",
   revoke_share_link: "D",
+  // Website Pages: publishing (and a site shared on creation) puts things in
+  // public, so it confirms like share_item.
+  create_website_page: "D",
+  publish_to_page: "D",
+  unpublish_from_page: "D",
 
   create_type: "X",
   update_type: "X",
@@ -121,6 +129,12 @@ export function describeCall(tool: string, args: Record<string, unknown>): strin
       return "Make a public share link";
     case "revoke_share_link":
       return "Turn off a share link";
+    case "create_website_page":
+      return `Make a website page ${q(args.title)}${args.share === false ? "" : " with a public link"}`;
+    case "publish_to_page":
+      return "Publish an item to a website page (it becomes public)";
+    case "unpublish_from_page":
+      return "Take an item off a website page";
     default:
       return tool.replace(/_/g, " ");
   }

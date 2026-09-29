@@ -574,10 +574,12 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
     ? section("keep", `<div class="lb-head"><h2>Keep reading</h2></div><div class="lb-grid">${m.more.map(itemCard).join("")}</div>`)
     : "";
   const footBlock = opts.site ? findBlock(parseFencedBlocks(opts.site.homeMarkdown), "footer") : undefined;
-  const footLeft = footBlock ? render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "") : "";
+  const footLeft = footBlock ? withIcons(render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "")) : "";
+  // The footer is the owner's: exactly the `::: footer` block, or nothing.
+  // (footerHtml is kept for renders outside a site, such as previews.)
   const footer =
     footLeft || opts.footerHtml
-      ? `<footer class="page-foot"><span>${footLeft}</span><span>${opts.footerHtml ?? ""}</span></footer>`
+      ? `<footer class="page-foot">${footLeft ? `<span>${footLeft}</span>` : ""}${opts.footerHtml ? `<span>${opts.footerHtml}</span>` : ""}</footer>`
       : "";
   const pageTitle = opts.site && opts.site.name !== title ? `${title} · ${opts.site.name}` : title;
   return (

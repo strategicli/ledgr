@@ -144,3 +144,23 @@ One sentence that makes it easy to say yes.
     markdown: block("embed", `https://www.youtube.com/watch?v=VIDEO_ID\n\nA caption for the video`),
   },
 ];
+
+// The label and one-paragraph explanation for every block: the hover help on a
+// block's chip in the editor, and the block reference the MCP guide and user
+// manual print. One source, so the three always say the same thing.
+export const BLOCK_HELP: Record<string, { label: string; hint: string }> = {
+  hero: { label: "Hero", hint: "The opening section. A short line above the heading becomes the eyebrow, the heading is the headline, paragraphs are the lede, a line of links becomes buttons (the first solid, the rest outlined), and the first picture is the art." },
+  cards: { label: "Cards", hint: "A row of cards. Each ### heading starts a new card. A short line or a ## heading before the first card becomes the section's label and title. Start a card's heading with an icon like :star: to give it a badge." },
+  columns: { label: "Columns", hint: "Side-by-side points. Each ### heading starts a column (add a fourth ### for four). Start a heading with an icon like :home: to replace the dot." },
+  collection: { label: "Collection", hint: "Lists items you've published to this page. Lines inside set it up: title, label, type, tag, show (e.g. 6 newest, 3 oldest), layout (grid, list, hero or series) and, for hero, button. It never shows anything you haven't published." },
+  topics: { label: "Topics", hint: "Every tag on your published items, with counts. Add 'exclude: featured' to leave tags out. Any other text shows beneath." },
+  timeline: { label: "Timeline", hint: "Rows written as - **When** What happened. _a detail_. Good for a history, a résumé or a Now list." },
+  stats: { label: "Stats", hint: "Key facts in a row, written as - **Label** value." },
+  quotes: { label: "Quotes", hint: "Kind words. Each > quote is one card; end it with a line '— Who said it'." },
+  cta: { label: "Call to action", hint: "A closing band: a heading, a line of text, and a line of links that become buttons." },
+  callout: { label: "Callout", hint: "A tinted aside for something readers shouldn't miss." },
+  embed: { label: "Video or link", hint: "Paste a YouTube or Vimeo link to play it on the page, or any other link to show it as a card. The next line is the caption." },
+  row: { label: "Side by side", hint: "Put two blocks inside (with ::: fences, this one uses ::::) to show them next to each other." },
+  menu: { label: "Menu", hint: "The site's menu, shown at the top of every page. One line per entry: a link, an @-mention of a published item, a #heading on this page, or plain text." },
+  footer: { label: "Footer", hint: "The bottom of every page, exactly as you write it (links, icons and all). Leave it out for no footer." },
+};

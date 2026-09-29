@@ -5,11 +5,8 @@
 import { NextResponse } from "next/server";
 import { asUuid, errorResponse, requireOwner } from "@/lib/api";
 import { routeGate } from "@/lib/modules/gate";
-import { getItem } from "@/lib/items";
-import { bodyMarkdown, MARKDOWN_FORMAT } from "@/lib/body";
-import { updateItem } from "@/lib/item-mutations";
-import { WEBSITE_PAGE_TYPE } from "@/modules/website-pages/manifest";
 import { starterById } from "@/modules/website-pages/lib/starters";
+import { applyStarter, PublishError } from "@/modules/website-pages/lib/service";
 
 export const dynamic = "force-dynamic";
 
@@ -23,19 +20,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const { starterId } = (await req.json().catch(() => ({}))) as { starterId?: unknown };
     const starter = typeof starterId === "string" ? starterById(starterId) : undefined;
     if (!starter) return NextResponse.json({ error: "unknown starter" }, { status: 400 });
-    const item = await getItem(owner.id, itemId);
-    if (!item || item.type !== WEBSITE_PAGE_TYPE) {
-      return NextResponse.json({ error: "not a website page" }, { status: 404 });
-    }
-    if (bodyMarkdown(item.body).trim()) {
-      return NextResponse.json({ error: "this page already has content" }, { status: 409 });
-    }
-    await updateItem(owner.id, itemId, {
-      body: { format: MARKDOWN_FORMAT, text: starter.body },
-      propertyPatch: { design: starter.design },
-    });
+    await applyStarter(owner.id, itemId, starter.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (err instanceof PublishError) {
+      return NextResponse.json({ error: err.message }, { status: err.message.includes("content") ? 409 : 400 });
+    }
     return errorResponse(err);
   }
 }

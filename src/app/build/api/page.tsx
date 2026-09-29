@@ -74,6 +74,21 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
     what: "register a file + get a presigned upload URL",
   },
   {
+    method: "GET / POST",
+    path: "/api/machine/website-pages",
+    what: "Website Pages module: GET lists every page (public url, look, published items) with the style / color / font / starter options; POST {title, starter?, design?, body?, share?} makes a page and returns its url",
+  },
+  {
+    method: "PATCH",
+    path: "/api/machine/website-pages/<id>",
+    what: "set a page's look {design: {language, palette, font}} and/or fill an empty page from a starter {starter}",
+  },
+  {
+    method: "POST / DELETE",
+    path: "/api/machine/items/<id>/publish",
+    what: "publish an item to a Website Page, or take it off: body {\"pageId\": \"…\"}. POST returns its slug and publish date",
+  },
+  {
     method: "POST",
     path: "/api/machine/capture",
     what: "capture a URL as a link item in the Inbox",
@@ -139,6 +154,28 @@ curl -X PATCH ${origin}/api/machine/items \\
   -u "<keyID>:<secret>" \\
   -H "Content-Type: application/json" \\
   -d "{\\"id\\":\\"<targetId>\\",\\"body\\":$BODY}"`;
+
+  const curlSite = `# make a site from a starter, in a look, shared (returns its public url)
+curl -X POST ${origin}/api/machine/website-pages \\
+  -u "<keyID>:<secret>" -H "Content-Type: application/json" \\
+  -d '{"title":"Still Water","starter":"journal",
+       "design":{"language":"editorial","palette":"dusk"}}'
+
+# publish an existing note to it (the only way anything reaches a site)
+curl -X POST ${origin}/api/machine/items/<noteId>/publish \\
+  -u "<keyID>:<secret>" -H "Content-Type: application/json" \\
+  -d '{"pageId":"<pageId>"}'
+
+# change the look later (the markdown is untouched)
+curl -X PATCH ${origin}/api/machine/website-pages/<pageId> \\
+  -u "<keyID>:<secret>" -H "Content-Type: application/json" \\
+  -d '{"design":{"language":"warm","palette":"forest"}}'
+
+# write the page body like any item: blocks are plain markdown
+curl -X PATCH ${origin}/api/machine/items \\
+  -u "<keyID>:<secret>" -H "Content-Type: application/json" \\
+  -d '{"id":"<pageId>","body":{"format":"markdown",
+       "text":"::: hero\\n\\n# Welcome\\n\\n:::"}}'`;
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
@@ -376,6 +413,48 @@ curl -X PATCH ${origin}/api/machine/items \\
             from 100, on both <code className="font-mono text-xs">POST</code>{" "}
             and <code className="font-mono text-xs">PATCH</code>. Names shared
             across a batch are resolved once.
+          </li>
+        </ul>
+      </section>
+
+      {/* Website Pages — explorations/website-pages.md */}
+      <section className="mt-8">
+        <h2 className="ui-section-label">Website pages</h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          With the Website Pages module on, a Website Page is a site&apos;s home and
+          its share link opens as a designed web page. Three things to know: the
+          page&apos;s layout is its markdown body (blocks like{" "}
+          <code className="font-mono text-xs">::: hero</code> …{" "}
+          <code className="font-mono text-xs">:::</code>), its look is a setting
+          (<code className="font-mono text-xs">design</code>), and an item reaches a
+          site only when it is published there. The full reference, every block
+          with an example, the collection settings, icons, and each style, palette
+          and starter with its reasoning, is the MCP resource{" "}
+          <code className="font-mono text-xs">ledgr://guide/website-pages</code>.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-card border border-line bg-surface-2 p-3 font-mono text-xs text-ink-muted">
+          {curlSite}
+        </pre>
+        <ul className="mt-4 flex flex-col gap-2 ui-row text-ink-muted">
+          <li>
+            <strong className="text-ink">Looks are validated by name</strong> — an unknown{" "}
+            <code className="font-mono text-xs">language</code>,{" "}
+            <code className="font-mono text-xs">palette</code> or{" "}
+            <code className="font-mono text-xs">font</code> is a 400 that names it. Changing the
+            language without a font switches to that language&apos;s own font.
+          </li>
+          <li>
+            <strong className="text-ink">A starter never overwrites writing</strong> — it only
+            fills an empty page; on one with content it is a 400.
+          </li>
+          <li>
+            <strong className="text-ink">Publishing keeps the address</strong> — re-publishing
+            an item keeps its slug and date; unpublishing (or Trash) takes its page down at
+            once, within about a minute at the edge cache.
+          </li>
+          <li>
+            <strong className="text-ink">Module off</strong> — every route here answers 404
+            while Website Pages is switched off for the owner.
           </li>
         </ul>
       </section>
