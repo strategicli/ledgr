@@ -948,76 +948,212 @@
   }
 }
 
-/* Layout blocks on a page (layout-blocks-view.ts): fence lines as labeled
-   chips with hover help, a left edge on everything inside a block, settings
-   lines as quiet form rows. Display only; the markdown is untouched, and a
-   fence line shows raw while the caret is on it (.lb-ed-raw). */
-.ledgr-prose .lb-ed-open:not(.lb-ed-raw) {
+/* Layout blocks on a page (layout-blocks-view.ts), per Claude Design's "Block
+   Helper Redesign": quiet labels with a summary, one continuous rail per block
+   (nested blocks +16px), the highlight color only on the block the caret is in,
+   settings as a key/value grid, icon codes as tokens, a fixed amber for problems.
+   Display only; the markdown is untouched. Colors come from the theme tokens so
+   every Ledgr theme works; --accent is the owner's highlight color. */
+.ledgr-prose {
+  --lb-rail: var(--color-neutral-800, #2e2e2e);
+  --lb-rail-nested: var(--color-neutral-700, #3a3a3a);
+  --lb-muted: var(--color-neutral-500, #8f8f8f);
+  --lb-faint: var(--color-neutral-600, #5f5f5f);
+  --lb-warn: #e0a44a;
+}
+.ledgr-prose .lb-ed-head,
+.ledgr-prose .lb-ed-in,
+.ledgr-prose .lb-ed-fence {
   position: relative;
-  font-size: 0;
-  line-height: 0;
-  margin: 1.1em 0 0.35em;
-  height: 1.6rem;
+  margin-left: var(--lb-indent);
 }
-.ledgr-prose .lb-ed-open:not(.lb-ed-raw)::before {
-  content: attr(data-label);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  height: 1.5rem;
-  padding: 0 0.6rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1;
-  cursor: help;
-}
-.ledgr-prose .lb-ed-open:not(.lb-ed-raw):hover::after {
-  content: attr(data-hint);
+.ledgr-prose .lb-ed-head::before,
+.ledgr-prose .lb-ed-in::before,
+.ledgr-prose .lb-ed-fence::before {
+  content: "";
   position: absolute;
-  left: 0;
-  top: 1.9rem;
-  z-index: 20;
-  width: min(26rem, 90vw);
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--color-neutral-700, #444);
-  background: var(--color-neutral-900, #111);
-  color: var(--color-neutral-200, #ddd);
-  font-size: 0.8rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  line-height: 1.45;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--lb-indent));
+  width: var(--lb-indent);
+  background: var(--lb-rails);
   pointer-events: none;
 }
-.ledgr-prose .lb-ed-close:not(.lb-ed-raw) {
+/* Contiguous rails: blocks inside a rail space themselves with padding, not
+   margins, so the line never breaks between paragraphs. */
+.ledgr-prose .lb-ed-in {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-block: 0.3em;
+}
+.ledgr-prose .lb-ed-in.is-active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 6%, transparent), transparent 60%);
+}
+.ledgr-prose .lb-ed-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 1.1em;
+  padding: 2px 0 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: default;
+  user-select: none;
+}
+.ledgr-prose .lb-ed-head.is-active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 6%, transparent), transparent 60%);
+}
+.ledgr-prose .lb-ed-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--lb-faint);
+  flex: none;
+}
+.ledgr-prose .lb-ed-num {
+  font: 600 11px/1 ui-monospace, Menlo, monospace;
+  color: var(--lb-faint);
+}
+.ledgr-prose .lb-ed-label {
+  font-weight: 600;
+  color: var(--lb-muted);
+  cursor: help;
+}
+.ledgr-prose .lb-ed-summary {
+  color: var(--lb-faint);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledgr-prose .lb-ed-head.is-active .lb-ed-mark { background: var(--accent); }
+.ledgr-prose .lb-ed-head.is-active .lb-ed-label { color: var(--accent); }
+.ledgr-prose .lb-ed-head.is-active .lb-ed-summary { color: var(--lb-muted); }
+.ledgr-prose .lb-ed-q {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--color-neutral-700, #4a4a4a);
+  color: var(--lb-muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+}
+.ledgr-prose .lb-ed-issue { color: var(--lb-warn); }
+.ledgr-prose .lb-ed-fix {
+  flex-basis: 100%;
+  color: var(--lb-muted);
+}
+.ledgr-prose .lb-ed-fix code { color: var(--color-neutral-200, #e8e8e8); }
+.ledgr-prose .lb-ed-fix button { color: var(--accent); margin-left: 4px; }
+/* Fence lines collapse unless the caret is on them. */
+.ledgr-prose .lb-ed-fence:not(.lb-ed-raw) {
   font-size: 0;
   line-height: 0;
-  height: 0.6rem;
-  margin: 0 0 1em;
-  border-bottom: 1px dashed color-mix(in oklab, var(--accent) 35%, transparent);
+  height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  overflow: hidden;
 }
-.ledgr-prose .lb-ed-inner {
-  border-left: 2px solid color-mix(in oklab, var(--accent) 35%, transparent);
-  padding-left: 0.9rem;
-  margin-left: 0.15rem;
+.ledgr-prose .lb-ed-fence.lb-ed-close:not(.lb-ed-raw) { height: 10px; margin-bottom: 1em; }
+.ledgr-prose .lb-ed-fence.lb-ed-raw {
+  font: 13px/1.6 ui-monospace, Menlo, monospace;
+  color: var(--lb-muted);
+  margin-top: 0;
+  margin-bottom: 0;
 }
-.ledgr-prose .lb-ed-inner[data-depth="2"] {
-  border-left-width: 4px;
-}
-.ledgr-prose .lb-ed-setting {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 0.85em;
-  color: var(--color-neutral-400, #999);
+/* Settings: a key / value grid in mono. */
+.ledgr-prose .lb-ed-settings {
+  font: 13.5px/1.7 ui-monospace, Menlo, monospace;
   white-space: pre-wrap;
 }
+.ledgr-prose .lb-ed-key { color: var(--lb-faint); }
+.ledgr-prose .lb-ed-badkey {
+  color: var(--lb-warn);
+  text-decoration: underline wavy var(--lb-warn) 1px;
+  text-underline-offset: 3px;
+}
+/* Icon codes as tokens; raw (accent-tinted) while the caret touches them. */
+.ledgr-prose .lb-ed-code-hidden { font-size: 0; }
+.ledgr-prose .lb-ed-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 5px;
+  background: var(--color-neutral-800, #262626);
+  color: var(--color-neutral-400, #9a9a9a);
+  font: 500 12px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: 0.15em;
+  cursor: text;
+}
+.ledgr-prose .lb-ed-token-size { color: var(--lb-faint); }
+.ledgr-prose .lb-ed-code-raw {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+/* The help card (appended to <body>, so not scoped to .ledgr-prose). */
+.lb-help-card {
+  position: fixed;
+  z-index: 70;
+  width: min(380px, calc(100vw - 16px));
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+  color: #e8e8e8;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+.lb-help-head { padding: 14px 18px 12px; }
+.lb-help-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lb-help-top strong { font-size: 15px; }
+.lb-help-top code { font: 500 11px/1 ui-monospace, Menlo, monospace; color: #7a7a7a; }
+.lb-help-head p { margin: 6px 0 0; color: #bdbdbd; }
+.lb-help-settings {
+  border-top: 1px solid #333;
+  padding: 10px 18px 12px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 7px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #9a9a9a;
+}
+.lb-help-settings code { font-family: ui-monospace, Menlo, monospace; color: #e8e8e8; }
+.lb-help-settings .is-current { color: #f0f0f0; font-weight: 600; }
+.lb-help-desc { display: block; color: #7a7a7a; font-size: 12px; }
+.lb-help-howto {
+  margin: 0;
+  border-top: 1px solid #333;
+  padding: 10px 18px 12px;
+  font: 12.5px/1.6 ui-monospace, Menlo, monospace;
+  color: #cfcfcf;
+  white-space: pre-wrap;
+}
+.lb-help-foot {
+  border-top: 1px solid #333;
+  padding: 10px 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  background: #1f1f1f;
+}
+.lb-help-foot button { color: #6db3f2; }
+.lb-help-foot a { color: #9a9a9a; text-decoration: none; }
 
 /* The "/icon" picker (icon-picker.ts): search, size, grid, at the caret. */
 .ledgr-icon-picker {

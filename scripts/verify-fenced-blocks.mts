@@ -200,12 +200,16 @@ for (const snip of LAYOUT_SNIPPETS) {
   check(`/${snip.id}: parses as one "${snip.id}" block`, (parseFencedBlocks(once)[0] as any)?.name === snip.id, JSON.stringify(once));
 }
 
-// --- Part D: block frames in the writing surface are display-only -----------
-console.log("\nPart D: block frames");
+// --- Part D: block helpers in the writing surface are display-only ----------
+console.log("\nPart D: block helpers");
 {
   const { LayoutBlocksView } = await import("../src/components/markdown-editor/layout-blocks-view");
   const { setLayoutBlocksFor, setSlashEditorItem } = await import("../src/components/markdown-editor/slash-suggestion");
-  const src = "::: columns\n\n### One\n\nText\n\n:::\n\n::: collection\n\ntitle: Latest\n\n:::";
+  const src = [
+    "::: columns center", "", "Who I am", "", "### :home:large: Work", "", "Youth pastor.", "", "### Make", "", "Furniture.", "", ":::", "",
+    ":::: row", "", "::: collection", "", "title: Writing", "", "tag: writing", "", "show: 4 newest", "", "layot: list", "", ":::", "",
+    "::: timeline", "", "## Now", "", "- **Reading** A book. *Again*", "- **Building** A shelf.", "", ":::", "", "::::",
+  ].join("\n");
   const el = document.createElement("div");
   document.body.appendChild(el);
   const ed = new Editor({
@@ -215,19 +219,32 @@ console.log("\nPart D: block frames");
     contentType: "markdown",
   } as any);
   const html = () => (ed.view.dom as any).innerHTML as string;
-  setSlashEditorItem(ed as any, "page-1");
+  setSlashEditorItem(ed as any, "page-2");
   ed.view.dispatch(ed.state.tr.setMeta("noop", true));
-  check("frames: none on an item that isn't a page", !html().includes("lb-ed-open"), html());
-  setLayoutBlocksFor("page-1", true);
+  check("helpers: none on an item that isn't a page", !html().includes("lb-ed-head"), html());
+  setLayoutBlocksFor("page-2", true);
   ed.view.dispatch(ed.state.tr.setMeta("noop", true));
   const h = html();
-  check("frames: opening fence gets a labeled chip with a hint", /class="lb-ed-open[^"]*"[^>]*data-label="Columns"/.test(h) || (h.includes('data-label="Columns"') && h.includes("lb-ed-open")), h);
-  check("frames: hover hint explains the block", h.includes("Each ### heading starts a column"), h);
-  check("frames: closing fence becomes a rule", h.includes("lb-ed-close"), h);
-  check("frames: content inside gets the block edge", h.includes("lb-ed-inner"), h);
-  check("frames: collection settings look like form rows", h.includes("lb-ed-setting"), h);
-  check("frames: the saved markdown is untouched", ed.getMarkdown() === src, JSON.stringify(ed.getMarkdown()));
-  setLayoutBlocksFor("page-1", false);
+  check("helpers: a quiet sentence-case label per block", h.includes('<span class="lb-ed-label" tabindex="-1">Columns</span>'), h);
+  check("helpers: columns summary counts columns and quotes the label", h.includes("2 columns · “Who I am”"), h);
+  check("helpers: row summary counts its parts", h.includes("2 parts"), h);
+  check("helpers: timeline summary counts entries", h.includes("2 entries"), h);
+  check("helpers: blocks in a row are numbered", /<span class="lb-ed-num">1<\/span><span class="lb-ed-label"[^>]*>Collection/.test(h) && /<span class="lb-ed-num">2<\/span><span class="lb-ed-label"[^>]*>Timeline/.test(h), h);
+  check("helpers: nested blocks sit 16px further in", h.includes("--lb-indent:34px"), h);
+  check("helpers: an unknown setting is flagged in amber", h.includes("1 setting not recognised") && h.includes("lb-ed-badkey"), h);
+  check("helpers: it suggests the right key", h.includes("Did you mean <code>layout</code>?"), h);
+  check("helpers: settings read as a key/value grid", h.includes("lb-ed-settings") && h.includes("lb-ed-key"), h);
+  check("helpers: icon codes show as a token", h.includes("lb-ed-token") && h.includes("lb-ed-code-hidden") && h.includes("· L</span>"), h);
+  check("helpers: the block holding the caret (the first, on load) lights up alone", (h.match(/lb-ed-head is-active/g) ?? []).length === 1, h);
+  const inTimeline = ed.state.doc.content.size - 30;
+  ed.commands.setTextSelection(inTimeline);
+  const h2 = html();
+  check("helpers: only the innermost block lights up", (h2.match(/lb-ed-head is-active/g) ?? []).length === 1 && /lb-ed-head is-active[^>]*>(?:(?!<\/div>)[\s\S])*Timeline/.test(h2), h2);
+  check("helpers: the saved markdown is untouched", ed.getMarkdown() === src, JSON.stringify(ed.getMarkdown()));
+  // Fix the misspelled key through the header's Fix button's own transaction.
+  const bad = ed.state.doc.textBetween(0, ed.state.doc.content.size, "\n").indexOf("layot");
+  check("helpers: the misspelling is really in the doc", bad >= 0);
+  setLayoutBlocksFor("page-2", false);
   ed.destroy();
 }
 
