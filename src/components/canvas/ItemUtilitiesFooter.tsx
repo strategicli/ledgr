@@ -88,6 +88,8 @@ export default async function ItemUtilitiesFooter({
               <SaveOffline itemId={itemId} bare />
               {/* The sharing module's control; renders nothing while it is off. */}
               <ModuleItemPanel id="share" itemId={itemId} bare />
+              {/* Website Pages: publish this item to a site, or on a page, what it exposes. */}
+              <ModuleItemPanel id="publish" itemId={itemId} />
               <PresentationExport itemId={itemId} bare />
               <ModuleItemPanel id="present" itemId={itemId} />
             </div>

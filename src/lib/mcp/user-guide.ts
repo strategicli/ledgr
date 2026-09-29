@@ -1055,6 +1055,24 @@ line \`::: name\` above the content and a line \`:::\` below it:
   the first one is an intro above them.
 - \`::: callout\`: a tinted aside for something readers should not miss.
 
+**Publishing turns a page into a site.** In any item's Export & sharing
+section, **Publish to** lists your Website Pages: click one to publish the item
+there, click again to unpublish. The item then lives at its own address under
+the page's share link, inside the page's header and menu, and it says
+"Public on: …" so you always know. Nothing reaches a page any other way: a tag
+never publishes anything. On a Website Page itself, the same spot lists
+everything it publishes, each with **Unpublish**.
+
+- \`::: collection\`: a list of published items, set with lines inside it:
+  \`title: Latest\`, \`type: Devotional\`, \`tag: psalms-of-ascent\`,
+  \`show: 6 newest\` (or \`3 oldest\`), and \`layout: grid\` or \`list\`. Each
+  card shows the date, title, first picture and a short excerpt, and opens the
+  item's page. It only ever lists what you published to this page.
+- \`::: menu\`: a bullet list of links that becomes the site's menu on every
+  page. An @-mention of a published item goes to its page, \`#heading\` jumps to
+  a section of the home page, and a web address goes out. Without one, the menu
+  is Home plus any Website Pages you published there (an About page, say).
+
 Everything inside a block is ordinary markdown. Any other block name still
 shows its content as a plain section. On the page, an @-mention of a Link item
 links to that link's address, a mention of an item you have shared links to

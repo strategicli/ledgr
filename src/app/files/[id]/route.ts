@@ -32,6 +32,7 @@ import { SHARE_PARAM } from "@/lib/attachment-url";
 import { moduleIsOn } from "@/lib/modules/gate";
 import { resolveOwner } from "@/lib/owner";
 import { resolveShareToken } from "@/modules/sharing/lib/share";
+import { sitePublishes } from "@/modules/website-pages/lib/serve";
 import { getStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -76,8 +77,13 @@ export async function GET(request: Request, context: Context) {
     // A share link whose module is off opens nothing, its images included.
     allowed =
       !!shared &&
-      shared.itemId === att.parentItemId &&
-      (await moduleIsOn(shared.ownerId, "sharing"));
+      (await moduleIsOn(shared.ownerId, "sharing")) &&
+      (shared.itemId === att.parentItemId ||
+        // A Website Page's link also opens the files of items it PUBLISHES, so
+        // a subpage's pictures load. Still scoped: only that page's own publish
+        // list, never anything else the owner has.
+        (!!att.parentItemId &&
+          (await sitePublishes(shared, att.parentItemId))));
   } else {
     const owner = await resolveOwner();
     allowed = !!owner && owner.id === att.ownerId;
