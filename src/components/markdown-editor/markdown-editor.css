@@ -1175,6 +1175,30 @@ body[data-comments="icons"] .cmt-note {
   border-radius: 4px;
   padding: 1px 3px;
 }
+/* Headings inside a block stay inside it: the collapsible-headings fold
+   (padding-left + a matching negative margin, and a chevron on ::before) would
+   pull a heading out past the block's rail. Inside a page block the heading
+   takes the block's indent and its ::before draws the rail like every line. */
+.ledgr-prose h1.ledgr-foldable.lb-ed-in,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in {
+  padding-left: 0;
+  margin-left: var(--lb-indent);
+}
+.ledgr-prose h1.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in::before {
+  content: "";
+  display: block;
+  left: calc(-1 * var(--lb-indent));
+  width: var(--lb-indent);
+  font-size: 0;
+  background: var(--lb-rails);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
 /* The help card (appended to <body>, so not scoped to .ledgr-prose). */
 .lb-help-card {
   position: fixed;
