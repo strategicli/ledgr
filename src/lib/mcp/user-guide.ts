@@ -1080,7 +1080,9 @@ above the writing area:
 
 **Write it like a note.** Type **/** for a section: Hero, Cards, Columns,
 Collection, Timeline, Stats, Quotes, Call to action, Callout, or Video or link.
-Each arrives with sample text showing its parts. In the page, each section's
+Each arrives with sample text showing its parts. **/icon** opens an icon picker
+right where you are: search, choose a size, click one, and its code lands at
+the cursor. In the page, each section's
 first line shows as a small labeled tag; **hover it** to see how that section
 works, and click into it to edit the line itself. You can also type the lines
 yourself: a section is a line \`::: name\` above its content and a line \`:::\`

@@ -20,6 +20,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 import { insertToggle, wrapSelectionInToggle } from "./toggle-extension";
 import { LAYOUT_SNIPPETS } from "@/lib/editor/layout-snippets";
+import { openIconPicker } from "./icon-picker";
 
 // A unique key: @tiptap/suggestion defaults every instance to the same
 // "suggestion$" key, so a second default-keyed Suggestion (the "{{" token menu
@@ -209,6 +210,17 @@ const COMMANDS: SlashCommand[] = [
     run: (editor, range) => {
       editor.chain().focus().deleteRange(range).run();
       filePickers.get(editor)?.();
+    },
+  },
+  {
+    id: "icon",
+    label: "Icon",
+    hint: "Pick one of Ledgr's icons and a size",
+    keywords: ["icon", "symbol", "emoji", "glyph", "picture"],
+    enabled: layoutOn,
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      openIconPicker(editor);
     },
   },
   ...LAYOUT_SNIPPETS.map(

@@ -54,8 +54,9 @@ Two rules hold everything together:
   with sample sections to type over, and takes the starter's look.
 - **Type \`/\`** in the page for a block (Hero, Cards, Columns, Collection,
   Timeline, Stats, Quotes, Call to action, Callout, Video or link). Each arrives
-  with sample text that shows its parts. Typing the \`:::\` lines by hand works
-  exactly the same.
+  with sample text that shows its parts. **/icon** opens an icon picker (search,
+  size, grid) that inserts the code at the caret. Typing the \`:::\` lines by
+  hand works exactly the same.
 - In the editor, each block's opening line shows as a labeled chip; hover it
   for how the block works. Put the caret on it to edit the raw line.
 - A block that is misspelled or unfinished never breaks the page: its content

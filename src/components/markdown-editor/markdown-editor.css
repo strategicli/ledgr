@@ -1018,3 +1018,67 @@
   color: var(--color-neutral-400, #999);
   white-space: pre-wrap;
 }
+
+/* The "/icon" picker (icon-picker.ts): search, size, grid, at the caret. */
+.ledgr-icon-picker {
+  position: fixed;
+  z-index: 60;
+  width: 20rem;
+  max-height: 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.ledgr-icon-picker-search {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.375rem;
+  background: #0f0f0f;
+  color: #e5e5e5;
+  font-size: 0.8rem;
+}
+.ledgr-icon-picker-sizes {
+  display: flex;
+  gap: 0.25rem;
+}
+.ledgr-icon-picker-sizes button {
+  flex: 1;
+  padding: 0.2rem 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.3rem;
+  color: #a3a3a3;
+  font-size: 0.72rem;
+}
+.ledgr-icon-picker-sizes button.is-selected {
+  border-color: var(--accent);
+  color: #f5f5f5;
+}
+.ledgr-icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.2rem;
+  overflow-y: auto;
+}
+.ledgr-icon-picker-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 0.3rem;
+  color: #d4d4d4;
+}
+.ledgr-icon-picker-grid button:hover {
+  background: #262626;
+  color: var(--accent);
+}
+.ledgr-icon-picker-empty {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  color: #737373;
+  font-size: 0.8rem;
+}

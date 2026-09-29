@@ -22,6 +22,8 @@ try { Object.defineProperty(globalThis, "navigator", { value: { userAgent: "node
 (globalThis as any).document = document;
 (globalThis as any).innerHeight = 768;
 (globalThis as any).innerWidth = 1024;
+(globalThis as any).requestAnimationFrame ??= (cb: (t: number) => void) => setTimeout(() => cb(Date.now()), 0);
+(globalThis as any).cancelAnimationFrame ??= (id: number) => clearTimeout(id);
 
 const { Editor } = await import("@tiptap/core");
 const StarterKit = (await import("@tiptap/starter-kit")).default;
@@ -226,6 +228,35 @@ console.log("\nPart D: block frames");
   check("frames: collection settings look like form rows", h.includes("lb-ed-setting"), h);
   check("frames: the saved markdown is untouched", ed.getMarkdown() === src, JSON.stringify(ed.getMarkdown()));
   setLayoutBlocksFor("page-1", false);
+  ed.destroy();
+}
+
+// --- Part E: "/icon" inserts the picked icon's code at the caret -------------
+console.log("\nPart E: /icon picker");
+{
+  const { openIconPicker } = await import("../src/components/markdown-editor/icon-picker");
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el as any,
+    extensions: [StarterKit.configure({ code: false }), Markdown.configure({ indentation: { style: "space", size: 4 } }), MarkdownEscapeFix] as any,
+    content: "### Home",
+    contentType: "markdown",
+  } as any);
+  (ed.view as any).coordsAtPos = () => ({ left: 10, right: 10, top: 10, bottom: 20 });
+  ed.commands.setTextSelection(1); // the start of the heading text, before "Home"
+  const press = (node: any) => node.dispatchEvent(new (window as any).Event("mousedown", { bubbles: true, cancelable: true }));
+  try {
+    openIconPicker(ed as any);
+    const popup = document.querySelector(".ledgr-icon-picker") as any;
+    check("/icon: the picker opens with the icon grid", !!popup && popup.querySelectorAll(".ledgr-icon-picker-grid button").length > 100);
+    press([...popup.querySelectorAll(".ledgr-icon-picker-sizes button")].find((b: any) => b.textContent === "Large"));
+    press(popup.querySelector('.ledgr-icon-picker-grid button[aria-label="home"]'));
+    check("/icon: picking inserts the code with its size", ed.getMarkdown().startsWith("### :home:large: Home"), JSON.stringify(ed.getMarkdown()));
+    check("/icon: the picker closes after a pick", !document.querySelector(".ledgr-icon-picker"));
+  } catch (err) {
+    check("/icon: headless run", false, String(err));
+  }
   ed.destroy();
 }
 
