@@ -947,3 +947,74 @@
     mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
   }
 }
+
+/* Layout blocks on a page (layout-blocks-view.ts): fence lines as labeled
+   chips with hover help, a left edge on everything inside a block, settings
+   lines as quiet form rows. Display only; the markdown is untouched, and a
+   fence line shows raw while the caret is on it (.lb-ed-raw). */
+.ledgr-prose .lb-ed-open:not(.lb-ed-raw) {
+  position: relative;
+  font-size: 0;
+  line-height: 0;
+  margin: 1.1em 0 0.35em;
+  height: 1.6rem;
+}
+.ledgr-prose .lb-ed-open:not(.lb-ed-raw)::before {
+  content: attr(data-label);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.5rem;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  cursor: help;
+}
+.ledgr-prose .lb-ed-open:not(.lb-ed-raw):hover::after {
+  content: attr(data-hint);
+  position: absolute;
+  left: 0;
+  top: 1.9rem;
+  z-index: 20;
+  width: min(26rem, 90vw);
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-neutral-700, #444);
+  background: var(--color-neutral-900, #111);
+  color: var(--color-neutral-200, #ddd);
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+}
+.ledgr-prose .lb-ed-close:not(.lb-ed-raw) {
+  font-size: 0;
+  line-height: 0;
+  height: 0.6rem;
+  margin: 0 0 1em;
+  border-bottom: 1px dashed color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.ledgr-prose .lb-ed-inner {
+  border-left: 2px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  padding-left: 0.9rem;
+  margin-left: 0.15rem;
+}
+.ledgr-prose .lb-ed-inner[data-depth="2"] {
+  border-left-width: 4px;
+}
+.ledgr-prose .lb-ed-setting {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--color-neutral-400, #999);
+  white-space: pre-wrap;
+}

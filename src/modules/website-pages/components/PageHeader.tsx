@@ -4,7 +4,8 @@
 // here, as a horizontal row). Collapsed state is remembered per browser.
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { setLayoutBlocksFor } from "@/components/markdown-editor/slash-suggestion";
 import PageControls from "@/modules/website-pages/components/PageControls";
 import type { Design } from "@/modules/website-pages/lib/theme";
 
@@ -86,6 +87,13 @@ function Section({
 }
 
 export default function PageHeader({ itemId, design, empty, token: initialToken, base, starters, pages: initialPages }: Props) {
+  // This item lays out as a page: its editor offers the "/" page blocks and
+  // draws block frames. Registered here, not in Design, so it holds while
+  // Design is collapsed.
+  useEffect(() => {
+    setLayoutBlocksFor(itemId, true);
+    return () => setLayoutBlocksFor(itemId, false);
+  }, [itemId]);
   const [token, setToken] = useState(initialToken);
   const [pages, setPages] = useState(initialPages);
   const [copied, setCopied] = useState(false);

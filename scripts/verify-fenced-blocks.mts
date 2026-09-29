@@ -198,5 +198,36 @@ for (const snip of LAYOUT_SNIPPETS) {
   check(`/${snip.id}: parses as one "${snip.id}" block`, (parseFencedBlocks(once)[0] as any)?.name === snip.id, JSON.stringify(once));
 }
 
+// --- Part D: block frames in the writing surface are display-only -----------
+console.log("\nPart D: block frames");
+{
+  const { LayoutBlocksView } = await import("../src/components/markdown-editor/layout-blocks-view");
+  const { setLayoutBlocksFor, setSlashEditorItem } = await import("../src/components/markdown-editor/slash-suggestion");
+  const src = "::: columns\n\n### One\n\nText\n\n:::\n\n::: collection\n\ntitle: Latest\n\n:::";
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const ed = new Editor({
+    element: el as any,
+    extensions: [StarterKit.configure({ code: false }), Markdown.configure({ indentation: { style: "space", size: 4 } }), MarkdownEscapeFix, LayoutBlocksView] as any,
+    content: src,
+    contentType: "markdown",
+  } as any);
+  const html = () => (ed.view.dom as any).innerHTML as string;
+  setSlashEditorItem(ed as any, "page-1");
+  ed.view.dispatch(ed.state.tr.setMeta("noop", true));
+  check("frames: none on an item that isn't a page", !html().includes("lb-ed-open"), html());
+  setLayoutBlocksFor("page-1", true);
+  ed.view.dispatch(ed.state.tr.setMeta("noop", true));
+  const h = html();
+  check("frames: opening fence gets a labeled chip with a hint", /class="lb-ed-open[^"]*"[^>]*data-label="Columns"/.test(h) || (h.includes('data-label="Columns"') && h.includes("lb-ed-open")), h);
+  check("frames: hover hint explains the block", h.includes("Each ### heading starts a column"), h);
+  check("frames: closing fence becomes a rule", h.includes("lb-ed-close"), h);
+  check("frames: content inside gets the block edge", h.includes("lb-ed-inner"), h);
+  check("frames: collection settings look like form rows", h.includes("lb-ed-setting"), h);
+  check("frames: the saved markdown is untouched", ed.getMarkdown() === src, JSON.stringify(ed.getMarkdown()));
+  setLayoutBlocksFor("page-1", false);
+  ed.destroy();
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
 process.exit(failures ? 1 : 0);

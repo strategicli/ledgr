@@ -74,6 +74,7 @@ import {
   setSlashFilePicker,
   setSlashToggleEnabled,
 } from "./slash-suggestion";
+import { LayoutBlocksView } from "./layout-blocks-view";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -752,6 +753,9 @@ export default function MarkdownEditor({
       // The "/" slash-command menu (headings + toggle). Toggle entry gated by
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
+      // Layout blocks (ADR-284) drawn as labeled frames with hover help, on
+      // items registered as pages only; display-only decorations.
+      LayoutBlocksView,
       // Live in-place updates: the fading highlight over a patched range.
       LiveFlash,
     ],

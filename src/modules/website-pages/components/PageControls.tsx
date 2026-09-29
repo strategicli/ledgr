@@ -5,8 +5,7 @@
 // the owner chooses by fit, not by guessing from a swatch.
 "use client";
 
-import { useEffect, useState } from "react";
-import { setLayoutBlocksFor } from "@/components/markdown-editor/slash-suggestion";
+import { useState } from "react";
 import { FONTS, LANGUAGES, PALETTES, type Design } from "@/modules/website-pages/lib/theme";
 import { NAV_ICONS, type NavIconKey } from "@/lib/nav-icons";
 
@@ -25,12 +24,6 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
   const [design, setDesign] = useState<Design>(initial.design);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  // This item lays out as a page: offer the page blocks in its "/" menu.
-  useEffect(() => {
-    setLayoutBlocksFor(itemId, true);
-    return () => setLayoutBlocksFor(itemId, false);
-  }, [itemId]);
 
   async function pick(next: Partial<Design>) {
     // A new language brings its own default font unless one was picked.

@@ -53,16 +53,23 @@ export function setSlashFilePicker(
 // and each editor registers which item it edits, so the core editor never has
 // to know about the Website Pages module or thread a flag through its hosts.
 const layoutItems = new Set<string>();
+// Fired when the set changes, so an editor already open redraws its block frames.
+export const LAYOUT_BLOCKS_EVENT = "ledgr-layout-blocks";
 export function setLayoutBlocksFor(itemId: string, on: boolean): void {
   if (on) layoutItems.add(itemId);
   else layoutItems.delete(itemId);
+  // Best effort: a redraw nudge, never worth failing a registration over.
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(LAYOUT_BLOCKS_EVENT));
+  } catch {}
 }
 const editorItems = new WeakMap<Editor, string>();
 export function setSlashEditorItem(editor: Editor, itemId: string | null): void {
   if (itemId) editorItems.set(editor, itemId);
   else editorItems.delete(editor);
 }
-const layoutOn = (editor: Editor) => layoutItems.has(editorItems.get(editor) ?? "");
+export const layoutBlocksOn = (editor: Editor) => layoutItems.has(editorItems.get(editor) ?? "");
+const layoutOn = layoutBlocksOn;
 
 type SlashCommand = {
   id: string;
