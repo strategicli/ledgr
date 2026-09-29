@@ -18,6 +18,7 @@
 import MarkdownIt from "markdown-it";
 import { stripBlockAnchors } from "@/lib/editor/block-anchor";
 import { flattenTabs } from "@/lib/editor/canvas-tabs";
+import { parseFencedBlocks, stripFencedBlocks, type FencedNode } from "@/lib/editor/fenced-blocks";
 import { renderComments, stripComments } from "@/lib/editor/comment-markdown";
 import { spaceEmptyListItems } from "@/lib/editor/list-markdown";
 import { MENTION_URI_PREFIX, mentionItemId } from "@/lib/editor/mention-markdown";
@@ -276,9 +277,42 @@ function prepare(markdown: string, comments: boolean): string {
   // them still carries `- ` flush under a paragraph, which CommonMark reads as a
   // setext heading. Heal it here too, so an old note prints/shares/exports as
   // the bullets it was meant to be rather than a giant heading.
+  // stripFencedBlocks: Website Pages layout blocks (`::: hero` … `:::`) are
+  // page structure, not prose. The document render drops the fence lines and
+  // keeps their content, so a page body prints, shares and exports as plain
+  // sections; only the page render (markdownToBlockHtml) reads the blocks.
   return normalizeListIndent(
-    spaceEmptyListItems(stripBlockAnchors(flattenTabs(body)))
+    spaceEmptyListItems(stripBlockAnchors(stripFencedBlocks(flattenTabs(body))))
   );
+}
+
+// Markdown → HTML for a Website Page: the same render as markdownToHtml, but
+// layout blocks become nested <section class="lb lb-<name>"> elements carrying
+// their args as data-args. It emits structure and class names only; how a block
+// looks is the design language's stylesheet, never this function. Comments are
+// always stripped (a page is public). Each markdown run renders through the
+// shared prepare chain, so mentions, colors and headings behave as they do on a
+// shared document.
+export function markdownToBlockHtml(
+  markdown: string,
+  mentions?: Map<string, ResolvedMention>
+): string {
+  if (!markdown) return "";
+  const emit = (nodes: FencedNode[]): string =>
+    nodes
+      .map((n) =>
+        n.kind === "markdown"
+          ? md.render(prepare(n.text, false), { mentions })
+          : `<section class="lb lb-${n.name}"${n.args ? ` data-args="${escapeAttr(n.args)}"` : ""}>` +
+            emit(n.children) +
+            "</section>"
+      )
+      .join("");
+  return emit(parseFencedBlocks(stripComments(flattenTabs(markdown))));
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
 // Markdown → plain text for the FTS document. Render, then strip tags and decode
