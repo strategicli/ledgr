@@ -233,6 +233,8 @@ const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
   check("icons: pixel size, clamped", /style="width:256px;height:256px"/.test(withIcons("<p>:home:999:</p>")) && /style="width:48px/.test(withIcons("<p>:home:48:</p>")));
   check("icons: an unknown size stays text", withIcons("<p>:home:huge:</p>") === "<p>:home:huge:</p>");
   check("align: columns split", renderWebPage("x", "::: columns split\n\n### A\n\n### B\n\n:::").includes('class="lb-cols lb-align-split"'));
+  const centered = renderWebPage("x", "::: columns center\n\n### :home: Home\n\n:::");
+  check("align: a centered column's icon badge centers with its heading", centered.includes(".lb-align-center h3>.lb-icon:first-child") && centered.includes("margin-inline:auto"));
   check("align: cards center", renderWebPage("x", "::: cards center\n\n### A\n\n:::").includes('class="lb-grid lb-align-center"'));
   check("align: an unknown word is ignored", renderWebPage("x", "::: columns sideways\n\n### A\n\n:::").includes('class="lb-cols"'));
   const cols = renderWebPage("x", "::: columns\n\n### :home: Home\n\nText\n\n:::");
