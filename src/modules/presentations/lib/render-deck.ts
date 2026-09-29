@@ -21,6 +21,7 @@ import { bodyMarkdown, isItemBody } from "@/lib/body";
 import { markdownToHtml } from "@/lib/markdown-render";
 import { buildDeck, chordProToSlides, soleMention, type DeckSlide } from "@/modules/presentations/lib/deck";
 import { parseDesign, type PresentationDesign } from "@/modules/presentations/lib/design";
+import { videoOnlySlide } from "@/modules/presentations/lib/slide-blocks";
 import { parseChordPro } from "@/lib/chordpro/parse";
 import { CHORDPRO_FORMAT } from "@/lib/chordpro/types";
 
@@ -115,6 +116,24 @@ export async function loadDeckSource(
   };
 }
 
+// A video-only slide renders as a still card naming the video; only the
+// audience screen, when online, swaps it for the live player (player-html's
+// mountVideo). So the presenter view, print, image export, and an offline
+// download all show the card rather than a dead or doubled player.
+function escAttr(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function slideHtml(md: string): string {
+  const video = videoOnlySlide(md);
+  if (!video) return markdownToHtml(md, undefined, { comments: false });
+  return (
+    `<div class="slide-video" data-src="${escAttr(video.src)}">` +
+    `<a class="slide-video-card" href="${escAttr(video.url)}" target="_blank" rel="noopener">` +
+    `<span class="slide-video-play">\u25B6</span><span>Video</span>` +
+    `<span class="slide-video-url">${escAttr(video.url)}</span></a></div>`
+  );
+}
+
 export async function loadDeck(
   ownerId: string,
   itemId: string
@@ -128,7 +147,7 @@ export async function loadDeck(
     slides: source.slides.map((s) => ({
       // Comments are notes-to-self already pulled out as `notes` by buildDeck;
       // never render them into the slide body itself.
-      html: markdownToHtml(s.md, undefined, { comments: false }),
+      html: slideHtml(s.md),
       notesHtml: markdownToHtml(s.notes, undefined, { comments: false }),
     })),
   };

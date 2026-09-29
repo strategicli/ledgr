@@ -401,6 +401,11 @@ file type (a PDF, a Word doc, an HTML page) uploads and lands as a link on its
 filename. Clicking that link opens the file in a new tab — HTML pages and PDFs
 render in the browser, everything else downloads.
 
+Animated GIFs keep moving. A browser's "Copy image" on a GIF copies only a
+still frame, so when you paste one, Ledgr fetches the real GIF from the address
+it was copied from. If that site won't hand it over, you get the still frame;
+drag the saved GIF file in instead.
+
 ## Linking to one line
 
 The "copy a link to this line" button stamps a hidden marker on the current line
@@ -1211,6 +1216,12 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   few seconds.
 - **Show another item on a slide.** A slide holding nothing but one @-link shows
   that item: its own slides if it has any, otherwise its whole text.
+- **Play a video on a slide.** A slide holding nothing but one YouTube or Vimeo
+  link plays that video on the audience screen. Your presenter view shows a card
+  naming it instead, so the sound doesn't play twice. It needs internet: offline,
+  in a PDF, or in an image export, the slide shows the card with the link.
+  If the browser blocks autoplay, click play on the audience screen. The
+  PowerPoint export carries it as an online video.
 - **Save offline** downloads the whole show as one file, pictures included, that
   runs in any browser with no internet.
 - **Design** (in the presenter view) sets the look for this presentation: a

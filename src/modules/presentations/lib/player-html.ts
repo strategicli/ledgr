@@ -104,6 +104,12 @@ html[data-role="audience"] #presenter{display:none}
 .stage-inner{position:absolute;inset:0;padding:80px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.3}
 .stage.layout-image .stage-inner{padding:0;align-items:center;justify-content:center}
 .stage.layout-image img{max-width:100%;max-height:100%;object-fit:contain;margin:auto;display:block}
+.stage.layout-video .stage-inner{padding:0}
+.slide-video{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+.slide-video iframe{width:100%;height:100%;border:0;display:block}
+.slide-video-card{display:flex;flex-direction:column;align-items:center;gap:16px;color:inherit;text-decoration:none;font-size:40px;font-weight:700}
+.slide-video-play{font-size:120px;line-height:1}
+.slide-video-url{font-size:24px;font-weight:400;opacity:.7;word-break:break-all;max-width:1200px;text-align:center}
 .stage.layout-quote .stage-inner{align-items:center;text-align:center;font-style:italic}
 .stage.layout-big .stage-inner{align-items:center;text-align:center;font-weight:700}
 .stage.layout-text .stage-inner{align-items:flex-start;text-align:left}
@@ -383,7 +389,7 @@ function applyDesignToStage(stageEl, design, slideNumber) {
   var inner = stageEl.querySelector(".stage-inner");
   var logoWrap = stageEl.querySelector(".stage-logo");
   var tbar = stageEl.querySelector(".stage-titlebar");
-  var isImageLayout = stageEl.classList.contains("layout-image");
+  var isImageLayout = stageEl.classList.contains("layout-image") || stageEl.classList.contains("layout-video");
 
   stageEl.style.background = colors.bg;
   inner.style.color = colors.text;
@@ -447,6 +453,7 @@ function applyDesignToStage(stageEl, design, slideNumber) {
 
 // ---- layout + fit-to-box: the one renderer audience and presenter share ----
 function detectLayout(el) {
+  if (el.querySelector(".slide-video")) return "video";
   var imgs = el.querySelectorAll("img");
   var text = (el.textContent || "").trim();
   if (imgs.length === 1 && text.length === 0) return "image";
@@ -467,9 +474,30 @@ function fitText(el, startSize, minSize) {
 function listItems(el) {
   return Array.prototype.slice.call(el.querySelectorAll(":scope > ul > li, :scope > ol > li"));
 }
-function mountStage(stageEl, html, step) {
+// A video slide arrives as a still card (render-deck's slideHtml). The audience
+// screen, when online, swaps in the live player; everywhere else the card stays.
+// ponytail: the operator clicks play on the audience screen if the browser
+// blocks autoplay; presenter-side play/pause (YouTube's iframe API over
+// postMessage) is the upgrade if that proves awkward on a Sunday.
+function mountVideo(inner) {
+  var box = inner.querySelector(".slide-video");
+  if (!box || role !== "audience" || !navigator.onLine) return;
+  var f = document.createElement("iframe");
+  f.src = box.dataset.src + (box.dataset.src.indexOf("?") < 0 ? "?" : "&") + "autoplay=1";
+  f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+  f.allowFullscreen = true;
+  f.referrerPolicy = "strict-origin-when-cross-origin";
+  box.innerHTML = "";
+  box.appendChild(f);
+}
+function mountStage(stageEl, html, step, live) {
   var inner = stageEl.querySelector(".stage-inner");
+  // Re-rendering the same video slide (a blank toggle, a countdown, a deck
+  // poll) must not reload the player and restart the video.
+  if (live && inner.dataset.videoHtml === html && inner.querySelector("iframe")) return 0;
   inner.innerHTML = html || "";
+  inner.dataset.videoHtml = "";
+  if (live && inner.querySelector(".slide-video")) { inner.dataset.videoHtml = html; mountVideo(inner); }
   stageEl.className = "stage";
   var layout = detectLayout(inner);
   stageEl.classList.add("layout-" + layout);
@@ -479,7 +507,7 @@ function mountStage(stageEl, html, step) {
   if (lis.length && typeof step === "number") {
     lis.forEach(function (li, idx) { li.classList.toggle("build-hidden", idx > step); });
   }
-  if (layout !== "image") {
+  if (layout !== "image" && layout !== "video") {
     var startSize = layout === "big" ? 120 : layout === "quote" ? 72 : 56;
     fitText(inner, startSize, 14);
   }
@@ -505,8 +533,8 @@ function currentListCount() {
   var d = document.createElement("div"); d.innerHTML = s.html;
   return listItems(d).length;
 }
-function mountDesignedStage(stageEl, slide, slideNumber, step) {
-  var n = mountStage(stageEl, slide ? slide.html : "", step);
+function mountDesignedStage(stageEl, slide, slideNumber, step, live) {
+  var n = mountStage(stageEl, slide ? slide.html : "", step, live);
   applyDesignToStage(stageEl, DECK.design, slideNumber);
   return n;
 }
@@ -639,20 +667,23 @@ function renderAudience() {
   audienceStepKey = state.step;
   if (audienceSlideKey === null) {
     audienceSlideKey = state.i;
-    mountDesignedStage(layers[audienceActive], slide, state.i + 1, step);
+    mountDesignedStage(layers[audienceActive], slide, state.i + 1, step, true);
     scaleStage(wrap, layers[audienceActive]);
     return;
   }
   if (audienceSlideKey === state.i) {
     var activeEl = layers[audienceActive];
-    mountDesignedStage(activeEl, slide, state.i + 1, step);
+    mountDesignedStage(activeEl, slide, state.i + 1, step, true);
     scaleStage(wrap, activeEl);
     if (state.step > prevStep) revealLastListItem(activeEl);
     return;
   }
   audienceSlideKey = state.i;
   var newIdx = 1 - audienceActive, newEl = layers[newIdx], oldEl = layers[audienceActive];
-  mountDesignedStage(newEl, slide, state.i + 1, step);
+  mountDesignedStage(newEl, slide, state.i + 1, step, true);
+  // Leaving a video slide: drop its player so the sound stops with the slide.
+  Array.prototype.forEach.call(oldEl.querySelectorAll("iframe"), function (f) { f.remove(); });
+  oldEl.querySelector(".stage-inner").dataset.videoHtml = "";
   scaleStage(wrap, newEl);
   scaleStage(wrap, oldEl);
   var reduced = prefersReducedMotion();

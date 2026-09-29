@@ -24,6 +24,7 @@ import { parseFencedBlocks, readBlockSettings, type FencedNode } from "@/lib/edi
 import type { ResolvedMention } from "@/lib/mentions";
 import { DEFAULT_DESIGN, FONTS, LANGUAGES, themeCss, type Design } from "@/modules/website-pages/lib/theme";
 import { navIconPaths } from "@/lib/nav-icons";
+import { embedFor } from "@/lib/embed";
 import { ICON_ALIASES, ICON_CODE, ICON_SIZES, iconKey } from "@/lib/icon-codes";
 export { ICON_ALIASES };
 
@@ -235,29 +236,7 @@ function calloutBlock(inner: string): string {
   return section("callout", `<div class="lb-callout-box">${inner}</div>`);
 }
 
-// A video link becomes a privacy-friendly player (youtube-nocookie, Vimeo's
-// player); any other address becomes a link card.
-export function embedFor(
-  url: string
-): { kind: "video"; src: string } | { kind: "link"; href: string; host: string } | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (!/^https?:$/.test(u.protocol)) return null;
-  const host = u.hostname.replace(/^www\.|^m\./, "");
-  let yt = "";
-  if (host === "youtu.be") yt = u.pathname.slice(1);
-  else if (host === "youtube.com" || host === "youtube-nocookie.com") {
-    yt = u.searchParams.get("v") ?? (/^\/(?:embed|shorts|live)\/([\w-]+)/.exec(u.pathname)?.[1] ?? "");
-  }
-  if (/^[\w-]{6,20}$/.test(yt)) return { kind: "video", src: `https://www.youtube-nocookie.com/embed/${yt}` };
-  const vimeo = host === "vimeo.com" || host === "player.vimeo.com" ? /(\d{5,})/.exec(u.pathname)?.[1] : undefined;
-  if (vimeo) return { kind: "video", src: `https://player.vimeo.com/video/${vimeo}` };
-  return { kind: "link", href: u.toString(), host };
-}
+export { embedFor };
 
 function embedBlock(children: FencedNode[], render: (t: string) => string): string {
   const text = markdownOf(children);
