@@ -91,6 +91,13 @@ export async function renderSiteSubpage(
       publishedAt: item.publishedAt,
       prev: near(idx - 1),
       next: near(idx + 1),
+      // Keep reading: up to three others, those sharing a tag first.
+      more: site.items
+        .filter((i) => i.id !== item.id)
+        .map((i) => ({ i, shared: i.tags.filter((t) => item.tags.includes(t) && !/^featured$/i.test(t)).length }))
+        .sort((a, b) => b.shared - a.shared)
+        .slice(0, 3)
+        .map((x) => x.i),
     },
     footerHtml: await footerFor(shared.ownerId),
   });

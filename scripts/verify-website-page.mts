@@ -169,7 +169,7 @@ const SITE = { name: "Morning Bread", homeHref: "/share/tok", homeMarkdown: "", 
     site: SITE, currentHref: "/share/tok/like-a-weaned-child",
     meta: { label: "Devotional", publishedAt: "2026-09-05T00:00:00Z" },
   });
-  check("subpage: label and date above the title", sub.includes('<div class="lb-label">Devotional · Sep 5, 2026</div><h1>Like a Weaned Child</h1>'), sub);
+  check("subpage: label and date above the title", sub.includes('<div class="lb-label">Devotional · Sep 5, 2026 · 1 min read</div><h1>Like a Weaned Child</h1>'), sub);
   check("subpage: tab title names the site", sub.includes("<title>Like a Weaned Child · Morning Bread</title>"));
   check("headings get ids for #section menu links", renderWebPage("x", "## Our Story").includes('<h2 id="our-story">Our Story</h2>'));
 }
@@ -223,6 +223,20 @@ const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
   check("icons: code is never touched", withIcons("<code>:home:</code>") === "<code>:home:</code>");
   const cols = renderWebPage("x", "::: columns\n\n### :home: Home\n\nText\n\n:::");
   check("icons: a column heading's icon renders first in the heading", /<h3 id="home"><svg class="lb-icon"/.test(cols), cols);
+}
+{
+  const j = STARTERS.find((x) => x.id === "journal")!;
+  const mkj = (n: number, title: string, tags: string[], at: string, body = "Text.") => ({ id: `0000000${n}-0000-4000-8000-000000000000`, slug: `s${n}`, href: `/share/tok/s${n}`, title, type: "devotional", tags, publishedAt: at, bodyText: body });
+  const items = [
+    mkj(1, "Featured one", ["featured", "Hope"], "2026-09-25T00:00:00Z", "![spring](placeholder)\n\nHagar names God."),
+    mkj(4, "Far from home", ["psalms-of-ascent", "Psalm 120"], "2026-09-01T00:00:00Z"),
+    mkj(5, "Help from the hills", ["psalms-of-ascent", "Psalm 121"], "2026-09-03T00:00:00Z"),
+  ];
+  const html = renderWebPage("Still Water", j.body, { site: { name: "Still Water", homeHref: "/share/tok", homeMarkdown: j.body, items }, design: j.design });
+  check("journal: featured collection is the hero, no title header", /<h1[^>]*>Featured one<\/h1>/.test(html) && !html.includes('class="lb-title"'), html);
+  check("journal: hero button goes to the piece", html.includes('<a class="lb-btn" href="/share/tok/s1">Read today&#39;s devotional</a>') || html.includes("<a class=\"lb-btn\" href=\"/share/tok/s1\">Read today's devotional</a>"), html);
+  check("journal: series numbered oldest first", /lb-series-n">1<\/span><span class="lb-series-meta">Psalm 120<\/span><h3[^>]*>Far from home/.test(html), html);
+  check("journal: topics count tags, minus excluded", html.includes('Hope<span class="lb-tag-n">1</span>') && !html.includes(">Featured<span"), html);
 }
 {
   const s = STARTERS.find((x) => x.id === "personal-site")!;

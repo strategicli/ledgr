@@ -110,6 +110,62 @@ you@example.com · Kansas City, MO
 :::
 `;
 
+const JOURNAL = `::: menu
+
+- [Latest](#latest)
+- [Series](#psalms-of-ascent)
+- [Topics](#topics)
+
+:::
+
+::: collection
+
+label: Featured
+tag: featured
+show: 1 newest
+layout: hero
+button: Read today's devotional
+
+:::
+
+:::: row
+
+::: collection
+
+title: Latest
+show: 5 newest
+layout: list
+
+:::
+
+::: topics
+
+exclude: featured, psalms-of-ascent
+
+New devotionals every Monday and Thursday, written by the pastoral staff.
+
+:::
+
+::::
+
+::: collection
+
+label: Series · read in order
+title: Psalms of Ascent
+tag: psalms-of-ascent
+layout: series
+
+The songs pilgrims sang on the road up to Jerusalem. Start at the bottom of the hill.
+
+:::
+
+::: footer
+
+Still Water · Grace Hill Church
+
+:::
+`;
+
 export const STARTERS: Starter[] = [
   {
     id: "personal-site",
@@ -118,6 +174,14 @@ export const STARTERS: Starter[] = [
       "Who you are, a Work collection where each piece gets its own page, a writing list, a Now section, kind words, and a way to say hello. Publish items tagged work or writing to fill the lists.",
     design: { language: "minimal", palette: "dusk", font: "public" },
     body: PERSONAL_SITE,
+  },
+  {
+    id: "journal",
+    name: "Journal",
+    description:
+      "A devotional or blog site: a featured piece up top, the latest list, topics with counts, and a series read in order. Publish your devotionals or posts to it, and tag them featured or with a series tag to fill those spots.",
+    design: { language: "editorial", palette: "dusk", font: "serif" },
+    body: JOURNAL,
   },
 ];
 

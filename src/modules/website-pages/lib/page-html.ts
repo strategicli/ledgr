@@ -62,7 +62,7 @@ export type WebPageOptions = {
   // Where this render sits in the site, for the menu's current-page mark.
   currentHref?: string;
   // A subpage's framing: its label line, date, and neighbors in the site.
-  meta?: { label?: string; publishedAt?: string; prev?: NavLink; next?: NavLink };
+  meta?: { label?: string; publishedAt?: string; prev?: NavLink; next?: NavLink; more?: SiteItem[] };
 };
 
 function esc(text: string): string {
@@ -303,37 +303,100 @@ export function selectCollection(items: SiteItem[], settings: Record<string, str
 
 const capitalize = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
+const artOf = (image: string | null, alt = "") =>
+  image === "placeholder" ? `<span class="lb-ph">${esc(alt)}</span>` : image ? `<img src="${esc(image)}" alt="${esc(alt)}">` : "";
+
+// One published item as a grid card: picture, label line, title, excerpt.
+export function itemCard(i: SiteItem): string {
+  const { image, excerpt } = summarize(i.bodyText);
+  const meta = [i.tags[0] ?? capitalize(i.type), formatDate(i.publishedAt)].filter(Boolean).join(" · ");
+  return (
+    `<a class="lb-card lb-item" href="${esc(i.href)}">` +
+    (image ? `<span class="lb-item-art">${artOf(image)}</span>` : "") +
+    `<span class="lb-label">${esc(meta)}</span><h3>${esc(i.title)}</h3>` +
+    (excerpt ? `<p class="lb-item-excerpt">${esc(excerpt)}</p>` : "") +
+    "</a>"
+  );
+}
+
+// A collection shows its items one of four ways (`layout:`):
+//   grid    cards with a picture (the default)     list    title, date, excerpt rows
+//   hero    the first item as the page's opening section (a "featured" slot)
+//   series  a numbered row read in order, oldest first unless `show` says otherwise
 function collectionBlock(children: FencedNode[], site: SiteContext | undefined, render: (t: string) => string): string {
   const { settings, rest } = readBlockSettings(markdownOf(children));
-  const list = site ? selectCollection(site.items, settings) : [];
-  const layout = settings.layout === "list" ? "list" : "grid";
-  const h = takeHead(rest ? render(rest) : "", settings.label, settings.title);
-  const cards = list
-    .map((i) => {
-      const { image, excerpt } = summarize(i.bodyText);
-      const date = formatDate(i.publishedAt);
-      if (layout === "list") {
-        return (
-          `<a class="lb-row-item" href="${esc(i.href)}"><h3>${esc(i.title)}</h3>` +
-          `<span class="lb-row-date">${esc(date)}</span>` +
-          (excerpt ? `<span class="lb-row-excerpt">${esc(excerpt)}</span>` : "") +
-          "</a>"
-        );
-      }
-      const meta = [i.tags[0] ?? capitalize(i.type), date].filter(Boolean).join(" · ");
-      return (
-        `<a class="lb-card lb-item" href="${esc(i.href)}">` +
-        (image ? `<span class="lb-item-art">${image === "placeholder" ? '<span class="lb-ph"></span>' : `<img src="${esc(image)}" alt="">`}</span>` : "") +
-        `<span class="lb-label">${esc(meta)}</span><h3>${esc(i.title)}</h3>` +
-        (excerpt ? `<p class="lb-item-excerpt">${esc(excerpt)}</p>` : "") +
-        "</a>"
-      );
-    })
+  const layout = ["list", "hero", "series"].includes(settings.layout ?? "") ? settings.layout! : "grid";
+  const sel = layout === "series" && !/newest|oldest/i.test(settings.show ?? "") ? { ...settings, show: `${settings.show ?? ""} oldest`.trim() } : settings;
+  const list = site ? selectCollection(site.items, sel) : [];
+
+  if (layout === "hero") {
+    const i = list[0];
+    if (!i) return section("collection", '<p class="lb-empty">Nothing published here yet.</p>');
+    const { image, excerpt } = summarize(i.bodyText);
+    const label = [settings.label ?? "Featured", formatDate(i.publishedAt), readingTime(i.bodyText)].filter(Boolean).join(" · ");
+    return (
+      `<section class="lb-hero${image ? " lb-hero--art" : ""}"><div class="lb-hero-in"><div class="lb-hero-row">` +
+      `<div class="lb-hero-text"><div class="lb-hero-txt-in"><div class="lb-label">${esc(label)}</div><h1>${esc(i.title)}</h1>` +
+      (excerpt ? `<p class="lb-lede">${esc(excerpt)}</p>` : "") +
+      `<div class="lb-actions"><a class="lb-btn" href="${esc(i.href)}">${esc(settings.button ?? "Read it")}</a></div></div></div>` +
+      (image ? `<div class="lb-hero-art">${artOf(image, i.title)}</div>` : "") +
+      "</div></div></section>"
+    );
+  }
+
+  const h = takeHead("", settings.label, settings.title);
+  const intro = rest ? `<div class="lb-intro">${render(rest)}</div>` : "";
+  let body: string;
+  if (!list.length) body = '<p class="lb-empty">Nothing published here yet.</p>';
+  else if (layout === "list") {
+    body =
+      '<div class="lb-rows">' +
+      list
+        .map((i) => {
+          const { excerpt } = summarize(i.bodyText);
+          return (
+            `<a class="lb-row-item" href="${esc(i.href)}"><h3>${esc(i.title)}</h3>` +
+            `<span class="lb-row-date">${esc(formatDate(i.publishedAt))}</span>` +
+            (excerpt ? `<span class="lb-row-excerpt">${esc(excerpt)}</span>` : "") +
+            "</a>"
+          );
+        })
+        .join("") +
+      "</div>";
+  } else if (layout === "series") {
+    body =
+      '<div class="lb-series">' +
+      list
+        .map(
+          (i, n) =>
+            `<a class="lb-card lb-item lb-series-item" href="${esc(i.href)}"><span class="lb-series-n">${n + 1}</span>` +
+            `<span class="lb-series-meta">${esc(i.tags.find((t) => norm(t) !== norm(settings.tag ?? "") && !/^featured$/i.test(t)) ?? formatDate(i.publishedAt))}</span><h3>${esc(i.title)}</h3></a>`
+        )
+        .join("") +
+      "</div>";
+  } else body = `<div class="lb-grid">${list.map(itemCard).join("")}</div>`;
+  return section("collection", h.head + intro + body, layout === "list" ? "" : " lb-band");
+}
+
+// Every tag used by what the page publishes, with how many items carry it.
+// `exclude:` drops housekeeping tags (featured, a series tag) from the list.
+function topicsBlock(children: FencedNode[], site: SiteContext | undefined, render: (t: string) => string): string {
+  const { settings, rest } = readBlockSettings(markdownOf(children));
+  const skip = new Set((settings.exclude ?? "").split(",").map((t) => norm(t)).filter(Boolean));
+  const counts = new Map<string, number>();
+  for (const i of site?.items ?? []) for (const t of i.tags) if (!skip.has(norm(t))) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const chips = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([t, n]) => `<span class="lb-tag">${esc(capitalize(t))}<span class="lb-tag-n">${n}</span></span>`)
     .join("");
-  const body = cards
-    ? `<div class="${layout === "list" ? "lb-rows" : "lb-grid"}">${cards}</div>`
-    : '<p class="lb-empty">Nothing published here yet.</p>';
-  return section("collection", h.head + h.html + body, layout === "grid" ? " lb-band" : "");
+  const h = takeHead("", settings.label, settings.title ?? "Topics");
+  return section("topics", h.head + `<div class="lb-tags">${chips || '<span class="lb-empty">No topics yet.</span>'}</div>` + (rest ? `<div class="lb-topics-note">${render(rest)}</div>` : ""));
+}
+
+// Minutes to read a body, at 220 words a minute, never less than one.
+export function readingTime(bodyText: string): string {
+  const words = markdownToText(bodyText).split(/\s+/).filter(Boolean).length;
+  return words ? `${Math.max(1, Math.round(words / 220))} min read` : "";
 }
 
 // --- the site's chrome: header, menu, footer ----------------------------------
@@ -407,8 +470,10 @@ function withHeadingIds(html: string): string {
   });
 }
 
+// Whether the page opens on a hero of its own (a `::: hero`, or a collection
+// shown as one), in which case it needs no separate title header.
 export function hasHero(markdown: string): boolean {
-  return /^[ \t]{0,3}:{3,}[ \t]*hero\b/m.test(markdown);
+  return /^[ \t]{0,3}:{3,}[ \t]*hero\b/m.test(markdown) || /^[ \t]*layout:[ \t]*hero[ \t]*$/m.test(markdown);
 }
 
 // A subpage's opening paragraph, pulled out as its lede when more follows it.
@@ -453,6 +518,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
       case "cards": return cardsBlock(block.children, renderMarkdown);
       case "columns": return columnsBlock(block.children, renderMarkdown);
       case "collection": return collectionBlock(block.children, opts.site, renderMarkdown);
+      case "topics": return topicsBlock(block.children, opts.site, renderMarkdown);
       case "timeline": return timelineBlock(renderChildren());
       case "stats": return statsBlock(renderChildren());
       case "quotes": return quotesBlock(renderChildren());
@@ -484,7 +550,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
   )));
   // A page with no hero still needs a headline: the item title stands in, with a
   // subpage's label, date and lede around it.
-  const labelLine = [m?.label, m?.publishedAt ? formatDate(m.publishedAt) : ""].filter(Boolean).join(" · ");
+  const labelLine = [m?.label, m?.publishedAt ? formatDate(m.publishedAt) : "", isSubpage ? readingTime(markdown) : ""].filter(Boolean).join(" · ");
   const header = hasHero(markdown)
     ? ""
     : '<header class="lb-title"><div class="lb-title-in">' +
@@ -503,6 +569,10 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
           : "") +
         "</nav>"
       : "";
+  // "Keep reading": a few other published items, sharing a tag when possible.
+  const more = m?.more?.length
+    ? section("keep", `<div class="lb-head"><h2>Keep reading</h2></div><div class="lb-grid">${m.more.map(itemCard).join("")}</div>`)
+    : "";
   const footBlock = opts.site ? findBlock(parseFencedBlocks(opts.site.homeMarkdown), "footer") : undefined;
   const footLeft = footBlock ? render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "") : "";
   const footer =
@@ -517,7 +587,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
     `<title>${esc(pageTitle)}</title><style>${fontFaces(design)}${themeCss(design)}${STYLE}</style></head>` +
     `<body><div class="site${isSubpage ? " site--sub" : ""}" data-language="${esc(design.language)}">` +
     (opts.site ? siteHeader(opts.site, publicLinks, opts.currentHref) : "") +
-    `<main class="page">${header}<div class="lb-article">${body}</div>${pager}</main>` +
+    `<main class="page">${header}<div class="lb-article">${body}</div>${pager}${withPlaceholders(more)}</main>` +
     footer +
     "</div></body></html>"
   );
@@ -595,6 +665,16 @@ p{margin:0}
 .lb-card p{color:var(--muted);font-size:15px;line-height:1.55}
 .lb-item{text-decoration:none;color:inherit;gap:12px}
 .lb-item-art img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--img-r)}
+.lb-series{display:flex;gap:clamp(12px,2cqi,20px);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:14px}
+.lb-series-item{flex:0 0 min(64%,236px);scroll-snap-align:start;gap:8px}
+.lb-series-n{font-size:var(--num-size);font-weight:var(--h-w);color:var(--hl);line-height:1;letter-spacing:var(--h-track)}
+.lb-series-meta{font-size:14px;color:var(--muted)}
+.lb-intro{max-width:600px;margin:-8px 0 20px;color:var(--muted);font-size:15px}
+.lb-tags{display:flex;flex-wrap:wrap;gap:8px 14px}
+.lb-tag{display:inline-flex;gap:8px;align-items:baseline;background:var(--tag-bg);border:var(--tag-bd);border-radius:var(--tag-r);padding:var(--tag-p);color:var(--tag-ink);font-size:var(--tag-size);font-weight:var(--tag-w);text-transform:var(--tag-case);letter-spacing:var(--tag-track);line-height:1.2}
+.lb-tag-n{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.lb-topics-note{margin-top:20px;font-size:15px;color:var(--muted)}
+.lb-row>.lb-topics{flex:1 1 240px}
 .lb-rows{display:grid}
 .lb-row-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 20px;padding:18px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
 .lb-row-date{font-size:14px;color:var(--muted);white-space:nowrap}
