@@ -1117,7 +1117,11 @@ A short line right above a section's \`##\` heading becomes its small label.
 \`![what goes here](placeholder)\` draws a striped stand-in picture until you
 add a real one. \`:home:\`, \`:heart:\` and the rest of Ledgr's icons draw
 that icon in the page's colors; at the start of a card or column heading it
-becomes the heading's badge.
+becomes the heading's badge. Add a size after the name: \`:home:large:\`
+(small, medium, large or xl, which scale with the page) or \`:home:48:\` for
+exact pixels. To align a section, add a word to its first line:
+\`::: columns center\`, \`::: columns split\` (first column left, middle
+centered, last right) or \`::: cards center\`.
 
 **Publish things to it.** In any item's **Export & sharing**, **Publish to**
 lists your Website Pages; click one to publish, click again to unpublish. The

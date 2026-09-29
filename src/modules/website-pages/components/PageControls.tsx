@@ -144,7 +144,8 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
       <details className="flex flex-col gap-1.5">
         <summary className="cursor-pointer text-neutral-400 hover:text-neutral-200">Icons</summary>
         <span className="mt-1.5 block text-neutral-500">
-          Type <code>:name:</code> anywhere on the page to draw an icon in the page&apos;s colors. At the start of a
+          Type <code>:name:</code> anywhere on the page to draw an icon in the page&apos;s colors; add a size with{" "}
+          <code>:name:large:</code> (small, medium, large, xl) or <code>:name:48:</code> for pixels. At the start of a
           card or column heading it replaces the dot. Click one to copy its code.
         </span>
         <div className="mt-1.5 flex flex-wrap gap-1">

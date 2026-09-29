@@ -147,22 +147,29 @@ function splitAtH3(children: FencedNode[], render: (t: string) => string): { hea
   return { head: lead.trim() ? render(lead) : "", parts: parts.map(render) };
 }
 
-function cardsBlock(children: FencedNode[], render: (t: string) => string): string {
+// Alignment words on a block's fence line: `::: columns center`, `::: columns
+// split` (first left, middle centered, last right), `::: cards center`.
+function alignOf(args: string, allowed: string[]): string {
+  const word = args.trim().toLowerCase().split(/\s+/).find((w) => allowed.includes(w));
+  return word ? ` lb-align-${word}` : "";
+}
+
+function cardsBlock(children: FencedNode[], render: (t: string) => string, args = ""): string {
   const { head, parts } = splitAtH3(children, render);
   const h = takeHead(head);
   return section(
     "cards",
-    h.head + h.html + '<div class="lb-grid">' + parts.map((p) => `<article class="lb-card">${p}</article>`).join("") + "</div>",
+    h.head + h.html + `<div class="lb-grid${alignOf(args, ["center"])}">` + parts.map((p) => `<article class="lb-card">${p}</article>`).join("") + "</div>",
     " lb-band"
   );
 }
 
-function columnsBlock(children: FencedNode[], render: (t: string) => string): string {
+function columnsBlock(children: FencedNode[], render: (t: string) => string, args = ""): string {
   const { head, parts } = splitAtH3(children, render);
   const h = takeHead(head);
   return section(
     "columns",
-    h.head + h.html + '<div class="lb-cols">' + parts.map((p) => `<div class="lb-col"><span class="lb-dot"></span>${p}</div>`).join("") + "</div>"
+    h.head + h.html + `<div class="lb-cols${alignOf(args, ["center", "split", "left"])}">` + parts.map((p) => `<div class="lb-col"><span class="lb-dot"></span>${p}</div>`).join("") + "</div>"
   );
 }
 
@@ -461,7 +468,7 @@ function withHeadingIds(html: string): string {
   const used = new Set<string>();
   return html.replace(/<h([1-3])>([\s\S]*?)<\/h\1>/g, (_m, level: string, inner: string) => {
     const base =
-      inner.replace(/<[^>]+>/g, "").replace(/(^|\s):[a-z][a-z0-9-]{1,30}:(?=\s|$)/g, "$1").toLowerCase().replace(/&[a-z#0-9]+;|['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+      inner.replace(/<[^>]+>/g, "").replace(/(^|\s):[a-z][a-z0-9-]{1,30}(?::(?:small|medium|large|xl|\d{1,3}))?:(?=\s|$)/g, "$1").toLowerCase().replace(/&[a-z#0-9]+;|['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
       "section";
     let id = base;
     for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
@@ -492,18 +499,24 @@ function withPlaceholders(html: string): string {
 // `:name:` draws one of Ledgr's own icons (src/lib/nav-icons.ts) in the page's
 // colors. Only real icon names turn into icons, so `10:30:45` or an unknown
 // `:word:` stays text, and code blocks are never touched.
-const ICON_CODE = /(^|[^\w:]):([a-z][a-z0-9-]{1,30}):(?![\w:])/g;
+// A size may follow the name: `:home:large:` (small, medium, large, xl, which
+// scale with the page's type) or `:home:48:` (exact pixels, 8 to 256).
+const ICON_CODE = /(^|[^\w:]):([a-z][a-z0-9-]{1,30})(?::(small|medium|large|xl|\d{1,3}))?:(?![\w:])/g;
+const ICON_SIZES: Record<string, string> = { small: "0.85em", medium: "1.5em", large: "2.5em", xl: "4em" };
 export function withIcons(html: string): string {
   return html
     .split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<[^>]+>)/)
     .map((part) =>
       part.startsWith("<")
         ? part
-        : part.replace(ICON_CODE, (m, pre: string, key: string) =>
-            isNavIcon(key)
-              ? `${pre}<svg class="lb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${navIconPaths(key)}</svg>`
-              : m
-          )
+        : part.replace(ICON_CODE, (m, pre: string, key: string, size?: string) => {
+            if (!isNavIcon(key)) return m;
+            const px = size && /^\d+$/.test(size) ? Math.min(256, Math.max(8, Number(size))) : 0;
+            const dim = px ? `${px}px` : size ? ICON_SIZES[size] : "";
+            const style = dim ? ` style="width:${dim};height:${dim}"` : "";
+            const cls = dim ? "lb-icon lb-icon--sized" : "lb-icon";
+            return `${pre}<svg class="${cls}"${style} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${navIconPaths(key)}</svg>`;
+          })
     )
     .join("");
 }
@@ -515,8 +528,8 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
   const renderBlock: BlockRenderer = (block, { renderChildren, renderMarkdown }) => {
     switch (block.name) {
       case "hero": return heroBlock(renderChildren());
-      case "cards": return cardsBlock(block.children, renderMarkdown);
-      case "columns": return columnsBlock(block.children, renderMarkdown);
+      case "cards": return cardsBlock(block.children, renderMarkdown, block.args);
+      case "columns": return columnsBlock(block.children, renderMarkdown, block.args);
       case "collection": return collectionBlock(block.children, opts.site, renderMarkdown);
       case "topics": return topicsBlock(block.children, opts.site, renderMarkdown);
       case "timeline": return timelineBlock(renderChildren());
@@ -687,6 +700,11 @@ p{margin:0}
 .lb-col p{color:var(--muted);font-size:15px;line-height:1.6}
 .lb-dot{width:10px;height:10px;border-radius:var(--dot-r);background:var(--hl)}
 .lb-icon{width:1.1em;height:1.1em;display:inline-block;vertical-align:-.18em;color:var(--lead)}
+.lb-icon--sized{vertical-align:middle}
+.lb-align-center .lb-col,.lb-align-center .lb-card{align-items:center;text-align:center}
+.lb-align-split .lb-col:not(:first-child):not(:last-child){align-items:center;text-align:center}
+.lb-align-split .lb-col:last-child:not(:first-child){align-items:flex-end;text-align:right}
+@container (max-width:619px){.lb-align-split .lb-col{align-items:flex-start!important;text-align:left!important}}
 .lb-col:has(h3>.lb-icon:first-child) .lb-dot{display:none}
 .lb-col h3>.lb-icon:first-child,.lb-card h3>.lb-icon:first-child{display:block;width:32px;height:32px;padding:6px;margin-bottom:12px;border-radius:var(--r);background:var(--lead-tint);color:var(--lead)}
 .lb-tl-row{display:grid;grid-template-columns:var(--tl-cols);gap:6px 18px;padding:16px 0;border-bottom:1px solid var(--line)}

@@ -222,6 +222,12 @@ const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
   check("icons: unknown names stay text", withIcons("<p>:not-an-icon:</p>") === "<p>:not-an-icon:</p>");
   check("icons: times and fences are left alone", withIcons("<p>10:30:45 and ::: hero</p>") === "<p>10:30:45 and ::: hero</p>");
   check("icons: code is never touched", withIcons("<code>:home:</code>") === "<code>:home:</code>");
+  check("icons: named size", /<svg class="lb-icon lb-icon--sized" style="width:2\.5em;height:2\.5em"/.test(withIcons("<p>:home:large:</p>")));
+  check("icons: pixel size, clamped", /style="width:256px;height:256px"/.test(withIcons("<p>:home:999:</p>")) && /style="width:48px/.test(withIcons("<p>:home:48:</p>")));
+  check("icons: an unknown size stays text", withIcons("<p>:home:huge:</p>") === "<p>:home:huge:</p>");
+  check("align: columns split", renderWebPage("x", "::: columns split\n\n### A\n\n### B\n\n:::").includes('class="lb-cols lb-align-split"'));
+  check("align: cards center", renderWebPage("x", "::: cards center\n\n### A\n\n:::").includes('class="lb-grid lb-align-center"'));
+  check("align: an unknown word is ignored", renderWebPage("x", "::: columns sideways\n\n### A\n\n:::").includes('class="lb-cols"'));
   const cols = renderWebPage("x", "::: columns\n\n### :home: Home\n\nText\n\n:::");
   check("icons: a column heading's icon renders first in the heading", /<h3 id="home"><svg class="lb-icon"/.test(cols), cols);
 }

@@ -150,8 +150,8 @@ One sentence that makes it easy to say yes.
 // manual print. One source, so the three always say the same thing.
 export const BLOCK_HELP: Record<string, { label: string; hint: string }> = {
   hero: { label: "Hero", hint: "The opening section. A short line above the heading becomes the eyebrow, the heading is the headline, paragraphs are the lede, a line of links becomes buttons (the first solid, the rest outlined), and the first picture is the art." },
-  cards: { label: "Cards", hint: "A row of cards. Each ### heading starts a new card. A short line or a ## heading before the first card becomes the section's label and title. Start a card's heading with an icon like :star: to give it a badge." },
-  columns: { label: "Columns", hint: "Side-by-side points. Each ### heading starts a column (add a fourth ### for four). Start a heading with an icon like :home: to replace the dot." },
+  cards: { label: "Cards", hint: "A row of cards. Each ### heading starts a new card. A short line or a ## heading before the first card becomes the section's label and title. Start a card's heading with an icon like :star: to give it a badge. Write '::: cards center' to center the text." },
+  columns: { label: "Columns", hint: "Side-by-side points. Each ### heading starts a column (add a fourth ### for four). Start a heading with an icon like :home: to replace the dot. Write '::: columns center' to center every column, or '::: columns split' for left, centered and right." },
   collection: { label: "Collection", hint: "Lists items you've published to this page. Lines inside set it up: title, label, type, tag, show (e.g. 6 newest, 3 oldest), layout (grid, list, hero or series) and, for hero, button. It never shows anything you haven't published." },
   topics: { label: "Topics", hint: "Every tag on your published items, with counts. Add 'exclude: featured' to leave tags out. Any other text shows beneath." },
   timeline: { label: "Timeline", hint: "Rows written as - **When** What happened. _a detail_. Good for a history, a résumé or a Now list." },

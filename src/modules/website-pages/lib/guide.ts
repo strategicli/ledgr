@@ -87,8 +87,13 @@ ${chrome}
 - \`![what goes here](placeholder)\` draws a striped stand-in picture, captioned
   with the alt text, until a real image replaces it.
 - \`:name:\` draws one of Ledgr's icons in the page's colors; at the start of a
-  card or column heading it becomes the heading's badge. Unknown names stay
-  text. Available: ${icons}
+  card or column heading it becomes the heading's badge. Add a size after the
+  name: \`:home:small:\`, \`:home:medium:\`, \`:home:large:\`, \`:home:xl:\`
+  (these scale with the page's type) or \`:home:48:\` (exact pixels, 8 to 256).
+  Unknown names stay text. Available: ${icons}
+- Alignment words go on a block's first line: \`::: columns center\`,
+  \`::: columns split\` (first column left, middle centered, last right; on a
+  phone the stacked columns go back to the left), \`::: cards center\`.
 - Headings keep the level written: \`#\` is the page's headline (h1).
 
 ### Collection settings
