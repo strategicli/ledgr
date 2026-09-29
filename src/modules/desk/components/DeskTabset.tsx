@@ -42,6 +42,9 @@ export default function DeskTabset({ leaf }: { leaf: DeskLeaf }) {
       // Focus follows click, so a drag-select in another panel focuses it first
       // and the marker moves with the selection.
       data-desk-focused={isFocused ? "" : undefined}
+      // The pen's item, read by the Claude sidebar (which lives outside the
+      // Desk's React tree and can't see its layout) so it follows this panel.
+      data-desk-item={isFocused && active?.kind === "item" ? active.itemId : undefined}
       className={`flex h-full min-h-0 min-w-0 flex-col bg-surface-0 ${
         isFocused ? "ring-1 ring-inset ring-accent/50" : ""
       }`}

@@ -71,7 +71,20 @@ function useDesktop(): boolean {
 // focus moves into the panel, and dropped when it collapses in the canvas.
 function useCanvasContext() {
   const pathname = usePathname();
-  const itemId = UUID.exec(pathname ?? "")?.[1] ?? null;
+  // The Desk's URL never names an item; its focused panel carries it instead
+  // (data-desk-item, set by DeskTabset), so follow that attribute while there.
+  const onDesk = pathname === "/desk";
+  const [deskItemId, setDeskItemId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!onDesk) return;
+    const read = () =>
+      setDeskItemId(document.querySelector("[data-desk-item]")?.getAttribute("data-desk-item") ?? null);
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-desk-item"], childList: true });
+    return () => mo.disconnect();
+  }, [onDesk]);
+  const itemId = onDesk ? deskItemId : UUID.exec(pathname ?? "")?.[1] ?? null;
   const [item, setItem] = useState<{ id: string; title: string; type: string } | null>(null);
   const [selection, setSelection] = useState<string | null>(null);
   useEffect(() => {

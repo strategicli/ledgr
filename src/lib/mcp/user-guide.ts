@@ -1580,7 +1580,8 @@ week of use.
 
 - **The sidebar** — **Ctrl/Cmd+J** or the round sparkle button. It knows the
   item you have open and any text you have highlighted (shown as chips at the
-  top; click ✕ to leave the item out of that chat). It can search, read, create,
+  top; click ✕ to leave the item out of that chat). On the Desk it follows the
+  panel you last clicked into. It can search, read, create,
   and edit your items, and an edit to the open note appears in place while you
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
