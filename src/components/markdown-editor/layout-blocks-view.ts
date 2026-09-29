@@ -26,6 +26,7 @@ import { layoutBlocksOn, LAYOUT_BLOCKS_EVENT } from "./slash-suggestion";
 import { BLOCK_CARD, BLOCK_HELP, LAYOUT_SNIPPETS } from "@/lib/editor/layout-snippets";
 import { ICON_CODE, iconKey } from "@/lib/icon-codes";
 import { NAV_ICONS } from "@/lib/nav-icons";
+import { openIconPicker } from "./icon-picker";
 
 const key = new PluginKey("layoutBlocksView");
 
@@ -314,17 +315,18 @@ function header(editor: Editor, b: Block, chain: Block[], active: number | null,
   };
 }
 
-function iconToken(name: string, size: string | undefined, key: string, from: number, editor: Editor) {
+function iconToken(name: string, size: string | undefined, key: string, from: number, to: number, editor: Editor) {
   return () => {
     const el = document.createElement("span");
     el.className = "lb-ed-token";
     el.contentEditable = "false";
     const sz = size ? ({ small: "S", medium: "M", large: "L", xl: "XL" } as Record<string, string>)[size] ?? `${size}px` : "";
     el.innerHTML = `${svg(key, 11)}<span>${esc(name)}</span>${sz ? `<span class="lb-ed-token-size">· ${sz}</span>` : ""}`;
-    el.title = "Click to edit this icon code";
+    el.title = "Click to change this icon or its size";
+    // A click reopens the icon picker on this icon, to swap it or resize it.
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
-      editor.chain().focus().setTextSelection(from + 1).run();
+      openIconPicker(editor, { replace: { from, to, name: key, size } });
     });
     return el;
   };
@@ -404,7 +406,7 @@ function build(state: EditorState, editor: Editor): DecorationSet {
         decos.push(Decoration.inline(from, to, { class: "lb-ed-code-raw" }));
       } else {
         decos.push(Decoration.inline(from, to, { class: "lb-ed-code-hidden" }));
-        decos.push(Decoration.widget(from, iconToken(m[2], m[3], key, from, editor), { side: -1, key: `lbi-${from}-${m[0]}`, ignoreSelection: true, stopEvent: () => true }));
+        decos.push(Decoration.widget(from, iconToken(m[2], m[3], key, from, to, editor), { side: -1, key: `lbi-${from}-${m[0]}`, ignoreSelection: true, stopEvent: () => true }));
       }
     }
   });

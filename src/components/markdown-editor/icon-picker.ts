@@ -16,9 +16,15 @@ const SIZES: { id: string; label: string }[] = [
 
 let lastSize = "";
 
-export function openIconPicker(editor: Editor): void {
+// Opened from "/icon" (insert at the caret) or from a click on an icon chip in
+// the editor (replace that code: the chip's icon and size come preselected).
+export type IconPickerOptions = { replace?: { from: number; to: number; name: string; size?: string } };
+
+export function openIconPicker(editor: Editor, opts: IconPickerOptions = {}): void {
   document.querySelectorAll(".ledgr-icon-picker").forEach((n) => n.remove());
-  const at = editor.state.selection.from;
+  const replace = opts.replace;
+  if (replace) lastSize = replace.size && SIZES.some((sz) => sz.id === replace.size) ? replace.size : "";
+  const at = replace ? replace.from : editor.state.selection.from;
   const coords = editor.view.coordsAtPos(at);
   const popup = document.createElement("div");
   popup.className = "ledgr-icon-picker";
@@ -57,12 +63,30 @@ export function openIconPicker(editor: Editor): void {
   grid.className = "ledgr-icon-picker-grid";
   popup.appendChild(grid);
 
+  // Editing an existing icon: a way to the raw code, and the current one marked.
+  if (replace) {
+    const raw = document.createElement("button");
+    raw.type = "button";
+    raw.className = "ledgr-icon-picker-raw";
+    raw.textContent = "Edit as text";
+    raw.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      close();
+      editor.chain().focus().setTextSelection(replace.from + 1).run();
+    });
+    popup.appendChild(raw);
+  }
+
   const close = () => {
     popup.remove();
     document.removeEventListener("mousedown", onOutside, true);
   };
   const pick = (key: string) => {
     close();
+    if (replace) {
+      editor.chain().focus().insertContentAt({ from: replace.from, to: replace.to }, `:${key}${lastSize ? `:${lastSize}` : ""}:`).run();
+      return;
+    }
     const code = `:${key}${lastSize ? `:${lastSize}` : ""}: `;
     editor.chain().focus().insertContentAt(at, code).run();
   };
@@ -80,6 +104,7 @@ export function openIconPicker(editor: Editor): void {
       const b = document.createElement("button");
       b.type = "button";
       b.title = `:${key}:`;
+      if (replace && key === replace.name) b.className = "is-current";
       b.setAttribute("aria-label", key);
       b.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${NAV_ICONS[key as keyof typeof NAV_ICONS]}</svg>`;
       b.addEventListener("mousedown", (e) => {
