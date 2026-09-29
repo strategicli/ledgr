@@ -11,7 +11,10 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 // --- 1. build-nav ----------------------------------------------------------
-const { BUILD_NAV, BUILD_ENTRIES, isBuildPath } = await import("../src/lib/build-nav");
+const { buildNavFor, isBuildPath } = await import("../src/lib/build-nav");
+// Everything, every module included: a check, not something the owner sees.
+const BUILD_NAV = buildNavFor();
+const BUILD_ENTRIES = BUILD_NAV.flatMap((g) => g.entries);
 const { isNavIcon } = await import("../src/lib/nav-icons");
 
 check(
@@ -140,9 +143,7 @@ check("groupOrder: Items first in Work", groupOrder("work")[0] === "Items");
 check("groupOrder: Build & Settings first in Build", groupOrder("build")[0] === "Build & Settings");
 
 // --- 3. nav-slot-options "Build tools" -------------------------------------
-const { BUILD_TOOL_DESTS, buildDestOptions } = await import("../src/lib/nav-slot-options");
-check("BUILD_TOOL_DESTS covers every Build entry", BUILD_TOOL_DESTS.length === BUILD_ENTRIES.length);
-check("BUILD_TOOL_DESTS are grouped 'Build tools'", BUILD_TOOL_DESTS.every((d) => d.group === "Build tools"));
+const { buildDestOptions } = await import("../src/lib/nav-slot-options");
 const opts = buildDestOptions([{ id: "v1", name: "A view" }], [{ key: "note", label: "Note", icon: "notes" }]);
 check("buildDestOptions includes the Build tools category", opts.some((o) => o.group === "Build tools" && o.href === "/build/types"));
 check("buildDestOptions still includes built-ins, views, types", ["Built-in", "Views", "Types"].every((g) => opts.some((o) => o.group === g)));

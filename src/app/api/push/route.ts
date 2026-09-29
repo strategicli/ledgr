@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { routeGate } from "@/lib/modules/gate";
 import { requireOwner } from "@/lib/api";
 import { getVapidConfig } from "@/lib/push/vapid";
 
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "notification-center");
+  if (off) return off;
 
   const config = getVapidConfig();
   return NextResponse.json({

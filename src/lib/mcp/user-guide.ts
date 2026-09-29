@@ -453,18 +453,20 @@ Build your own kinds of item at \`/build/types\`.
   you name yourself.
 - **Modules** at \`/build/modules\` hold every on/off switch you have, in two
   groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
-  hides its type from quick capture, "+ New" and an assistant's list of types.
+  removes its type from every list and picker, quick capture, "+ New" and an
+  assistant's list of types, and no new items of it can be made.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
   transcripts, the Notification center (paused), Scripture passages (off for
   new installs, and left on for anyone who used Ledgr before that change: a
   Bible reference in a body becomes a link to that passage's page; switched
-  off, new references stop linking), **Todoist** (off by default:
+  off, new references stop linking and the editor's \`@/ref\` picker is gone), **Todoist** (off by default:
   syncs tasks both ways with a Todoist account, on a copy set up for it),
   Sharing (on by default: the Share link control and the assistant's share
   tools; switched off, the control is gone and every existing link stops
   opening until you turn it back on), **OneDrive export** (on by default: the
   nightly plain-file copy of everything in your OneDrive; switched off, the
-  nightly job stops and Save Offline still saves the document on your device),
+  nightly job stops and Save Offline skips its OneDrive step, still saving the
+  document on your device),
   **Snapshots** (on by default: hourly restore points on a computer running
   Ledgr locally; each computer still has its own switch on \`/build/backups\`),
   **Email capture** (on by default: messages you forward to the Ledgr Import
@@ -490,9 +492,11 @@ Build your own kinds of item at \`/build/types\`.
   and **Private access (Tailscale)** (off by default, and only on a Ledgr
   installed on your own computer: see "Private access with Tailscale" under
   the sync network).
-  A module that is off also drops
-  its Build page from the sidebar and the Navigation destination picker.
-  Nothing is deleted: existing
+  A module that is off is gone, as if it had never been built: its Build page
+  leaves the sidebar, the Navigation destination picker, the command palette
+  and an assistant's workspace overview; a nav button you pinned to it is
+  hidden; its settings rows and its type disappear; and its pages and tools
+  answer "not found". Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
   back on. The In-app agent's switch is greyed out on a copy that cannot run it.
   A module with its own owner-facing options, like the In-app agent's model

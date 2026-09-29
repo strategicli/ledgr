@@ -15,7 +15,7 @@
 import { cache } from "react";
 import {
   allModules,
-  coreModule,
+  moduleOnIn,
   setModuleEnabledResolver,
   typeKeysOfDisabledModules,
 } from "@/lib/modules";
@@ -44,10 +44,7 @@ export async function preloadModuleSettings(ownerId: string): Promise<void> {
 // on) but read straight from the settings object, so route handlers, MCP and
 // the jobs (where React `cache` is a passthrough) never depend on the preload.
 export function moduleOn(settings: Pick<UserSettings, "modules">, moduleId: string): boolean {
-  if (moduleId === coreModule.id) return true;
-  const m = allModules().find((x) => x.id === moduleId);
-  if (!m) return false;
-  return settings.modules[moduleId] ?? m.enabledByDefault;
+  return moduleOnIn(settings.modules, moduleId);
 }
 
 // The async form, for a call site that has only the owner id.

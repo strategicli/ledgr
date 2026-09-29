@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyApiRequest } from "@/lib/auth/credentials";
+import { resolveMachineOwner } from "@/lib/machine/owner";
 import { listTypes } from "@/lib/types";
 
 // GET /api/machine/types — the type registry for token clients (same door as
@@ -34,7 +35,9 @@ export async function GET(request: Request) {
   if (!identity) {
     return cors(NextResponse.json({ error: "unauthorized" }, { status: 401 }));
   }
-  const types = await listTypes();
+  // Minus the types of modules the instance owner has switched off (ADR-272).
+  const ownerId = await resolveMachineOwner().catch(() => null);
+  const types = await listTypes({ ownerId });
   return cors(
     NextResponse.json({
       types: types.map((t) => ({

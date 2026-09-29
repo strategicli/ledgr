@@ -263,13 +263,13 @@ try {
 
     check("two live items use the temp type", (await countLiveItemsOfType(TMP_KEY)) === 2);
 
-    // Hidden flag (ADR-059): hides from listTypes() but stays via includeHidden.
+    // Hidden flag (ADR-059): hides from listTypes({ ownerId: null }) but stays via includeHidden.
     await setTypeHidden(TMP_KEY, true);
-    check("a hidden type drops out of listTypes()", !(await listTypes()).some((t) => t.key === TMP_KEY));
-    const withHidden = (await listTypes({ includeHidden: true })).find((t) => t.key === TMP_KEY);
+    check("a hidden type drops out of listTypes({ ownerId: null })", !(await listTypes({ ownerId: null })).some((t) => t.key === TMP_KEY));
+    const withHidden = (await listTypes({ includeHidden: true, ownerId: null })).find((t) => t.key === TMP_KEY);
     check("includeHidden surfaces it, flagged hidden", withHidden?.hidden === true);
     await setTypeHidden(TMP_KEY, false);
-    check("un-hiding returns it to listTypes()", (await listTypes()).some((t) => t.key === TMP_KEY));
+    check("un-hiding returns it to listTypes({ ownerId: null })", (await listTypes({ ownerId: null })).some((t) => t.key === TMP_KEY));
 
     // Quick-capture flag (the Build → Types column): a standalone setter.
     await setTypeQuickCapture(TMP_KEY, false);
@@ -308,7 +308,7 @@ try {
       .where(or(eq(relations.sourceId, parent.id), eq(relations.targetId, parent.id)));
     check("the relation survives (not cascaded on soft-delete)", relRows.length === 1);
 
-    check("the type is hidden from listTypes()", !(await listTypes()).some((t) => t.key === TMP_KEY));
+    check("the type is hidden from listTypes({ ownerId: null })", !(await listTypes({ ownerId: null })).some((t) => t.key === TMP_KEY));
     check("getType still resolves the soft-deleted type (for labels)", (await getType(TMP_KEY)).deletedAt !== null);
     const inTrash = (await listDeletedTypes()).find((t) => t.key === TMP_KEY);
     // The label counts the type's own trashed items (2); restoreType also brings

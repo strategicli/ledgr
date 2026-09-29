@@ -15,7 +15,7 @@ export default async function NewView() {
 
   const [people, types] = await Promise.all([
     listPersonOptions(owner.id),
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
   ]);
 
   return (

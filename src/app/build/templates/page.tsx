@@ -17,7 +17,7 @@ export default async function TemplatesIndex() {
 
   const [templates, types] = await Promise.all([
     listTemplates(owner.id),
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
   ]);
   const labelFor = (key: string) =>
     types.find((t) => t.key === key)?.label ?? key;

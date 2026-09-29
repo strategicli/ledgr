@@ -18,7 +18,7 @@ export default async function NewTemplate({
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  const [{ type }, types] = await Promise.all([searchParams, listTypes()]);
+  const [{ type }, types] = await Promise.all([searchParams, listTypes({ ownerId: owner.id })]);
   const defaultType = type && types.some((t) => t.key === type) ? type : undefined;
 
   return (

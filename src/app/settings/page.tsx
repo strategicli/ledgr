@@ -84,7 +84,7 @@ export default async function SettingsPage({
           liveContextOn={moduleOn(settings, "live-context")}
           signin={signin && <SigninSettings {...signin} />}
           agent={
-            agentAvailable() && <AgentSettings initial={settings.agent} on={moduleOn(settings, "agent")} />
+            agentAvailable() && moduleOn(settings, "agent") && <AgentSettings initial={settings.agent} on />
           }
           icsFeed={<IcsFeed initialToken={settings.icsToken} host={host} />}
           apiCredentials={<ApiCredentials initial={credentials} scopes={API_SCOPES} origin={origin} />}

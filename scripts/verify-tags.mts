@@ -43,7 +43,7 @@ const created: string[] = [];
 let tempUserId: string | null = null;
 
 try {
-  const types = await listTypes();
+  const types = await listTypes({ ownerId: null });
 
   // 1. The tag type is seeded, built-in since migration 0052 (ADR-199), not in quick capture.
   const tag = types.find((t) => t.key === "tag");

@@ -99,7 +99,7 @@ export const exportTools: McpTool[] = [
     handler: async (ownerId, args) => {
       const id = asUuid(args.id, "id");
       const item = await getItem(ownerId, id);
-      const defs = await listTypes({ includeHidden: true });
+      const defs = await listTypes({ includeHidden: true, ownerId: null });
       const capability = defs.find((t) => t.key === item.type)?.capability ?? null;
       const available = exportsForTypeView(item.type, capability);
       if (available.length === 0) {

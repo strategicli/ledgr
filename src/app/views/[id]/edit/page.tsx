@@ -29,7 +29,7 @@ export default async function EditView({ params }: Context) {
 
   const [people, types] = await Promise.all([
     listPersonOptions(owner.id),
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
   ]);
 
   return (
