@@ -271,6 +271,15 @@ console.log("\nPart E: /icon picker");
     press(popup.querySelector('.ledgr-icon-picker-grid button[aria-label="home"]'));
     check("/icon: picking inserts the code with its size", ed.getMarkdown().startsWith("### :home:large: Home"), JSON.stringify(ed.getMarkdown()));
     check("/icon: the picker closes after a pick", !document.querySelector(".ledgr-icon-picker"));
+    // Clicking an icon chip reopens the picker on that code, to swap or resize it.
+    const text = ed.state.doc.textContent;
+    const from = 1 + text.indexOf(":home:large:");
+    openIconPicker(ed as any, { replace: { from, to: from + ":home:large:".length, name: "home", size: "large" } });
+    const again = document.querySelector(".ledgr-icon-picker") as any;
+    check("chip: the picker opens on the current icon and size", !!again?.querySelector('.ledgr-icon-picker-grid button.is-current[aria-label="home"]') && [...again.querySelectorAll(".ledgr-icon-picker-sizes button")].some((b: any) => b.textContent === "Large" && b.className === "is-selected"));
+    press([...again.querySelectorAll(".ledgr-icon-picker-sizes button")].find((b: any) => b.textContent === "Small"));
+    press(again.querySelector('.ledgr-icon-picker-grid button[aria-label="heart"]'));
+    check("chip: picking replaces the old code in place", ed.getMarkdown().startsWith("### :heart:small: Home"), JSON.stringify(ed.getMarkdown()));
   } catch (err) {
     check("/icon: headless run", false, String(err));
   }

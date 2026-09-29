@@ -1111,8 +1111,9 @@ down its left side; the section you're in lights up in your highlight color,
 and a section inside another is numbered. **Hover a label** (or the **?** on
 the section you're in) for a help card: what it does, each setting with its
 choices, and **Insert an example**. A setting the section doesn't know turns
-amber with a suggested fix. Icon codes show as small tokens; click one to edit
-it, and click a label to edit the section's first line. You can also type the lines
+amber with a suggested fix. Icon codes show as small chips; click one to reopen
+the icon picker and swap the icon or its size (or edit it as text), and
+click a label to edit the section's first line. You can also type the lines
 yourself: a section is a line \`::: name\` above its content and a line \`:::\`
 below it. A misspelled or unfinished section never breaks the page; its
 content just shows as plain text.

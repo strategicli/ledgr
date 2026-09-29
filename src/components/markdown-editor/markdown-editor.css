@@ -1164,8 +1164,9 @@ body[data-comments="icons"] .cmt-note {
   letter-spacing: 0;
   text-transform: none;
   vertical-align: 0.15em;
-  cursor: text;
+  cursor: pointer;
 }
+.ledgr-prose .lb-ed-token:hover { color: var(--color-neutral-200, #e5e5e5); }
 .ledgr-prose .lb-ed-token-size { color: var(--lb-faint); }
 .ledgr-prose .lb-ed-code-raw {
   font-family: ui-monospace, Menlo, monospace;
@@ -1175,6 +1176,38 @@ body[data-comments="icons"] .cmt-note {
   border-radius: 4px;
   padding: 1px 3px;
 }
+/* Headings inside a block stay inside it: the collapsible-headings fold
+   (padding-left + a matching negative margin, and a chevron on ::before) would
+   pull a heading out past the block's rail. Inside a page block the heading
+   takes the block's indent and its ::before draws the rail like every line. */
+.ledgr-prose h1.ledgr-foldable.lb-ed-in,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in {
+  padding-left: 0;
+  margin-left: var(--lb-indent);
+}
+.ledgr-prose h1.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in::before {
+  content: "";
+  display: block;
+  left: calc(-1 * var(--lb-indent));
+  width: var(--lb-indent);
+  font-size: 0;
+  background: var(--lb-rails);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+/* Quotes inside a block drop their own bar and padding: the block's rail
+   already frames them, and the quote's 3px border would push the rail right
+   and add a second line. The text keeps its muted quote color. */
+.ledgr-prose blockquote.lb-ed-in {
+  border-left: 0;
+  padding-left: 0;
+}
+
 /* The help card (appended to <body>, so not scoped to .ledgr-prose). */
 .lb-help-card {
   position: fixed;
@@ -1283,6 +1316,17 @@ body[data-comments="icons"] .cmt-note {
   background: #262626;
   color: var(--accent);
 }
+.ledgr-icon-picker-grid button.is-current {
+  background: #262626;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+.ledgr-icon-picker-raw {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  color: #a3a3a3;
+}
+.ledgr-icon-picker-raw:hover { color: #f5f5f5; }
 .ledgr-icon-picker-empty {
   grid-column: 1 / -1;
   padding: 0.5rem;

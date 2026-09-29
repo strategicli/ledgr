@@ -61,7 +61,7 @@ Two rules hold everything together:
   thin rail; the block holding the caret lights up in the owner's highlight
   color, nested blocks are numbered, settings read as a key / value grid, an
   unknown setting key turns amber with a "Did you mean" fix, and icon codes
-  show as small tokens. Hovering a label opens a help card (settings and their
+  show as small chips; clicking one reopens the icon picker to swap or resize it. Hovering a label opens a help card (settings and their
   values, Insert an example). Clicking a label edits the raw fence line.
 - A block that is misspelled or unfinished never breaks the page: its content
   shows as a plain section.
