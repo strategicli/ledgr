@@ -151,6 +151,19 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    code move, builder tools, web clipper, push into Notification center, digest +
    Overview. Skipped: custom layouts. Parked: Google.
 9. **Machine share route** (branch `feat/machine-share-route`): `POST /api/machine/items/<id>/share` lets a Flow Launcher plugin mint a share link with an API credential. Additive API surface, not core (ADR-183); listed in the Sharing manifest, 404 when Sharing is off. Not yet tried against a live credential.
+10. **🅿️ PARKED, explore later (Brandon, 2026-09-29): make "off" structural, not remembered.**
+    ADR-285 fixed the module-off leaks, but half of them by teaching each spot to check its
+    switch (the agent health route, notification/push APIs, Save Offline's OneDrive leg, the
+    `/ref` picker, the Today push toggle, the settings agent block, pinned nav slots). That
+    works only as long as every future door remembers. Three ideas to explore:
+    (a) one wrapper every module route/page is defined through, plus a CI check that any
+    `src/app` file importing `@/modules/*` uses it (today `verify-module-registry` checks a
+    few named pages by hand); (b) empty sockets in core screens (editor picker, Save Offline
+    legs, Today, Settings) that only switched-on modules fill, so core stops naming modules;
+    (c) finish step 4 for the Notification center (no `src/modules` folder yet; code is in
+    `src/lib/notifications*` and `src/lib/push`) and move the passage picker into Passages.
+    Also open: should items of a switched-off type be hidden from search and All items, and
+    should a module offer "delete this module's data"?
 
 ## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
 
