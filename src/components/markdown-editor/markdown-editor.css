@@ -905,10 +905,10 @@
    container-width: a narrow Desk panel on a wide screen still gets the gutter.
    Wrap in @container once .ledgr-prose's host declares container-type. */
 @media (min-width: 1024px) {
-  .ledgr-prose:has(.cmt-note) {
+  body:not([data-comments="icons"]) .ledgr-prose:has(.cmt-note) {
     padding-right: 15rem;
   }
-  .ledgr-prose .cmt-note {
+  body:not([data-comments="icons"]) .ledgr-prose .cmt-note {
     float: right;
     clear: right;
     width: 13rem;
@@ -946,6 +946,29 @@
     -webkit-mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
     mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
   }
+}
+
+/* The "Icons" comment display (User Settings, or the comment popup's own
+   switch): the same bubble at EVERY width, so a comment never costs the page a
+   15rem gutter. Hovering one peeks the note (CommentPeek.tsx); clicking opens it.
+   Same declarations as the narrow block above; keep the two in step. */
+body[data-comments="icons"] .cmt-note {
+  display: inline-block;
+  /* Box is the tap target (~22×18px); the bubble is drawn 0.9rem centered in
+     it, so the extra area is invisible but still touchable. */
+  width: 1.4rem;
+  height: 1.15rem;
+  vertical-align: -0.2em;
+  margin: 0 0.05rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 0;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--cmt-line-strong);
+  -webkit-mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
+  mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
 }
 
 /* Layout blocks on a page (layout-blocks-view.ts), per Claude Design's "Block

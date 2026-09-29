@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { CSSProperties } from "react";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import CommentPeek from "@/components/markdown-editor/CommentPeek";
 import ActionToast from "@/components/ui/ActionToast";
 import UploadProgress from "@/components/attachments/UploadProgress";
 import Nav from "@/components/nav/Nav";
@@ -116,6 +117,8 @@ export default async function RootLayout({
   // Item-canvas section style (the canvas redesign) — emitted as a body attribute
   // the CanvasSection CSS reads, so the whole panel weight flips from one setting.
   let sectionStyle = DEFAULT_SETTINGS.sectionStyle;
+  let pageWidth = DEFAULT_SETTINGS.pageWidth;
+  let commentDisplay = DEFAULT_SETTINGS.commentDisplay;
   // App theme: data-theme on <html> (none for dark, the :root default) that
   // flips the whole token layer in globals.css. Server-rendered, so no flash.
   let theme = DEFAULT_SETTINGS.theme;
@@ -142,6 +145,8 @@ export default async function RootLayout({
       uiScale = UI_SCALE[s.uiDensity];
       mobileUiScale = UI_SCALE[s.mobileUiDensity ?? s.uiDensity];
       sectionStyle = s.sectionStyle;
+      pageWidth = s.pageWidth;
+      commentDisplay = s.commentDisplay;
       theme = s.theme;
       tz = s.timezone ?? DEFAULT_TIMEZONE;
       shellOn = (moduleId) => moduleOn(s, moduleId) && moduleAvailable(moduleId);
@@ -178,6 +183,8 @@ export default async function RootLayout({
         <body
           className="min-h-full flex flex-col"
           data-section-style={sectionStyle}
+          data-page-width={pageWidth}
+          data-comments={commentDisplay}
           data-agent={agentOn ? "on" : undefined}
           style={{ "--accent": accent, "--accent-gradient": accentGradient, "--accent-highlight-image": accentHighlightImage, "--prose-font-size": proseFontSize, ...navPadVars(navPosition, railSize) } as CSSProperties}
         >
@@ -189,6 +196,7 @@ export default async function RootLayout({
             {modal}
           </TimezoneProvider>
           <ActionToast />
+          <CommentPeek />
           {/* One global toast for row/swipe actions (S4/S5); lives outside the
               list subtree so it survives the refresh that removes the acted row. */}
           <UploadProgress />

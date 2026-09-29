@@ -18,11 +18,15 @@ import {
   NOTIFICATION_KINDS,
   notificationEnabled,
   SECTION_STYLES,
+  PAGE_WIDTHS,
+  COMMENT_DISPLAYS,
   TEXT_SIZES,
   TEXT_SIZE_PX,
   UI_DENSITIES,
   type RailAnchor,
   type SectionStyle,
+  type PageWidth,
+  type CommentDisplay,
   type TextSize,
   type UiDensity,
   type UserSettings,
@@ -60,6 +64,17 @@ const SECTION_STYLE_LABELS: Record<SectionStyle, string> = {
   heavy: "Heavy",
   light: "Light",
   unified: "Unified",
+};
+
+const PAGE_WIDTH_LABELS: Record<PageWidth, string> = {
+  standard: "Standard",
+  wide: "Wide",
+  full: "Full",
+};
+
+const COMMENT_DISPLAY_LABELS: Record<CommentDisplay, string> = {
+  margin: "In the margin",
+  icons: "As icons",
 };
 
 const TEXT_SIZE_LABELS: Record<TextSize, string> = { sm: "S", base: "M", lg: "L", xl: "XL" };
@@ -574,6 +589,34 @@ export default function SettingsForm({
                 onChange={(s) => {
                   applySectionStyle(s);
                   void save({ sectionStyle: s });
+                }}
+              />
+            </Row>
+            <Row
+              label="Page width"
+              help="How wide an item's page runs, on the full page and in Desk panels. Standard is a comfortable reading column; Wide and Full use more of a big monitor."
+            >
+              <Seg
+                options={PAGE_WIDTHS}
+                value={settings.pageWidth}
+                label={(w) => PAGE_WIDTH_LABELS[w]}
+                onChange={(w) => {
+                  document.body.setAttribute("data-page-width", w);
+                  void save({ pageWidth: w });
+                }}
+              />
+            </Row>
+            <Row
+              label="Comments"
+              help="In the margin shows each comment as a card beside the text on a wide screen, which narrows the text. As icons shows a small speech bubble in the text instead: hover it to read the note, click it to edit."
+            >
+              <Seg
+                options={COMMENT_DISPLAYS}
+                value={settings.commentDisplay}
+                label={(d) => COMMENT_DISPLAY_LABELS[d]}
+                onChange={(d) => {
+                  document.body.setAttribute("data-comments", d);
+                  void save({ commentDisplay: d });
                 }}
               />
             </Row>
