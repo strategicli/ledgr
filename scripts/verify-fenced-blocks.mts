@@ -189,5 +189,14 @@ const { markdownToHtml, markdownToBlockHtml, markdownToText } = await import("..
   check("page render strips comments", !comment.includes("private note"), comment);
 }
 
+// --- Part C: every "/" page-block snippet survives the editor and renders ----
+console.log("\nPart C: slash-command snippets");
+const { LAYOUT_SNIPPETS } = await import("../src/lib/editor/layout-snippets");
+for (const snip of LAYOUT_SNIPPETS) {
+  const once = flip(snip.markdown.trimEnd());
+  check(`/${snip.id}: fences survive the editor`, JSON.stringify(fenceLines(once)) === JSON.stringify(fenceLines(snip.markdown)), JSON.stringify(once));
+  check(`/${snip.id}: parses as one "${snip.id}" block`, (parseFencedBlocks(once)[0] as any)?.name === snip.id, JSON.stringify(once));
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
 process.exit(failures ? 1 : 0);

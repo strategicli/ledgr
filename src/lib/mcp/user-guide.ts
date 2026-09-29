@@ -1045,8 +1045,20 @@ and the recording together. Revoking the link stops the audio too.
 
 A shared **Website Page** opens as a designed web page instead of a document
 (the Website Pages module, off until you turn it on under Build → Modules; it
-needs Sharing). Make a Website Page item and lay it out with blocks, each a
-line \`::: name\` above the content and a line \`:::\` below it:
+needs Sharing). The quickest way to make one: create a Website Page, open
+**Export & sharing**, and pick a **starter** (Personal site): the page fills
+with sample sections you simply type over. In the same place, pick the look:
+a **Style** (Modern, Minimal, Bold, Warm, Editorial, each with a line on what
+it's for), **Colors** (Slate, Navy, Forest, Dusk, and Tide) and a **Font**.
+The look is a setting, so changing it never touches your writing, and every
+page of the site wears it; pages follow the reader's light or dark setting.
+**View page** opens the live page once it has a share link.
+
+To add a section, type **/** in the page and pick one (Hero, Cards, Columns,
+Collection, Timeline, Stats, Quotes, Call to action, Callout, Video or link):
+it arrives with sample text showing each part. You can also type the lines
+yourself: each block is a line \`::: name\` above the content and a line
+\`:::\` below it:
 
 - \`::: hero\`: the opening section. Its first image becomes the picture, the
   heading becomes the headline, and a paragraph that is only a link becomes a
@@ -1072,6 +1084,19 @@ everything it publishes, each with **Unpublish**.
   page. An @-mention of a published item goes to its page, \`#heading\` jumps to
   a section of the home page, and a web address goes out. Without one, the menu
   is Home plus any Website Pages you published there (an About page, say).
+
+- \`::: columns\`: side-by-side points, each \`###\` one column.
+- \`::: timeline\`: rows written \`- **2024** What happened. _a detail_\`.
+- \`::: stats\`: key facts, \`- **Started** March 2023\`.
+- \`::: quotes\`: kind words, each a \`>\` quote ending \`> — Who said it\`.
+- \`::: cta\`: a closing band with a heading, a line and link buttons.
+- \`::: embed\`: a YouTube or Vimeo link (plays on the page) or any other
+  link (shown as a card), with a caption on the next line.
+- \`:::: row\` around two blocks sets them side by side.
+- \`::: footer\` on the home page fills the footer of every page.
+- A short line above a block's \`##\` heading becomes its small label, and
+  \`![what goes here](placeholder)\` draws a striped stand-in picture until
+  you add a real one.
 
 Everything inside a block is ordinary markdown. Any other block name still
 shows its content as a plain section. On the page, an @-mention of a Link item

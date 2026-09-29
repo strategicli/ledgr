@@ -12,6 +12,12 @@ import {
   PublishError,
   unpublishFromPage,
 } from "@/modules/website-pages/lib/publish";
+import { getItem } from "@/lib/items";
+import { bodyMarkdown } from "@/lib/body";
+import { getSettings } from "@/lib/settings";
+import { listShareTokens } from "@/modules/sharing/lib/share";
+import { readDesign } from "@/modules/website-pages/lib/theme";
+import { STARTERS } from "@/modules/website-pages/lib/starters";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +39,23 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           publishedAt: i.publishedAt,
         }))
       : null;
+    // On a page, what its own controls need: the look, whether it is still
+    // empty (so starters are offered), and its live share address (View page).
+    let page = null;
+    if (self) {
+      const item = await getItem(owner.id, itemId);
+      const live = (await listShareTokens(owner.id, itemId)).find((t) => !t.revokedAt);
+      page = {
+        design: readDesign(item?.properties),
+        empty: !bodyMarkdown(item?.body).trim(),
+        sharePath: live ? `/share/${live.token}` : null,
+        base: (await getSettings(owner.id)).publicUrl,
+        starters: STARTERS.map((st) => ({ id: st.id, name: st.name, description: st.description })),
+      };
+    }
     return NextResponse.json({
       isPage: !!self,
+      page,
       pages: pages
         .filter((p) => p.id !== itemId)
         .map((p) => {

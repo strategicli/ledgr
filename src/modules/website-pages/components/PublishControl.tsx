@@ -5,6 +5,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PageControls, { type PageInfo } from "@/modules/website-pages/components/PageControls";
 
 type PageRow = { id: string; title: string; published: boolean; slug: string | null; at: string | null };
 type Exposed = { id: string; title: string; slug: string; publishedAt: string };
@@ -18,6 +19,7 @@ function day(iso: string | null): string {
 export default function PublishControl({ itemId }: { itemId: string }) {
   const [pages, setPages] = useState<PageRow[] | null>(null);
   const [exposes, setExposes] = useState<Exposed[] | null>(null);
+  const [page, setPage] = useState<PageInfo | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -25,10 +27,11 @@ export default function PublishControl({ itemId }: { itemId: string }) {
     let cancelled = false;
     void fetch(`/api/items/${itemId}/publish`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { pages: PageRow[]; exposes: Exposed[] | null } | null) => {
+      .then((data: { pages: PageRow[]; exposes: Exposed[] | null; page: PageInfo | null } | null) => {
         if (cancelled || !data) return;
         setPages(data.pages);
         setExposes(data.exposes);
+        setPage(data.page);
       })
       .catch(() => {});
     return () => {
@@ -73,6 +76,7 @@ export default function PublishControl({ itemId }: { itemId: string }) {
     <div className="flex flex-col gap-1.5 text-xs">
       {exposes !== null ? (
         <>
+          {page && <PageControls itemId={itemId} initial={page} />}
           <span className="text-neutral-400">
             {exposes.length
               ? `This page publishes ${exposes.length} item${exposes.length === 1 ? "" : "s"}. Anyone with its link can open these:`

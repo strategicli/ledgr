@@ -70,6 +70,7 @@ import {
 } from "./collapsible-headings";
 import {
   SlashCommands,
+  setSlashEditorItem,
   setSlashFilePicker,
   setSlashToggleEnabled,
 } from "./slash-suggestion";
@@ -1192,6 +1193,13 @@ export default function MarkdownEditor({
     );
     return () => setSlashFilePicker(editor, null);
   }, [editor, hasUploader]);
+  // Tell the slash menu which item this editor holds, so page blocks show only
+  // on items registered for them (setLayoutBlocksFor, the Website Pages control).
+  useEffect(() => {
+    if (!editor) return;
+    setSlashEditorItem(editor, itemId ?? null);
+    return () => setSlashEditorItem(editor, null);
+  }, [editor, itemId]);
   // Scrub deleted files out of the live doc (see scrubDeletedFile above).
   useEffect(() => {
     if (!editor || !itemId) return;
