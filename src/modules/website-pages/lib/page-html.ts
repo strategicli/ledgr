@@ -1,29 +1,32 @@
-// The Website Page render (explorations/website-pages.md, slice 1): a Website
-// Page item's markdown body as one self-contained web page, the way
-// renderPrintDocument is one self-contained document. Inline CSS, no scripts,
-// no /_next chunks, so it serves from the share route at CDN-cache cost.
+// The Website Page render (explorations/website-pages.md): a Website Page's
+// markdown body as one self-contained web page, the way renderPrintDocument is
+// one self-contained document. Inline CSS, no scripts, so it serves from the
+// share route at CDN-cache cost.
 //
-// Layout comes from the body's fenced blocks (ADR-284). Each block guesses its
-// parts from the plain markdown inside it, so an author writes ordinary
-// markdown and never a list of settings:
-//   hero     the first image becomes the art, a paragraph that is only a link
-//            becomes a button, everything else is the headline and text
-//   cards    each `###` heading starts a card; text before the first is an intro
-//   callout  a tinted aside
-// Any other block name renders as a plain section, so a newer body still reads
-// on an older build.
-//
-// Slice 1 ships ONE design language (Modern) and ONE palette (Slate), light and
-// dark by the viewer's system setting. The five languages, the fonts and the
-// other palettes are slice 2, and replace STYLE without touching this markup.
-// Pure: no DB, no React, so a verify script can render it directly.
+// Layout comes from the body's fenced blocks (ADR-284); the LOOK comes from the
+// page's design settings (theme.ts), never from the markdown. Every block below
+// reads the design tokens (`var(--h-w)`, `var(--card-bg)`, …), which is what
+// lets any starter render in any language. Blocks guess their parts from plain
+// markdown, so an author writes an ordinary note:
+//   hero       text before the heading is the eyebrow, the heading is the
+//              headline, paragraphs are the lede, link-only lines are buttons
+//              (the first solid, the rest outlined), the first image is the art
+//   cards      each `###` starts a card          columns   each `###` a column
+//   collection published items (settings lines)  timeline  `- **When** What _detail_`
+//   stats      `- **Label** value`                quotes    each `>` quote, `— Who` last
+//   cta        heading, text, link-only buttons    callout   a tinted aside
+//   embed      a YouTube/Vimeo link, then a caption
+//   row        blocks side by side                 menu, footer: site chrome
+// A short paragraph before a block's first `##` becomes its label. Any other
+// block name renders as a plain section. Pure: no DB, no React.
 import { markdownToBlockHtml, markdownToText, type BlockRenderer } from "@/lib/markdown-render";
 import { parseFencedBlocks, readBlockSettings, type FencedNode } from "@/lib/editor/fenced-blocks";
 import type { ResolvedMention } from "@/lib/mentions";
+import { DEFAULT_DESIGN, FONTS, LANGUAGES, themeCss, type Design } from "@/modules/website-pages/lib/theme";
 
 // One published item as a site shows it: in a collection card, a menu entry, or
-// its own subpage. The caller (the share routes) builds these from the page's
-// publish list; everything here stays pure.
+// its own subpage. The caller (the share routes) builds these; everything here
+// stays pure.
 export type SiteItem = {
   id: string;
   slug: string;
@@ -36,9 +39,9 @@ export type SiteItem = {
   bodyText: string;
 };
 
-// The site a page belongs to: its home page's name and body (the menu lives
-// there), the home address, and everything published on it. Every page of a site
-// renders with the same header, menu and footer (the "one chrome" rule).
+// The site a page belongs to: its home page's name and body (the menu and
+// footer live there), the home address, and everything published on it. Every
+// page of a site renders with the same header, menu, footer and design.
 export type SiteContext = {
   name: string;
   homeHref: string;
@@ -46,40 +49,29 @@ export type SiteContext = {
   items: SiteItem[];
 };
 
+type NavLink = { href: string; title: string };
+
 export type WebPageOptions = {
-  // Mentions resolved owner-scoped, and the public address each may link to.
   mentions?: Map<string, ResolvedMention>;
   publicLinks?: Map<string, string>;
-  // Raw markup for the footer line ("Shared from …'s Ledgr"). The caller escapes.
+  // Raw markup for the footer's credit line. The caller escapes.
   footerHtml?: string;
   site?: SiteContext;
+  design?: Design;
   // Where this render sits in the site, for the menu's current-page mark.
   currentHref?: string;
-  // A subpage's line under its title: date, and a way back.
-  meta?: { publishedAt?: string; backHref?: string; backLabel?: string };
+  // A subpage's framing: its label line, date, and neighbors in the site.
+  meta?: { label?: string; publishedAt?: string; prev?: NavLink; next?: NavLink };
 };
 
 function esc(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// A rendered paragraph holding nothing but one link or one image.
-const LINK_ONLY_P = /<p>\s*(<a\b[^>]*>[\s\S]*?<\/a>)\s*<\/p>/g;
+const LINK_RE = /<a\b[^>]*>[\s\S]*?<\/a>/g;
+// A rendered paragraph holding nothing but links (one or several).
+const LINKS_ONLY_P = /<p>\s*((?:<a\b[^>]*>[\s\S]*?<\/a>[\s,·|]*)+)<\/p>/g;
 const IMAGE_ONLY_P = /<p>\s*(<img\b[^>]*>)\s*<\/p>/;
-
-function heroBlock(inner: string): string {
-  const img = IMAGE_ONLY_P.exec(inner);
-  const text = (img ? inner.replace(img[0], "") : inner).replace(
-    LINK_ONLY_P,
-    (_m, a: string) => `<p class="lb-actions">${a.replace(/^<a\b/, '<a class="lb-btn"')}</p>`
-  );
-  return (
-    `<section class="lb lb-hero${img ? " lb-hero--art" : ""}">` +
-    `<div class="lb-hero-text">${text}</div>` +
-    (img ? `<div class="lb-hero-art">${img[1]}</div>` : "") +
-    "</section>"
-  );
-}
 
 function markdownOf(children: FencedNode[]): string {
   return children
@@ -88,18 +80,189 @@ function markdownOf(children: FencedNode[]): string {
     .join("\n\n");
 }
 
-function cardsBlock(children: FencedNode[], renderMarkdown: (text: string) => string): string {
-  // Cards are cut from the block's own markdown; a nested block inside cards is
-  // not a card and keeps its place after them.
-  const parts = markdownOf(children).split(/^(?=###[ \t])/m);
-  const intro = /^###[ \t]/.test(parts[0] ?? "") ? "" : (parts.shift() ?? "");
+// Link-only paragraphs become a row of buttons: the first solid, the rest
+// outlined. Everything else is returned untouched.
+function takeButtons(html: string): { html: string; buttons: string } {
+  const links: string[] = [];
+  const rest = html.replace(LINKS_ONLY_P, (_m, inner: string) => {
+    links.push(...(inner.match(LINK_RE) ?? []));
+    return "";
+  });
+  const buttons = links
+    .map((a, i) => a.replace(/^<a\b/, `<a class="lb-btn${i ? " lb-btn--ghost" : ""}"`))
+    .join("");
+  return { html: rest, buttons: buttons ? `<div class="lb-actions">${buttons}</div>` : "" };
+}
+
+// A short plain paragraph before the first heading is the block's eyebrow label.
+function takeLabel(html: string): { html: string; label: string } {
+  const m = /^\s*<p>([^<]{1,80})<\/p>\s*(?=<h[1-3]\b)/.exec(html);
+  if (!m) return { html, label: "" };
+  return { html: html.slice(m[0].length), label: `<div class="lb-label">${m[1]}</div>` };
+}
+
+// The standard section head: an optional label, then the block's `##` heading.
+function takeHead(html: string, extraLabel = "", extraTitle = ""): { html: string; head: string } {
+  // A head that is only a short line ("A bit about me") is a label on its own.
+  const lone = /^\s*<p>([^<]{1,80})<\/p>\s*$/.exec(html);
+  if (lone) return { html: "", head: `<div class="lb-head"><div class="lb-label">${lone[1]}</div></div>` };
+  const lab = takeLabel(html);
+  let rest = lab.html;
+  let title = extraTitle ? `<h2>${esc(extraTitle)}</h2>` : "";
+  const h = /^\s*(<h2\b[^>]*>[\s\S]*?<\/h2>)/.exec(rest);
+  if (h) {
+    title = h[1];
+    rest = rest.slice(h[0].length);
+  }
+  const label = lab.label || (extraLabel ? `<div class="lb-label">${esc(extraLabel)}</div>` : "");
+  return { html: rest, head: label || title ? `<div class="lb-head">${label}${title}</div>` : "" };
+}
+
+const section = (name: string, inner: string, extra = "") =>
+  `<section class="lb lb-${name}${extra}"><div class="lb-in">${inner}</div></section>`;
+
+// --- blocks ---------------------------------------------------------------
+
+function heroBlock(inner: string): string {
+  const img = IMAGE_ONLY_P.exec(inner);
+  let html = img ? inner.replace(img[0], "") : inner;
+  const lab = takeLabel(html);
+  html = lab.html.replace(/<h2\b([^>]*)>([\s\S]*?)<\/h2>/, "<h1$1>$2</h1>");
+  const { html: text, buttons } = takeButtons(html);
+  const withLede = text.replace(/<p>/g, '<p class="lb-lede">');
   return (
-    '<section class="lb lb-cards">' +
-    (intro.trim() ? `<div class="lb-intro">${renderMarkdown(intro)}</div>` : "") +
-    '<div class="lb-card-grid">' +
-    parts.map((p) => `<article class="lb-card">${renderMarkdown(p)}</article>`).join("") +
-    "</div></section>"
+    `<section class="lb-hero${img ? " lb-hero--art" : ""}"><div class="lb-hero-in"><div class="lb-hero-row">` +
+    `<div class="lb-hero-text"><div class="lb-hero-txt-in">${lab.label}${withLede}${buttons}</div></div>` +
+    (img ? `<div class="lb-hero-art">${img[1]}</div>` : "") +
+    "</div></div></section>"
   );
+}
+
+// Split a block's markdown at each `###`: the text before the first is the
+// block's head (label + `##`), each part after is one entry.
+function splitAtH3(children: FencedNode[], render: (t: string) => string): { head: string; parts: string[] } {
+  const parts = markdownOf(children).split(/^(?=###[ \t])/m);
+  const lead = /^###[ \t]/.test(parts[0] ?? "") ? "" : (parts.shift() ?? "");
+  return { head: lead.trim() ? render(lead) : "", parts: parts.map(render) };
+}
+
+function cardsBlock(children: FencedNode[], render: (t: string) => string): string {
+  const { head, parts } = splitAtH3(children, render);
+  const h = takeHead(head);
+  return section(
+    "cards",
+    h.head + h.html + '<div class="lb-grid">' + parts.map((p) => `<article class="lb-card">${p}</article>`).join("") + "</div>",
+    " lb-band"
+  );
+}
+
+function columnsBlock(children: FencedNode[], render: (t: string) => string): string {
+  const { head, parts } = splitAtH3(children, render);
+  const h = takeHead(head);
+  return section(
+    "columns",
+    h.head + h.html + '<div class="lb-cols">' + parts.map((p) => `<div class="lb-col"><span class="lb-dot"></span>${p}</div>`).join("") + "</div>"
+  );
+}
+
+// List items as rows, with a leading **bold** as the row's label.
+function listRows(html: string): { label: string; rest: string }[] {
+  const items = [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((m) => m[1].replace(/^\s*<p>|<\/p>\s*$/g, "").trim());
+  return items.map((li) => {
+    const m = /^<strong>([\s\S]*?)<\/strong>\s*(?:[·:–—-]\s*)?([\s\S]*)$/.exec(li);
+    return m ? { label: m[1], rest: m[2] } : { label: "", rest: li };
+  });
+}
+
+function timelineBlock(inner: string): string {
+  const h = takeHead(inner);
+  const list = /<ul>[\s\S]*<\/ul>|<ol>[\s\S]*<\/ol>/.exec(h.html)?.[0] ?? "";
+  const rows = listRows(list)
+    .map(({ label, rest }) => {
+      // An _italic_ tail is the row's detail line.
+      const d = /^([\s\S]*?)\s*<em>([\s\S]*?)<\/em>\s*$/.exec(rest);
+      const title = d ? d[1].replace(/[.,;:·–—-]\s*$/, "") : rest;
+      return (
+        `<div class="lb-tl-row"><div>${label ? `<span class="lb-tl-when">${label}</span>` : ""}</div>` +
+        `<div class="lb-tl-body"><div class="lb-tl-title">${title}</div>${d ? `<div class="lb-tl-detail">${d[2]}</div>` : ""}</div></div>`
+      );
+    })
+    .join("");
+  return section("timeline", h.head + h.html.replace(list, "") + `<div class="lb-tl">${rows}</div>`);
+}
+
+function statsBlock(inner: string): string {
+  const rows = listRows(inner)
+    .map(({ label, rest }) => `<div><div class="lb-stat-label">${label}</div><div class="lb-stat-value">${rest}</div></div>`)
+    .join("");
+  return section("stats", `<div class="lb-stats-grid">${rows}</div>`);
+}
+
+const ATTRIBUTION = /^\s*(?:—|–|-{1,2})\s*/;
+
+function quotesBlock(inner: string): string {
+  const h = takeHead(inner);
+  const figs = [...h.html.matchAll(/<blockquote>([\s\S]*?)<\/blockquote>/g)]
+    .map((m) => {
+      const ps = [...m[1].matchAll(/<p>([\s\S]*?)<\/p>/g)].map((p) => p[1]);
+      const who = ps.length > 1 && ATTRIBUTION.test(ps[ps.length - 1]) ? ps.pop()! : "";
+      return (
+        `<figure class="lb-quote">${ps.map((p) => `<p>${p}</p>`).join("")}` +
+        (who ? `<figcaption>${who.replace(ATTRIBUTION, "")}</figcaption>` : "") +
+        "</figure>"
+      );
+    })
+    .join("");
+  return section("quotes", h.head + `<div class="lb-quote-grid">${figs}</div>`);
+}
+
+function ctaBlock(inner: string): string {
+  const { html, buttons } = takeButtons(inner);
+  return section("cta", `<div class="lb-cta-box"><div class="lb-cta-text">${html}</div>${buttons}</div>`);
+}
+
+function calloutBlock(inner: string): string {
+  return section("callout", `<div class="lb-callout-box">${inner}</div>`);
+}
+
+// A video link becomes a privacy-friendly player (youtube-nocookie, Vimeo's
+// player); any other address becomes a link card.
+export function embedFor(
+  url: string
+): { kind: "video"; src: string } | { kind: "link"; href: string; host: string } | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const host = u.hostname.replace(/^www\.|^m\./, "");
+  let yt = "";
+  if (host === "youtu.be") yt = u.pathname.slice(1);
+  else if (host === "youtube.com" || host === "youtube-nocookie.com") {
+    yt = u.searchParams.get("v") ?? (/^\/(?:embed|shorts|live)\/([\w-]+)/.exec(u.pathname)?.[1] ?? "");
+  }
+  if (/^[\w-]{6,20}$/.test(yt)) return { kind: "video", src: `https://www.youtube-nocookie.com/embed/${yt}` };
+  const vimeo = host === "vimeo.com" || host === "player.vimeo.com" ? /(\d{5,})/.exec(u.pathname)?.[1] : undefined;
+  if (vimeo) return { kind: "video", src: `https://player.vimeo.com/video/${vimeo}` };
+  return { kind: "link", href: u.toString(), host };
+}
+
+function embedBlock(children: FencedNode[], render: (t: string) => string): string {
+  const text = markdownOf(children);
+  const m = /(?:<(https?:\/\/[^>\s]+)>|\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/\S+))/.exec(text);
+  const url = m ? (m[1] ?? m[2] ?? m[3]) : "";
+  const target = url ? embedFor(url) : null;
+  if (!target) return section("embed", render(text));
+  // The caption is everything but the line that carried the address.
+  const caption = text.split("\n").filter((l) => !l.includes(url)).join("\n").trim();
+  const cap = caption ? `<figcaption>${render(caption).replace(/^\s*<p>|<\/p>\s*$/g, "")}</figcaption>` : "";
+  const frame =
+    target.kind === "video"
+      ? `<div class="lb-embed-frame"><iframe src="${esc(target.src)}" title="${esc(caption.split("\n")[0] || "Video")}" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`
+      : `<a class="lb-linkcard" href="${esc(target.href)}"><span class="lb-label">${esc(target.host)}</span><span class="lb-linkcard-url">${esc(target.href)}</span></a>`;
+  return section("embed", `<figure>${frame}${cap}</figure>`);
 }
 
 // --- collections --------------------------------------------------------------
@@ -122,9 +285,9 @@ export function summarize(bodyText: string): { image: string | null; excerpt: st
 const norm = (s: string) => s.trim().toLowerCase().replace(/^#/, "").replace(/\s+/g, "-");
 
 // A collection lists what the page PUBLISHES, narrowed by its settings:
-//   title:  heading above the list        type:   an item type (key or label)
-//   tag:    a tag name                    show:   "6", "6 newest", "3 oldest"
-//   layout: grid (default) | list
+//   label, title  the section head               type    an item type (key or label)
+//   tag           a tag name                      show    "6", "6 newest", "3 oldest"
+//   layout        grid (default) | list
 // It never reaches past the publish list, which is the privacy rule.
 export function selectCollection(items: SiteItem[], settings: Record<string, string>): SiteItem[] {
   let out = items;
@@ -137,37 +300,56 @@ export function selectCollection(items: SiteItem[], settings: Record<string, str
   return n > 0 ? out.slice(0, n) : out;
 }
 
-function collectionBlock(children: FencedNode[], site: SiteContext | undefined, renderMarkdown: (t: string) => string): string {
+const capitalize = (s: string) => s.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+function collectionBlock(children: FencedNode[], site: SiteContext | undefined, render: (t: string) => string): string {
   const { settings, rest } = readBlockSettings(markdownOf(children));
   const list = site ? selectCollection(site.items, settings) : [];
   const layout = settings.layout === "list" ? "list" : "grid";
+  const h = takeHead(rest ? render(rest) : "", settings.label, settings.title);
   const cards = list
     .map((i) => {
       const { image, excerpt } = summarize(i.bodyText);
+      const date = formatDate(i.publishedAt);
+      if (layout === "list") {
+        return (
+          `<a class="lb-row-item" href="${esc(i.href)}"><h3>${esc(i.title)}</h3>` +
+          `<span class="lb-row-date">${esc(date)}</span>` +
+          (excerpt ? `<span class="lb-row-excerpt">${esc(excerpt)}</span>` : "") +
+          "</a>"
+        );
+      }
+      const meta = [i.tags[0] ?? capitalize(i.type), date].filter(Boolean).join(" · ");
       return (
-        `<a class="lb-item" href="${esc(i.href)}">` +
-        (image && layout === "grid" ? `<span class="lb-item-art"><img src="${esc(image)}" alt=""></span>` : "") +
-        `<span class="lb-item-date">${esc(formatDate(i.publishedAt))}</span>` +
-        `<span class="lb-item-title">${esc(i.title)}</span>` +
-        (excerpt ? `<span class="lb-item-excerpt">${esc(excerpt)}</span>` : "") +
+        `<a class="lb-card lb-item" href="${esc(i.href)}">` +
+        (image ? `<span class="lb-item-art">${image === "placeholder" ? '<span class="lb-ph"></span>' : `<img src="${esc(image)}" alt="">`}</span>` : "") +
+        `<span class="lb-label">${esc(meta)}</span><h3>${esc(i.title)}</h3>` +
+        (excerpt ? `<p class="lb-item-excerpt">${esc(excerpt)}</p>` : "") +
         "</a>"
       );
     })
     .join("");
-  return (
-    `<section class="lb lb-collection lb-collection--${layout}">` +
-    (settings.title ? `<h2 class="lb-collection-title">${esc(settings.title)}</h2>` : "") +
-    (rest ? renderMarkdown(rest) : "") +
-    (cards ? `<div class="lb-items">${cards}</div>` : '<p class="lb-empty">Nothing published here yet.</p>') +
-    "</section>"
-  );
+  const body = cards
+    ? `<div class="${layout === "list" ? "lb-rows" : "lb-grid"}">${cards}</div>`
+    : '<p class="lb-empty">Nothing published here yet.</p>';
+  return section("collection", h.head + h.html + body, layout === "grid" ? " lb-band" : "");
 }
 
 // --- the site's chrome: header, menu, footer ----------------------------------
 
-// The home page's `::: menu` block (a markdown list of links), rendered once and
-// shown in the header of every page. Without one, the menu builds itself: Home,
-// then every published item that is itself a Website Page (About, Contact…).
+function findBlock(nodes: FencedNode[], name: string): Extract<FencedNode, { kind: "block" }> | undefined {
+  for (const n of nodes) {
+    if (n.kind !== "block") continue;
+    if (n.name === name) return n;
+    const inner = findBlock(n.children, name);
+    if (inner) return inner;
+  }
+  return undefined;
+}
+
+// The home page's `::: menu` block (a markdown list of links), shown in the
+// header of every page. Without one, the menu builds itself: Home, then every
+// published item that is itself a Website Page (About, Contact…).
 function menuLinks(site: SiteContext, publicLinks: Map<string, string>): { label: string; href: string }[] {
   const menu = findBlock(parseFencedBlocks(site.homeMarkdown), "menu");
   if (menu) {
@@ -183,19 +365,8 @@ function menuLinks(site: SiteContext, publicLinks: Map<string, string>): { label
   ];
 }
 
-function findBlock(nodes: FencedNode[], name: string): Extract<FencedNode, { kind: "block" }> | undefined {
-  for (const n of nodes) {
-    if (n.kind !== "block") continue;
-    if (n.name === name) return n;
-    const inner = findBlock(n.children, name);
-    if (inner) return inner;
-  }
-  return undefined;
-}
-
 function siteHeader(site: SiteContext, publicLinks: Map<string, string>, current: string | undefined): string {
-  const links = menuLinks(site, publicLinks);
-  const nav = links
+  const nav = menuLinks(site, publicLinks)
     .map((l) => `<a href="${l.href}"${l.href === current ? ' aria-current="page"' : ""}>${l.label}</a>`)
     .join("");
   // Two copies of the menu: inline on wide screens, behind a native disclosure on
@@ -212,12 +383,13 @@ function siteHeader(site: SiteContext, publicLinks: Map<string, string>, current
   );
 }
 
-// Heading ids, so a menu entry like [Devotionals](#devotionals) can jump to a
-// section of the home page.
+// Heading ids, so a menu entry like [Writing](#writing) can jump to a section.
 function withHeadingIds(html: string): string {
   const used = new Set<string>();
   return html.replace(/<h([1-3])>([\s\S]*?)<\/h\1>/g, (_m, level: string, inner: string) => {
-    const base = inner.replace(/<[^>]+>/g, "").toLowerCase().replace(/&[a-z#0-9]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
+    const base =
+      inner.replace(/<[^>]+>/g, "").toLowerCase().replace(/&[a-z#0-9]+;|['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+      "section";
     let id = base;
     for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
     used.add(id);
@@ -229,113 +401,235 @@ export function hasHero(markdown: string): boolean {
   return /^[ \t]{0,3}:{3,}[ \t]*hero\b/m.test(markdown);
 }
 
+// A subpage's opening paragraph, pulled out as its lede when more follows it.
+function splitLede(markdown: string): { lede: string; rest: string } {
+  const m = /^\s*([^\s#>*\-+!|:`<\d][^\n]*(?:\n(?!\s*\n)[^\n]*)*)\n\s*\n([\s\S]+)$/.exec(markdown);
+  return m ? { lede: m[1], rest: m[2] } : { lede: "", rest: markdown };
+}
+
+// `![caption](placeholder)` draws the striped stand-in box the starters use, so a
+// sample page looks finished before the owner has a photo; the caption says
+// what picture belongs there.
+function withPlaceholders(html: string): string {
+  return html.replace(/<img src="placeholder" alt="([^"]*)"[^>]*>/g, '<span class="lb-ph" role="img" aria-label="$1">$1</span>');
+}
+
 export function renderWebPage(title: string, markdown: string, opts: WebPageOptions = {}): string {
   const publicLinks = opts.publicLinks ?? new Map<string, string>();
+  const design = opts.design ?? DEFAULT_DESIGN;
+  const render = (text: string) => markdownToBlockHtml(text, { mentions: opts.mentions, publicLinks, keepHeadings: true });
   const renderBlock: BlockRenderer = (block, { renderChildren, renderMarkdown }) => {
-    if (block.name === "hero") return heroBlock(renderChildren());
-    if (block.name === "cards") return cardsBlock(block.children, renderMarkdown);
-    if (block.name === "collection") return collectionBlock(block.children, opts.site, renderMarkdown);
-    // Chrome, not content: the menu renders in the header, on every page.
-    if (block.name === "menu") return "";
-    return undefined;
+    switch (block.name) {
+      case "hero": return heroBlock(renderChildren());
+      case "cards": return cardsBlock(block.children, renderMarkdown);
+      case "columns": return columnsBlock(block.children, renderMarkdown);
+      case "collection": return collectionBlock(block.children, opts.site, renderMarkdown);
+      case "timeline": return timelineBlock(renderChildren());
+      case "stats": return statsBlock(renderChildren());
+      case "quotes": return quotesBlock(renderChildren());
+      case "cta": return ctaBlock(renderChildren());
+      case "callout": return calloutBlock(renderChildren());
+      case "embed": return embedBlock(block.children, render);
+      case "row": return `<div class="lb-row">${renderChildren()}</div>`;
+      // Chrome, not content: rendered in the header and footer of every page.
+      case "menu":
+      case "footer":
+        return "";
+      default: return undefined;
+    }
   };
-  const body = withHeadingIds(
-    markdownToBlockHtml(markdown, { mentions: opts.mentions, publicLinks, renderBlock, keepHeadings: true })
-  );
-  // A page with no hero still needs a headline: the item title stands in, with a
-  // subpage's date and way back under it.
   const m = opts.meta;
-  const metaLine =
-    m && (m.publishedAt || m.backHref)
-      ? '<p class="lb-meta">' +
-        (m.backHref ? `<a href="${esc(m.backHref)}">← ${esc(m.backLabel ?? "Back")}</a>` : "") +
-        (m.publishedAt ? `<span>${esc(formatDate(m.publishedAt))}</span>` : "") +
-        "</p>"
+  const isSubpage = !!m && !hasHero(markdown);
+  const { lede, rest } = isSubpage ? splitLede(markdown) : { lede: "", rest: markdown };
+  let proseRuns = 0;
+  const body = withPlaceholders(withHeadingIds(
+    markdownToBlockHtml(rest, {
+      mentions: opts.mentions,
+      publicLinks,
+      renderBlock,
+      keepHeadings: true,
+      // The first prose run gets the drop cap (in languages that have one),
+      // wherever it falls after stats, an embed or other blocks.
+      wrapTopRun: (html) => section("prose", html, proseRuns++ === 0 ? " lb-prose--first" : ""),
+    })
+  ));
+  // A page with no hero still needs a headline: the item title stands in, with a
+  // subpage's label, date and lede around it.
+  const labelLine = [m?.label, m?.publishedAt ? formatDate(m.publishedAt) : ""].filter(Boolean).join(" · ");
+  const header = hasHero(markdown)
+    ? ""
+    : '<header class="lb-title"><div class="lb-title-in">' +
+      (labelLine ? `<div class="lb-label">${esc(labelLine)}</div>` : "") +
+      `<h1>${esc(title)}</h1>` +
+      (lede ? `<p class="lb-lede">${render(lede).replace(/^\s*<p>|<\/p>\s*$/g, "")}</p>` : "") +
+      "</div></header>";
+  const pager =
+    m && (m.prev || m.next)
+      ? '<nav class="lb-pager" aria-label="More">' +
+        (m.prev
+          ? `<a href="${esc(m.prev.href)}"><span class="lb-label">← Previous</span><span class="lb-pager-title">${esc(m.prev.title)}</span></a>`
+          : "<span></span>") +
+        (m.next
+          ? `<a class="lb-pager-next" href="${esc(m.next.href)}"><span class="lb-label">Next →</span><span class="lb-pager-title">${esc(m.next.title)}</span></a>`
+          : "") +
+        "</nav>"
       : "";
-  const header = hasHero(markdown) ? metaLine : `<header class="lb-title">${metaLine}<h1>${esc(title)}</h1></header>`;
+  const footBlock = opts.site ? findBlock(parseFencedBlocks(opts.site.homeMarkdown), "footer") : undefined;
+  const footLeft = footBlock ? render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "") : "";
+  const footer =
+    footLeft || opts.footerHtml
+      ? `<footer class="page-foot"><span>${footLeft}</span><span>${opts.footerHtml ?? ""}</span></footer>`
+      : "";
   const pageTitle = opts.site && opts.site.name !== title ? `${title} · ${opts.site.name}` : title;
   return (
     "<!doctype html>" +
     '<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    `<title>${esc(pageTitle)}</title><style>${STYLE}</style></head>` +
-    "<body>" +
+    `<title>${esc(pageTitle)}</title><style>${fontFaces(design)}${themeCss(design)}${STYLE}</style></head>` +
+    `<body><div class="site${isSubpage ? " site--sub" : ""}" data-language="${esc(design.language)}">` +
     (opts.site ? siteHeader(opts.site, publicLinks, opts.currentHref) : "") +
-    `<main class="page">${header}${body}</main>` +
-    (opts.footerHtml ? `<footer class="page-foot">${opts.footerHtml}</footer>` : "") +
-    "</body></html>"
+    `<main class="page">${header}<div class="lb-article">${body}</div>${pager}</main>` +
+    footer +
+    "</div></body></html>"
   );
 }
 
-// Modern language, Slate palette (the sample-page values Tyler approved,
-// 2026-09-28). Lead = buttons and links, support = labels and bands, highlight =
-// small accents. Every color is a token so slice 2 swaps palettes by value.
+// Self-hosted faces for the page's one font (public/fonts/pages). Helvetica
+// ships no file.
+const FACE_FILES: Record<string, { family: string; file: string; weight: string }> = {
+  public: { family: "Public Sans", file: "public-sans", weight: "300 900" },
+  montserrat: { family: "Montserrat", file: "montserrat", weight: "400 900" },
+  figtree: { family: "Figtree", file: "figtree", weight: "400 900" },
+  serif: { family: "Source Serif 4", file: "source-serif-4", weight: "400 700" },
+};
+function fontFaces(design: Design): string {
+  const key = FONTS[design.font] ? design.font : (LANGUAGES[design.language]?.font ?? "public");
+  const f = FACE_FILES[key];
+  if (!f) return "";
+  return ["normal", "italic"]
+    .map(
+      (style) =>
+        `@font-face{font-family:'${f.family}';font-style:${style};font-weight:${f.weight};font-display:swap;src:url(/fonts/pages/${f.file}-${style}.woff2) format('woff2')}`
+    )
+    .join("");
+}
+
+// The component stylesheet. Every value that differs between languages or
+// palettes is a token from theme.ts; this only says where each one goes.
+// Mirrors the Claude Design starters (project "Ledgr Design System").
 const STYLE = `
-:root{--bg:#f5f7fa;--surface:#fff;--fg:#151a22;--muted:#5a6473;--line:#dde2ea;--lead:#2f5fd0;--lead-fg:#fff;--support:#4f5f78;--band:#eceff5;--tint:#e8eefb;--highlight:#2fa9dc;
---font:"Public Sans","Helvetica Neue",Helvetica,Arial,sans-serif;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#10141a;--surface:#181d25;--fg:#edf1f6;--muted:#99a3b1;--line:#2a313c;--lead:#7ea2ff;--lead-fg:#0b1428;--support:#a7b4c8;--band:#1a1f28;--tint:#1c2742;--highlight:#6fd0f5;color-scheme:dark}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:17px;line-height:1.6}
-.page{max-width:1080px;margin:0 auto;padding:0 20px;display:grid;gap:44px;padding-block:32px 56px}
-h1,h2,h3,h4{line-height:1.15;letter-spacing:-.02em;margin:0 0 .4em;text-wrap:balance}
-h1{font-size:clamp(32px,4.6vw,46px);font-weight:750}
-h2{font-size:clamp(26px,3.6vw,34px);font-weight:750}
-h3{font-size:20px;font-weight:650;letter-spacing:-.01em}
-p,ul,ol{margin:0 0 .9em}
-a{color:var(--lead)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:17px;line-height:1.6}
+.site{container-type:inline-size;min-height:100vh}
+a{color:inherit}a:hover{opacity:.85}
 img{max-width:100%;height:auto;display:block}
-blockquote{margin:0;padding-left:18px;border-left:3px solid var(--line);color:var(--muted)}
-.lb-title h1{font-size:clamp(34px,5vw,52px);font-weight:750;letter-spacing:-.03em;margin:0}
-.lb-hero{display:grid;gap:24px;align-items:center}
-.lb-hero-art{order:-1}
-.lb-hero-art img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:16px}
-.lb-hero h1,.lb-hero h2{font-size:clamp(34px,5.2vw,56px);letter-spacing:-.03em;line-height:1.04}
-.lb-hero-text>p:not(.lb-actions){font-size:19px;color:var(--muted);max-width:46ch}
-.lb-actions{margin-top:22px}
-.lb-btn{display:inline-block;background:var(--lead);color:var(--lead-fg);text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px}
-.lb-btn:focus-visible{outline:2px solid var(--highlight);outline-offset:3px}
-@media (min-width:760px){.lb-hero--art{grid-template-columns:1.05fr 1fr}.lb-hero-art{order:0}.lb-hero-art img{aspect-ratio:16/11}}
-.lb-cards{background:var(--band);border-radius:20px;padding:32px 24px;display:grid;gap:20px}
-.lb-card-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr))}
-.lb-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(0,0,0,.05)}
-.lb-card p:last-child{margin-bottom:0}
-.lb-card p{color:var(--muted);font-size:15.5px}
-.lb-callout{background:var(--tint);border-radius:14px;padding:18px 22px}
-.lb-callout>p:last-child{margin-bottom:0}
-.lb-callout strong:first-child{display:inline-flex;align-items:center;gap:10px}
-.lb-callout strong:first-child::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--highlight);flex:none}
-.lb{min-width:0}
-.mention{color:inherit;font-weight:600}
-a.mention{color:var(--lead)}
-pre{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px}
-table{border-collapse:collapse;display:block;overflow-x:auto}
-th,td{border:1px solid var(--line);padding:6px 10px}
-.site-head{max-width:1080px;margin:0 auto;padding:18px 20px 0;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
-.site-name{font-weight:750;font-size:18px;letter-spacing:-.01em;color:var(--fg);text-decoration:none;margin-right:auto}
-.site-nav{display:none;gap:22px;font-size:15px}
-.site-nav a,.site-menu nav a{color:var(--muted);text-decoration:none}
-.site-nav a:hover,.site-menu nav a:hover{color:var(--fg)}
-.site-nav a[aria-current],.site-menu nav a[aria-current]{color:var(--fg);font-weight:600}
-.site-menu summary{cursor:pointer;font-size:15px;color:var(--muted);list-style:none;padding:6px 12px;border:1px solid var(--line);border-radius:999px}
+h1,h2,h3{margin:0;font-weight:var(--h-w);letter-spacing:var(--h-track);text-transform:var(--h-case);line-height:var(--h-lh);text-wrap:balance}
+h1{font-size:var(--h1)}h2{font-size:var(--h2)}h3{font-size:var(--h3);letter-spacing:calc(var(--h-track) * .5);line-height:1.2}
+p{margin:0}
+.lb-label{font-size:var(--label-size);font-weight:var(--label-w);letter-spacing:var(--label-track);text-transform:var(--label-case);color:var(--label-c);line-height:1.3}
+.lb{padding:calc(var(--gap-y) / 2) var(--pad)}
+.lb-in{max-width:var(--wide);margin:0 auto}
+.lb-band{background:var(--band-bg)}
+.lb-head{border-top:var(--sec-rule);padding-top:var(--sec-pt);margin-bottom:clamp(20px,3cqi,32px);display:flex;flex-direction:column;gap:10px}
+.lb-btn{display:inline-flex;align-items:center;padding:var(--btn-p);border-radius:var(--btn-r);background:var(--lead);color:var(--on-lead);font-weight:var(--btn-w);font-size:var(--btn-size);letter-spacing:var(--btn-track);text-transform:var(--btn-case);text-decoration:none;line-height:1.2;border:0}
+.lb-btn--ghost{background:transparent;color:inherit;border:1.5px solid currentColor}
+.lb-btn:focus-visible,.lb-item:focus-visible,.lb-row-item:focus-visible{outline:2px solid var(--hl);outline-offset:3px}
+.lb-actions{display:flex;flex-wrap:wrap;gap:12px}
+.site-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px;padding:18px var(--pad);border-bottom:var(--nav-bd)}
+.site-name{font-weight:var(--h-w);letter-spacing:calc(var(--h-track) * .5);text-transform:var(--h-case);font-size:18px;text-decoration:none}
+.site-nav{display:none;flex-wrap:wrap;gap:8px 20px;font-size:15px;font-weight:600}
+.site-nav a,.site-menu nav a{text-decoration:none;color:var(--muted)}
+.site-nav a[aria-current],.site-menu nav a[aria-current]{color:var(--lead)}
+.site-menu summary{cursor:pointer;font-size:15px;font-weight:600;list-style:none;padding:6px 14px;border:1px solid var(--line);border-radius:var(--btn-r)}
 .site-menu summary::-webkit-details-marker{display:none}
-.site-menu[open] summary{color:var(--fg)}
 .site-menu nav{display:grid;gap:10px;padding:14px 2px 4px;font-size:16px}
-@media (min-width:760px){.site-nav{display:flex}.site-menu{display:none}}
-.lb-meta{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;color:var(--muted);margin:0 0 10px}
-.lb-meta a{color:var(--muted);text-decoration:none}.lb-meta a:hover{color:var(--fg)}
-.lb-collection{display:grid;gap:18px}
-.lb-collection-title{margin:0}
-.lb-items{display:grid;gap:16px}
-.lb-collection--grid .lb-items{grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr))}
-.lb-item{display:grid;gap:6px;align-content:start;text-decoration:none;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
-.lb-item:hover .lb-item-title{color:var(--lead)}
-.lb-item:focus-visible{outline:2px solid var(--highlight);outline-offset:3px}
-.lb-item-art img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-bottom:6px}
-.lb-item-date{font-size:13px;color:var(--support);font-weight:600}
-.lb-item-title{font-size:19px;font-weight:650;line-height:1.25;letter-spacing:-.01em}
-.lb-item-excerpt{font-size:15px;color:var(--muted)}
-.lb-collection--list .lb-item{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:14px 0}
+@container (min-width:720px){.site-nav{display:flex}.site-menu{display:none}}
+.lb-hero{padding:var(--hero-outer-p)}
+.lb-hero-in{background:var(--hero-bg);color:var(--hero-ink);border-radius:var(--hero-r);padding:var(--hero-p)}
+.lb-hero-row{max-width:var(--hero-max);margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:clamp(24px,4cqi,56px)}
+.lb-hero-text{flex:1 1 var(--hero-txt-basis);min-width:0;padding:var(--hero-txt-p);text-align:var(--hero-align)}
+.lb-hero-txt-in{max-width:var(--hero-txt-max);margin:var(--hero-txt-m)}
+.lb-hero .lb-label{color:var(--hero-label)}
+.lb-hero h1{margin-top:14px}
+.lb-hero .lb-lede{margin-top:20px;color:var(--hero-muted)}
+.lb-hero .lb-actions{margin-top:28px;justify-content:var(--hero-justify)}
+.lb-hero .lb-btn{background:var(--hero-btn-bg);color:var(--hero-btn-ink)}
+.lb-hero .lb-btn--ghost{background:transparent;color:inherit;border-color:var(--hero-btn2-bd)}
+.lb-hero-art{flex:1 1 var(--hero-img-basis);order:var(--hero-img-order);height:var(--hero-img-h);border-radius:var(--hero-img-r);overflow:hidden;background:var(--ph-b)}
+.lb-hero-art img,.lb-hero-art .lb-ph{width:100%;height:100%;object-fit:cover}
+.lb-ph{display:flex;align-items:flex-end;min-height:100%;padding:10px 12px;background:repeating-linear-gradient(135deg,var(--ph-a) 0 1px,transparent 1px 11px) var(--ph-b);font:500 11px/1.3 ui-monospace,Menlo,monospace;color:var(--muted)}
+.lb-item-art .lb-ph{aspect-ratio:16/9;border-radius:var(--img-r)}
+.lb-lede{font-size:var(--lede-size);font-style:var(--lede-style);line-height:1.5;color:var(--muted);text-wrap:pretty}
+.lb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:clamp(16px,2.4cqi,28px);align-items:start}
+.lb-card{display:flex;flex-direction:column;gap:10px;background:var(--card-bg);border:var(--card-bd);border-top:var(--card-bt);border-radius:var(--r);padding:var(--card-p);box-shadow:var(--card-sh);min-width:0}
+.lb-card p{color:var(--muted);font-size:15px;line-height:1.55}
+.lb-item{text-decoration:none;color:inherit;gap:12px}
+.lb-item-art img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--img-r)}
+.lb-rows{display:grid}
+.lb-row-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 20px;padding:18px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+.lb-row-date{font-size:14px;color:var(--muted);white-space:nowrap}
+.lb-row-excerpt{grid-column:1/-1;font-size:15px;color:var(--muted);line-height:1.5}
 .lb-empty{color:var(--muted)}
-.page-foot{max-width:1080px;margin:0 auto;padding:18px 20px 28px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.lb-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:clamp(24px,4cqi,48px)}
+.lb-col{display:flex;flex-direction:column;gap:10px}
+.lb-col p{color:var(--muted);font-size:15px;line-height:1.6}
+.lb-dot{width:10px;height:10px;border-radius:var(--dot-r);background:var(--hl)}
+.lb-tl-row{display:grid;grid-template-columns:var(--tl-cols);gap:6px 18px;padding:16px 0;border-bottom:1px solid var(--line)}
+.lb-tl-when{display:inline-block;font-size:min(var(--tl-ys),15px);font-weight:var(--tl-yw);color:var(--tl-yc);background:var(--tl-ybg);padding:var(--tl-yp);border-radius:var(--tl-yr);letter-spacing:var(--tl-ytrack);line-height:1;white-space:nowrap}
+.lb-tl-title{font-size:16px;font-weight:var(--h-w);text-transform:var(--h-case);letter-spacing:calc(var(--h-track) * .4);line-height:1.3}
+.lb-tl-detail{font-size:14px;color:var(--muted);margin-top:3px}
+.lb-stats .lb-in{max-width:min(var(--col),820px)}
+.lb-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.lb-stat-label{font-size:var(--label-size);font-weight:var(--label-w);letter-spacing:var(--label-track);text-transform:var(--label-case);color:var(--muted)}
+.lb-stat-value{font-size:15px;font-weight:600;margin-top:4px}
+.lb-quote-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(16px,3cqi,32px)}
+.lb-quote,.lb-callout-box{margin:0;background:var(--co-bg);color:var(--co-ink);border-style:solid;border-width:var(--co-bw);border-color:var(--co-bc);border-radius:var(--co-r);padding:var(--co-p);text-align:var(--co-align)}
+.lb-quote p{font-size:clamp(17px,2cqi,20px);font-weight:var(--co-w);font-style:var(--co-style);line-height:1.45;text-wrap:pretty}
+.lb-quote p:first-child::before{content:"\\201C"}.lb-quote p:last-of-type::after{content:"\\201D"}
+.lb-quote figcaption{margin-top:14px;font-size:var(--label-size);font-weight:var(--label-w);letter-spacing:var(--label-track);text-transform:var(--label-case);opacity:.8;line-height:1.3}
+.lb-callout-box{font-size:var(--co-size);font-weight:var(--co-w);font-style:var(--co-style);line-height:1.45}
+.lb-callout-box p+p{margin-top:.6em}
+.lb-cta-box{background:var(--cta-bg);color:var(--cta-ink);border-radius:var(--cta-r);border-style:solid;border-width:var(--cta-bw);border-color:var(--cta-bc);padding:var(--cta-p);display:flex;flex-wrap:wrap;flex-direction:var(--cta-dir);align-items:var(--cta-items);justify-content:space-between;gap:20px 32px;text-align:var(--cta-align)}
+.lb-cta-text{flex:1 1 auto;min-width:min(100%,300px);max-width:620px}
+.lb-cta-text p{margin-top:10px;color:var(--cta-muted);font-size:17px}
+.lb-cta .lb-actions{justify-content:var(--cta-items)}
+.lb-cta .lb-btn{background:var(--cta-btn-bg);color:var(--cta-btn-ink)}
+.lb-cta .lb-btn--ghost{background:transparent;color:inherit;border-color:currentColor}
+.lb-embed figure{margin:0 auto;max-width:min(var(--wide),960px)}
+.lb-embed-frame{aspect-ratio:16/9;border-radius:var(--r);overflow:hidden;background:var(--tint-2)}
+.lb-embed-frame iframe{width:100%;height:100%;border:0;display:block}
+.lb-embed figcaption{margin-top:10px;font-size:14px;color:var(--muted)}
+.lb-linkcard{display:grid;gap:6px;padding:var(--card-p);background:var(--card-bg);border:1px solid var(--line);border-radius:var(--r);text-decoration:none}
+.lb-linkcard-url{font-size:15px;color:var(--lead);overflow-wrap:anywhere}
+.lb-row{display:flex;flex-wrap:wrap;gap:clamp(32px,6cqi,72px);padding:calc(var(--gap-y) / 2) var(--pad);max-width:calc(var(--wide) + var(--pad) * 2);margin:0 auto}
+.lb-row>.lb{padding:0;flex:2 1 280px;min-width:0}
+.lb-row>.lb:first-child{flex:3 1 380px}
+.lb-row>.lb .lb-in{max-width:none}
+.lb-prose .lb-in{max-width:min(var(--col),720px);font-size:18px;line-height:1.7}
+.lb-prose .lb-in>*+*{margin-top:1em}
+.lb-prose h2{font-size:clamp(22px,2.6cqi,28px);line-height:1.15;margin-top:1.6em}
+.lb-prose h3{margin-top:1.4em}
+.lb-prose ul{list-style:none;padding:0;display:flex;flex-direction:column;gap:12px}
+.lb-prose ul>li{display:flex;gap:14px}
+.lb-prose ul>li::before{content:"";flex:none;width:8px;height:8px;border-radius:var(--dot-r);background:var(--hl);margin-top:.7em}
+.lb-prose ol{padding-left:1.3em}
+.lb-prose blockquote{margin:1.4em 0;padding:18px 0;border-style:solid;border-width:var(--quote-bw);border-color:var(--quote-bc);font-size:var(--quote-size);font-style:var(--quote-style);text-align:var(--quote-align);line-height:1.3}
+.lb-prose a{color:var(--lead)}
+.lb-prose img{border-radius:var(--img-r)}
+.lb-prose pre{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:14px}
+.lb-prose table{border-collapse:collapse;display:block;overflow-x:auto}
+.lb-prose th,.lb-prose td{border:1px solid var(--line);padding:6px 10px}
+.site--sub .lb-prose--first .lb-in>p:first-child::first-letter{float:var(--dc-float);font-size:var(--dc-size);line-height:var(--dc-lh);font-weight:var(--dc-w);margin:var(--dc-m);color:var(--dc-c)}
+.mention{font-weight:600}
+.lb-title{padding:clamp(28px,5cqi,64px) var(--pad) 0}
+.lb-title-in{max-width:min(var(--col),820px);margin:0 auto;text-align:var(--hero-align)}
+.lb-title h1{margin-top:14px}
+.lb-title .lb-lede{margin-top:18px}
+.lb-pager{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px;max-width:min(var(--wide),960px);margin:calc(var(--gap-y) / 2) auto 0;padding:var(--sec-pt) var(--pad) calc(var(--gap-y) / 1.5);border-top:var(--sec-rule)}
+.lb-pager a{display:flex;flex-direction:column;gap:6px;text-decoration:none;padding:14px 0}
+.lb-pager-next{text-align:right}
+.lb-pager-title{font-size:var(--h3);font-weight:var(--h-w);text-transform:var(--h-case);letter-spacing:calc(var(--h-track) * .5);line-height:1.2}
+.page-foot{padding:20px var(--pad);border-top:1px solid var(--line);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px;color:var(--muted)}
+.page-foot a{color:inherit}
 `.replace(/\n/g, "");

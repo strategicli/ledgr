@@ -11,6 +11,7 @@ import type { ResolvedShare } from "@/modules/sharing/lib/share";
 import { WEBSITE_PAGE_TYPE } from "@/modules/website-pages/manifest";
 import { renderWebPage } from "@/modules/website-pages/lib/page-html";
 import { loadSite } from "@/modules/website-pages/lib/site";
+import { readDesign } from "@/modules/website-pages/lib/theme";
 import { readPublications } from "@/modules/website-pages/lib/publications";
 
 async function footerFor(ownerId: string): Promise<string> {
@@ -45,6 +46,7 @@ export async function renderSiteHome(shared: ResolvedShare, token: string): Prom
     mentions,
     publicLinks,
     site,
+    design: readDesign(shared.properties),
     currentHref: site.homeHref,
     footerHtml: await footerFor(shared.ownerId),
   });
@@ -74,12 +76,22 @@ export async function renderSiteSubpage(
     { title: home.title, bodyText: home.text, properties: shared.properties },
     item.bodyText
   );
+  // Neighbors in the site's publish order (newest first), for Previous / Next.
+  const idx = site.items.findIndex((i) => i.id === item.id);
+  const near = (i: number) => (site.items[i] ? { href: site.items[i].href, title: site.items[i].title } : undefined);
   return renderWebPage(item.title, item.bodyText, {
     mentions,
     publicLinks,
     site,
+    // Every page of a site wears the home page's look.
+    design: readDesign(shared.properties),
     currentHref: item.href,
-    meta: { publishedAt: item.publishedAt, backHref: site.homeHref, backLabel: site.name },
+    meta: {
+      label: item.type.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase()),
+      publishedAt: item.publishedAt,
+      prev: near(idx - 1),
+      next: near(idx + 1),
+    },
     footerHtml: await footerFor(shared.ownerId),
   });
 }

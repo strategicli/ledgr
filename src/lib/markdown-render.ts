@@ -340,15 +340,21 @@ export function markdownToBlockHtml(
     publicLinks?: Map<string, string>;
     renderBlock?: BlockRenderer;
     keepHeadings?: boolean;
+    // Wraps a run of plain markdown that sits between blocks at the top level
+    // (a page's prose sections); runs inside a block are left to the block.
+    wrapTopRun?: (html: string) => string;
   } = {}
 ): string {
   if (!markdown) return "";
   const env = { mentions: opts.mentions, publicLinks: opts.publicLinks, keepHeadings: opts.keepHeadings };
   const renderMarkdown = (text: string) => md.render(prepare(text, false), env);
-  const emit = (nodes: FencedNode[]): string =>
+  const emit = (nodes: FencedNode[], top = false): string =>
     nodes
       .map((n) => {
-        if (n.kind === "markdown") return renderMarkdown(n.text);
+        if (n.kind === "markdown") {
+          const html = renderMarkdown(n.text);
+          return top && opts.wrapTopRun ? opts.wrapTopRun(html) : html;
+        }
         const renderChildren = () => emit(n.children);
         const custom = opts.renderBlock?.(n, { renderChildren, renderMarkdown });
         if (custom !== undefined) return custom;
@@ -359,7 +365,7 @@ export function markdownToBlockHtml(
         );
       })
       .join("");
-  return emit(parseFencedBlocks(stripComments(flattenTabs(markdown))));
+  return emit(parseFencedBlocks(stripComments(flattenTabs(markdown))), true);
 }
 
 function escapeAttr(value: string): string {

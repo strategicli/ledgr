@@ -50,6 +50,14 @@ A share link today is `renderPrintDocument()` (`src/lib/print-html.ts`), the sam
 - **Footer:** `::: footer` if the author writes one, else the "Shared from …'s Ledgr" line.
 - **Collection listing pages:** `/share/<token>/<collection-name>` lists everything in a collection, so a hero showing "3 newest" can link to "all 40".
 
+## Building a page by hand, and where the look lives (Tyler, 2026-09-28) — **agreed**
+
+"Basically writing a well formatted note, using the slash command, then select the style and type of page you want and go."
+
+- **Content and layout stay markdown** (the blocks). **The look is page settings, not markdown:** `properties.design = {language, palette, font}` on the Website Page, set by a picker (with the design reasoning and the "how they differ" guide) or by one MCP `update_item`. No `::: design` block: a picker rewriting part of a body while the editor holds it invites collisions, and subpages inherit the home page's look without parsing its body.
+- **Easy by hand, in order of payoff:** (1) **starters**: a new page starts filled with sample sections (Tyler's five: Personal Site, Portfolio, Journal, Event, Project), so most people replace words and never type a fence; (2) **slash commands scoped to the Website Page type** (`/hero`, `/cards`, `/collection`, `/cta`, …) insert a block with sample content that shows its parts; (3) a **View page** button; (4) later, editor node views that frame each block, with a small form for collection settings; (5) unfinished blocks already degrade to plain content. General-purpose templates can come later.
+- **Visual system from Claude Design** (project "Ledgr Design System", `ledgr-theme.js`): each language is a set of CSS variables and every block reads them; palettes are lead / support / highlight / background (light + dark) with the rest derived by `color-mix`. It suggests a fifth palette, **Tide** (sea-teal `#0f6b6f`, `#4f7a80`, rose `#e46f8a`), shipped marked "suggested" until Tyler decides.
+
 ## "Make a webpage" in the share panel: the fill system
 - **It creates a new Website Page item instead of converting the original,** with a relation back to the source note. Copy beats sync: a synced page would overwrite the owner's customizations. A later "Refresh from source" can re-run the fill and ask before replacing.
 - **Layouts are slot definitions.** Call them *layouts*, not templates (Ledgr Templates already exist). e.g. Event = `hero` + details `cards` + `cta`; Announcement = `hero` + body + `callout`; Landing = `hero` + `cards` + `gallery` + `cta`. Each slot declares what content it accepts (image, heading, section, image run, link).

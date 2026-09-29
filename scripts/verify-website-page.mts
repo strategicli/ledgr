@@ -2,6 +2,8 @@
 // guess their parts from plain markdown, the page stays self-contained, and a
 // mention never exposes an in-app address. Pure: no DB, no browser.
 // Run: npx tsx scripts/verify-website-page.mts
+/* eslint-disable @typescript-eslint/no-explicit-any -- dev-only harness: it pokes
+   at union results (embedFor) loosely; this script never ships in the app. */
 const { renderWebPage } = await import("../src/modules/website-pages/lib/page-html");
 
 let failures = 0;
@@ -69,17 +71,17 @@ check("self-contained document", html.startsWith("<!doctype html>") && html.incl
 check("no scripts on the page", !/<script/i.test(html));
 check("title in <title>", html.includes("<title>Fall Retreat</title>"));
 check("dark palette via the viewer's system setting", html.includes("prefers-color-scheme:dark"));
-check("footer rendered", html.includes('<footer class="page-foot">Shared from Tyler\'s Ledgr</footer>'));
+check("footer rendered", html.includes("<footer class=\"page-foot\"><span></span><span>Shared from Tyler's Ledgr</span></footer>"), html);
 
 // Hero guesses
-check("hero with an image gets the art layout", html.includes('<section class="lb lb-hero lb-hero--art">'), html);
+check("hero with an image gets the art layout", html.includes('<section class="lb-hero lb-hero--art">'), html);
 check("first image moves into the art column", /<div class="lb-hero-art"><img src="\/files\/abc\?s=tok" alt="Lake at dawn"><\/div>/.test(html), html);
-check("a link-only paragraph becomes a button", html.includes('<p class="lb-actions"><a class="lb-btn" href="https://example.com/register">Register now</a></p>'), html);
-check("headline stays in the text column as the page's h1", /<div class="lb-hero-text">\s*<h1 id="fall-retreat-2026">Fall Retreat 2026<\/h1>/.test(html), html);
+check("a link-only paragraph becomes a button", html.includes('<div class="lb-actions"><a class="lb-btn" href="https://example.com/register">Register now</a></div>'), html);
+check("headline becomes the page's h1", /<div class="lb-hero-txt-in">\s*<h1 id="fall-retreat-2026">Fall Retreat 2026<\/h1>/.test(html), html);
 check("a page with a hero gets no separate title header", !html.includes('class="lb-title"'));
 
 // Cards
-check("cards: intro kept above the grid", html.includes('<div class="lb-intro"><p>Everything you need to know.</p>'), html);
+check("cards: a lone intro line becomes the section label", html.includes('<div class="lb-head"><div class="lb-label">Everything you need to know.</div></div>'), html);
 const cards = html.match(/<article class="lb-card">/g) ?? [];
 check("cards: one card per ### heading", cards.length === 2, String(cards.length));
 check("cards: card holds its heading (level as written) and text", /<article class="lb-card"><h3 id="lodging">Lodging<\/h3>\s*<p>Cabins sleep 8.<\/p>/.test(html), html);
@@ -98,7 +100,7 @@ check("no in-app address anywhere", !html.includes("/items/") && !html.includes(
 
 // No hero: the title stands in
 const plain = renderWebPage("Plain <Page>", "Just text.");
-check("no hero: title header rendered and escaped", plain.includes('<header class="lb-title"><h1>Plain &lt;Page&gt;</h1></header>'), plain);
+check("no hero: title header rendered and escaped", plain.includes('<h1>Plain &lt;Page&gt;</h1>'), plain);
 
 // --- Sites: collections, menu, subpages, publish list -------------------------
 console.log("\nSites");
@@ -143,8 +145,8 @@ const SITE = { name: "Morning Bread", homeHref: "/share/tok", homeMarkdown: "", 
   const home = renderWebPage("Morning Bread", "::: collection\n\ntitle: Latest\ntype: Devotional\nshow: 5 newest\n\n:::", {
     site: SITE, currentHref: "/share/tok",
   });
-  check("home: collection title rendered", home.includes('<h2 class="lb-collection-title">Latest</h2>'), home);
-  check("home: one card per matching published item", (home.match(/class="lb-item"/g) ?? []).length === 2);
+  check("home: collection title rendered", home.includes('<div class="lb-head"><h2 id="latest">Latest</h2></div>'), home);
+  check("home: one card per matching published item", (home.match(/class="lb-card lb-item"/g) ?? []).length === 2, home);
   check("home: card links to the subpage", home.includes('href="/share/tok/unless-the-lord-builds"'));
   check("home: settings lines never show as text", !home.includes("show: 5 newest"));
   check("home: automatic menu = Home + published pages", /<nav class="site-nav"[^>]*><a href="\/share\/tok" aria-current="page">Home<\/a><a href="\/share\/tok\/about">About<\/a><\/nav>/.test(home), home);
@@ -163,11 +165,61 @@ const SITE = { name: "Morning Bread", homeHref: "/share/tok", homeMarkdown: "", 
 {
   const sub = renderWebPage("Like a Weaned Child", "Contentment, slowly.", {
     site: SITE, currentHref: "/share/tok/like-a-weaned-child",
-    meta: { publishedAt: "2026-09-05T00:00:00Z", backHref: "/share/tok", backLabel: "Morning Bread" },
+    meta: { label: "Devotional", publishedAt: "2026-09-05T00:00:00Z" },
   });
-  check("subpage: back link and date under the title", sub.includes('<p class="lb-meta"><a href="/share/tok">← Morning Bread</a><span>Sep 5, 2026</span></p><h1>Like a Weaned Child</h1>'), sub);
+  check("subpage: label and date above the title", sub.includes('<div class="lb-label">Devotional · Sep 5, 2026</div><h1>Like a Weaned Child</h1>'), sub);
   check("subpage: tab title names the site", sub.includes("<title>Like a Weaned Child · Morning Bread</title>"));
   check("headings get ids for #section menu links", renderWebPage("x", "## Our Story").includes('<h2 id="our-story">Our Story</h2>'));
+}
+
+// --- Design system + the Personal Site blocks ---------------------------------
+console.log("\nDesign and blocks");
+const { readDesign, themeCss } = await import("../src/modules/website-pages/lib/theme");
+const { embedFor } = await import("../src/modules/website-pages/lib/page-html");
+const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
+{
+  check("design: default when unset", JSON.stringify(readDesign({})) === JSON.stringify({ language: "modern", palette: "slate", font: "public" }));
+  check("design: unknown values fall back, font follows language", JSON.stringify(readDesign({ design: { language: "editorial", palette: "nope" } })) === JSON.stringify({ language: "editorial", palette: "slate", font: "serif" }));
+  const css = themeCss({ language: "bold", palette: "navy", font: "montserrat" });
+  check("theme: language tokens present", css.includes("--h-case:uppercase"));
+  check("theme: palette light + dark", css.includes("--lead:#1d3b66") && /prefers-color-scheme:dark\)\{:root\{--lead:#8fb4ea/.test(css));
+  const page = renderWebPage("x", "Hi", { design: { language: "editorial", palette: "navy", font: "serif" } });
+  check("font: self-hosted face for the page's font only", page.includes("/fonts/pages/source-serif-4-normal.woff2") && !page.includes("public-sans"));
+  check("font: Helvetica ships no file", !renderWebPage("x", "Hi", { design: { language: "modern", palette: "slate", font: "helvetica" } }).includes("@font-face"));
+}
+{
+  check("embed: YouTube goes through youtube-nocookie", (embedFor("https://www.youtube.com/watch?v=dQw4w9WgXcQ") as any)?.src === "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  check("embed: youtu.be short links", (embedFor("https://youtu.be/dQw4w9WgXcQ") as any)?.src === "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  check("embed: Vimeo player", (embedFor("https://vimeo.com/76979871") as any)?.src === "https://player.vimeo.com/video/76979871");
+  check("embed: other sites become a link card", embedFor("https://example.com/talk")?.kind === "link");
+  check("embed: non-web schemes refused", embedFor("javascript:alert(1)") === null);
+}
+{
+  const html = renderWebPage("x", [
+    "::: timeline", "", "## Now", "", "- **Reading** Jayber Crow. _Second time through_", "", ":::", "",
+    "::: stats", "", "- **Started** March 2023", "", ":::", "",
+    "::: quotes", "", "> Lovely.", ">", "> — Carla M.", "", ":::", "",
+    "::: cta", "", "## Say hello", "", "Email is best.", "", "[Email me](mailto:a@b.c) [Call](https://example.com/c)", "", ":::", "",
+    "::: embed", "", "https://youtu.be/dQw4w9WgXcQ", "", "Our anniversary film", "", ":::", "",
+    ":::: row", "", "::: callout", "", "One", "", ":::", "", "::: callout", "", "Two", "", ":::", "", "::::", "",
+    "::: hero", "", "![portrait](placeholder)", "", "# Hi", "", ":::",
+  ].join("\n"));
+  check("timeline: label, title, detail", html.includes('<span class="lb-tl-when">Reading</span>') && html.includes('<div class="lb-tl-title">Jayber Crow</div><div class="lb-tl-detail">Second time through</div>'), html);
+  check("stats: label and value", html.includes('<div class="lb-stat-label">Started</div><div class="lb-stat-value">March 2023</div>'), html);
+  check("quotes: attribution from the last line", html.includes('<figure class="lb-quote"><p>Lovely.</p><figcaption>Carla M.</figcaption></figure>'), html);
+  check("cta: first button solid, second outlined", html.includes('<a class="lb-btn" href="mailto:a@b.c">Email me</a><a class="lb-btn lb-btn--ghost" href="https://example.com/c">Call</a>'), html);
+  check("embed block: player + caption", html.includes('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"') && html.includes("<figcaption>Our anniversary film</figcaption>"), html);
+  check("row: blocks side by side", /<div class="lb-row"><section class="lb lb-callout">[\s\S]*?<section class="lb lb-callout">/.test(html), html);
+  check("placeholder image draws the stand-in box", html.includes('<span class="lb-ph" role="img" aria-label="portrait">portrait</span>'), html);
+}
+{
+  const s = STARTERS.find((x) => x.id === "personal-site")!;
+  const html = renderWebPage("Jonah Reyes", s.body, { site: { name: "Jonah Reyes", homeHref: "/share/tok", homeMarkdown: s.body, items: [] }, design: s.design });
+  check("starter: renders with its menu in the header", html.includes('<a href="#things-ive-made">Work</a>'), html);
+  check("starter: menu anchor matches its section id", html.includes('id="things-ive-made"'));
+  check("starter: footer block lands in the footer", html.includes("you@example.com · Kansas City, MO"));
+  check("starter: empty collections say so", html.includes("Nothing published here yet."));
+  check("starter: no fence or settings text leaks", !html.includes(":::") && !html.includes("show: 6 newest"));
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
