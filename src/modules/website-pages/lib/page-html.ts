@@ -23,6 +23,7 @@ import { markdownToBlockHtml, markdownToText, type BlockRenderer } from "@/lib/m
 import { parseFencedBlocks, readBlockSettings, type FencedNode } from "@/lib/editor/fenced-blocks";
 import type { ResolvedMention } from "@/lib/mentions";
 import { DEFAULT_DESIGN, FONTS, LANGUAGES, themeCss, type Design } from "@/modules/website-pages/lib/theme";
+import { isNavIcon, navIconPaths } from "@/lib/nav-icons";
 
 // One published item as a site shows it: in a collection card, a menu entry, or
 // its own subpage. The caller (the share routes) builds these; everything here
@@ -350,14 +351,19 @@ function findBlock(nodes: FencedNode[], name: string): Extract<FencedNode, { kin
 // The home page's `::: menu` block (a markdown list of links), shown in the
 // header of every page. Without one, the menu builds itself: Home, then every
 // published item that is itself a Website Page (About, Contact…).
-function menuLinks(site: SiteContext, publicLinks: Map<string, string>): { label: string; href: string }[] {
+// Each list entry is one menu item: its link when it has one, else its text as a
+// plain label (Tyler: if someone adds a line there, show it).
+function menuLinks(site: SiteContext, publicLinks: Map<string, string>): { label: string; href: string | null }[] {
   const menu = findBlock(parseFencedBlocks(site.homeMarkdown), "menu");
   if (menu) {
     const html = markdownToBlockHtml(markdownOf(menu.children), { publicLinks, keepHeadings: true });
-    return [...html.matchAll(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({
-      href: m[1],
-      label: m[2].replace(/<[^>]+>/g, ""),
-    }));
+    return [...html.matchAll(/<li>([\s\S]*?)<\/li>/g)]
+      .map((m) => {
+        const a = /<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/.exec(m[1]);
+        const label = (a ? a[2] : m[1]).replace(/<[^>]+>/g, "").trim();
+        return { href: a ? a[1] : null, label };
+      })
+      .filter((l) => l.label);
   }
   return [
     { label: "Home", href: site.homeHref },
@@ -367,7 +373,11 @@ function menuLinks(site: SiteContext, publicLinks: Map<string, string>): { label
 
 function siteHeader(site: SiteContext, publicLinks: Map<string, string>, current: string | undefined): string {
   const nav = menuLinks(site, publicLinks)
-    .map((l) => `<a href="${l.href}"${l.href === current ? ' aria-current="page"' : ""}>${l.label}</a>`)
+    .map((l) =>
+      l.href
+        ? `<a href="${l.href}"${l.href === current ? ' aria-current="page"' : ""}>${l.label}</a>`
+        : `<span>${l.label}</span>`
+    )
     .join("");
   // Two copies of the menu: inline on wide screens, behind a native disclosure on
   // phones. Closed <details> content can't be revealed by CSS, so one element
@@ -376,8 +386,8 @@ function siteHeader(site: SiteContext, publicLinks: Map<string, string>, current
     '<header class="site-head">' +
     `<a class="site-name" href="${esc(site.homeHref)}">${esc(site.name)}</a>` +
     (nav
-      ? `<nav class="site-nav" aria-label="Site">${nav}</nav>` +
-        `<details class="site-menu"><summary>Menu</summary><nav aria-label="Site">${nav}</nav></details>`
+      ? `<nav class="site-nav" aria-label="Site">${withIcons(nav)}</nav>` +
+        `<details class="site-menu"><summary>Menu</summary><nav aria-label="Site">${withIcons(nav)}</nav></details>`
       : "") +
     "</header>"
   );
@@ -388,7 +398,7 @@ function withHeadingIds(html: string): string {
   const used = new Set<string>();
   return html.replace(/<h([1-3])>([\s\S]*?)<\/h\1>/g, (_m, level: string, inner: string) => {
     const base =
-      inner.replace(/<[^>]+>/g, "").toLowerCase().replace(/&[a-z#0-9]+;|['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+      inner.replace(/<[^>]+>/g, "").replace(/(^|\s):[a-z][a-z0-9-]{1,30}:(?=\s|$)/g, "$1").toLowerCase().replace(/&[a-z#0-9]+;|['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
       "section";
     let id = base;
     for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
@@ -412,6 +422,25 @@ function splitLede(markdown: string): { lede: string; rest: string } {
 // what picture belongs there.
 function withPlaceholders(html: string): string {
   return html.replace(/<img src="placeholder" alt="([^"]*)"[^>]*>/g, '<span class="lb-ph" role="img" aria-label="$1">$1</span>');
+}
+
+// `:name:` draws one of Ledgr's own icons (src/lib/nav-icons.ts) in the page's
+// colors. Only real icon names turn into icons, so `10:30:45` or an unknown
+// `:word:` stays text, and code blocks are never touched.
+const ICON_CODE = /(^|[^\w:]):([a-z][a-z0-9-]{1,30}):(?![\w:])/g;
+export function withIcons(html: string): string {
+  return html
+    .split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<[^>]+>)/)
+    .map((part) =>
+      part.startsWith("<")
+        ? part
+        : part.replace(ICON_CODE, (m, pre: string, key: string) =>
+            isNavIcon(key)
+              ? `${pre}<svg class="lb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${navIconPaths(key)}</svg>`
+              : m
+          )
+    )
+    .join("");
 }
 
 export function renderWebPage(title: string, markdown: string, opts: WebPageOptions = {}): string {
@@ -442,7 +471,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
   const isSubpage = !!m && !hasHero(markdown);
   const { lede, rest } = isSubpage ? splitLede(markdown) : { lede: "", rest: markdown };
   let proseRuns = 0;
-  const body = withPlaceholders(withHeadingIds(
+  const body = withIcons(withPlaceholders(withHeadingIds(
     markdownToBlockHtml(rest, {
       mentions: opts.mentions,
       publicLinks,
@@ -452,7 +481,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
       // wherever it falls after stats, an embed or other blocks.
       wrapTopRun: (html) => section("prose", html, proseRuns++ === 0 ? " lb-prose--first" : ""),
     })
-  ));
+  )));
   // A page with no hero still needs a headline: the item title stands in, with a
   // subpage's label, date and lede around it.
   const labelLine = [m?.label, m?.publishedAt ? formatDate(m.publishedAt) : ""].filter(Boolean).join(" · ");
@@ -539,7 +568,7 @@ p{margin:0}
 .site-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px;padding:18px var(--pad);border-bottom:var(--nav-bd)}
 .site-name{font-weight:var(--h-w);letter-spacing:calc(var(--h-track) * .5);text-transform:var(--h-case);font-size:18px;text-decoration:none}
 .site-nav{display:none;flex-wrap:wrap;gap:8px 20px;font-size:15px;font-weight:600}
-.site-nav a,.site-menu nav a{text-decoration:none;color:var(--muted)}
+.site-nav a,.site-menu nav a,.site-nav span,.site-menu nav span{text-decoration:none;color:var(--muted)}
 .site-nav a[aria-current],.site-menu nav a[aria-current]{color:var(--lead)}
 .site-menu summary{cursor:pointer;font-size:15px;font-weight:600;list-style:none;padding:6px 14px;border:1px solid var(--line);border-radius:var(--btn-r)}
 .site-menu summary::-webkit-details-marker{display:none}
@@ -575,6 +604,9 @@ p{margin:0}
 .lb-col{display:flex;flex-direction:column;gap:10px}
 .lb-col p{color:var(--muted);font-size:15px;line-height:1.6}
 .lb-dot{width:10px;height:10px;border-radius:var(--dot-r);background:var(--hl)}
+.lb-icon{width:1.1em;height:1.1em;display:inline-block;vertical-align:-.18em;color:var(--lead)}
+.lb-col:has(h3>.lb-icon:first-child) .lb-dot{display:none}
+.lb-col h3>.lb-icon:first-child,.lb-card h3>.lb-icon:first-child{display:block;width:32px;height:32px;padding:6px;margin-bottom:12px;border-radius:var(--r);background:var(--lead-tint);color:var(--lead)}
 .lb-tl-row{display:grid;grid-template-columns:var(--tl-cols);gap:6px 18px;padding:16px 0;border-bottom:1px solid var(--line)}
 .lb-tl-when{display:inline-block;font-size:min(var(--tl-ys),15px);font-weight:var(--tl-yw);color:var(--tl-yc);background:var(--tl-ybg);padding:var(--tl-yp);border-radius:var(--tl-yr);letter-spacing:var(--tl-ytrack);line-height:1;white-space:nowrap}
 .lb-tl-title{font-size:16px;font-weight:var(--h-w);text-transform:var(--h-case);letter-spacing:calc(var(--h-track) * .4);line-height:1.3}

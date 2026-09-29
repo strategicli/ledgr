@@ -8,12 +8,11 @@
 import { useEffect, useState } from "react";
 import { setLayoutBlocksFor } from "@/components/markdown-editor/slash-suggestion";
 import { FONTS, LANGUAGES, PALETTES, type Design } from "@/modules/website-pages/lib/theme";
+import { NAV_ICONS, type NavIconKey } from "@/lib/nav-icons";
 
 export type PageInfo = {
   design: Design;
   empty: boolean;
-  sharePath: string | null;
-  base: string | null;
   starters: { id: string; name: string; description: string }[];
 };
 
@@ -76,22 +75,18 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
   }
 
   const lang = LANGUAGES[design.language];
-  const pageUrl = initial.sharePath
-    ? `${initial.base ?? (typeof window === "undefined" ? "" : window.location.origin)}${initial.sharePath}`
-    : null;
+  const [copiedIcon, setCopiedIcon] = useState("");
+
+  async function copyIcon(key: string) {
+    try {
+      await navigator.clipboard.writeText(`:${key}:`);
+      setCopiedIcon(key);
+      setTimeout(() => setCopiedIcon(""), 1500);
+    } catch {}
+  }
 
   return (
     <div className="flex flex-col gap-3 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        {pageUrl ? (
-          <a href={pageUrl} target="_blank" rel="noreferrer" className="rounded border border-[var(--accent)] px-2 py-0.5 text-neutral-100">
-            View page ↗
-          </a>
-        ) : (
-          <span className="text-neutral-500">Make a share link above to view this page and send it to people.</span>
-        )}
-      </div>
-
       {initial.empty && initial.starters.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <span className="text-neutral-400">Start from a starter: sample sections you type over.</span>
@@ -152,6 +147,27 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
           {FONTS[design.font]?.why} The dot marks this style&apos;s own font.
         </span>
       </div>
+
+      <details className="flex flex-col gap-1.5">
+        <summary className="cursor-pointer text-neutral-400 hover:text-neutral-200">Icons</summary>
+        <span className="mt-1.5 block text-neutral-500">
+          Type <code>:name:</code> anywhere on the page to draw an icon in the page&apos;s colors. At the start of a
+          card or column heading it replaces the dot. Click one to copy its code.
+        </span>
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {(Object.keys(NAV_ICONS) as NavIconKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              title={copiedIcon === key ? "Copied" : `:${key}:`}
+              onClick={() => copyIcon(key)}
+              className={`grid h-8 w-8 place-items-center rounded border ${copiedIcon === key ? "border-[var(--accent)]" : "border-neutral-700 hover:border-neutral-500"}`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: NAV_ICONS[key] }} />
+            </button>
+          ))}
+        </div>
+      </details>
 
       <span className="text-neutral-500">
         Add sections by typing <code>/</code> in the page: Hero, Cards, Columns, Collection, Timeline and more.

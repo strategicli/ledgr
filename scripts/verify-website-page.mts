@@ -160,6 +160,8 @@ const SITE = { name: "Morning Bread", homeHref: "/share/tok", homeMarkdown: "", 
   check("menu block: mention goes to the subpage, marked current", page.includes('<a href="/share/tok/about" aria-current="page">@About</a>'), page);
   check("menu block: plain URL kept", page.includes('<a href="https://example.com/pod">Podcast</a>'));
   check("menu block: not rendered in the body", !/<main class="page">[\s\S]*Podcast[\s\S]*<\/main>/.test(page), page);
+  const plainMenu = renderWebPage("x", "::: menu\n\n- Coming soon\n- [Blog](https://example.com)\n\n:::", { site: { ...SITE, homeMarkdown: "::: menu\n\n- Coming soon\n- [Blog](https://example.com)\n\n:::" } });
+  check("menu block: a line with no link still shows, as text", plainMenu.includes('<span>Coming soon</span><a href="https://example.com">Blog</a>'), plainMenu);
   check("menu on phones behind a disclosure", page.includes('<details class="site-menu"><summary>Menu</summary>'));
 }
 {
@@ -211,6 +213,16 @@ const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
   check("embed block: player + caption", html.includes('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"') && html.includes("<figcaption>Our anniversary film</figcaption>"), html);
   check("row: blocks side by side", /<div class="lb-row"><section class="lb lb-callout">[\s\S]*?<section class="lb lb-callout">/.test(html), html);
   check("placeholder image draws the stand-in box", html.includes('<span class="lb-ph" role="img" aria-label="portrait">portrait</span>'), html);
+}
+{
+  const { withIcons } = await import("../src/modules/website-pages/lib/page-html");
+  const ic = withIcons("<p>Call :home: now</p>");
+  check("icons: :home: becomes the Ledgr home icon", /<p>Call <svg class="lb-icon"[^>]*><path d="M3 11\.5/.test(ic), ic);
+  check("icons: unknown names stay text", withIcons("<p>:not-an-icon:</p>") === "<p>:not-an-icon:</p>");
+  check("icons: times and fences are left alone", withIcons("<p>10:30:45 and ::: hero</p>") === "<p>10:30:45 and ::: hero</p>");
+  check("icons: code is never touched", withIcons("<code>:home:</code>") === "<code>:home:</code>");
+  const cols = renderWebPage("x", "::: columns\n\n### :home: Home\n\nText\n\n:::");
+  check("icons: a column heading's icon renders first in the heading", /<h3 id="home"><svg class="lb-icon"/.test(cols), cols);
 }
 {
   const s = STARTERS.find((x) => x.id === "personal-site")!;
