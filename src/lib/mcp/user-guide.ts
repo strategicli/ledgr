@@ -1043,6 +1043,26 @@ A shared **song** opens as the two-column chord chart. If the song has a
 itself, with a Speed picker beside the player), the share page plays it above the chart, so the person gets the chords
 and the recording together. Revoking the link stops the audio too.
 
+A shared **Website Page** opens as a designed web page instead of a document
+(the Website Pages module, off until you turn it on under Build → Modules; it
+needs Sharing). Make a Website Page item and lay it out with blocks, each a
+line \`::: name\` above the content and a line \`:::\` below it:
+
+- \`::: hero\`: the opening section. Its first image becomes the picture, the
+  heading becomes the headline, and a paragraph that is only a link becomes a
+  button, so \`[Register](https://…)\` on its own line is a button.
+- \`::: cards\`: each \`###\` heading inside starts a card; any text before
+  the first one is an intro above them.
+- \`::: callout\`: a tinted aside for something readers should not miss.
+
+Everything inside a block is ordinary markdown. Any other block name still
+shows its content as a plain section. On the page, an @-mention of a Link item
+links to that link's address, a mention of an item you have shared links to
+its share page, and any other mention is plain text, so nothing on a public page
+points into your Ledgr. Pages follow the reader's light or dark setting. In an
+ordinary note, printed page or export, the \`:::\` lines simply drop out and the
+content reads as normal text.
+
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
 same theme and icon options) and hands back the URL to paste into an email, a
 Teams message, or another item; \`list_share_links\` answers "is this shared,

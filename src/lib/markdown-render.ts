@@ -44,7 +44,12 @@ md.core.ruler.push("ledgr_transforms", (state) => {
   for (const token of state.tokens) {
     // The document title owns <h1>, so a body "# Heading" renders <h2>; clamp
     // at <h6> (the deepest real heading tag). Matches the pre-cutover render.
-    if (token.type === "heading_open" || token.type === "heading_close") {
+    // A Website Page (keepHeadings) has no separate title bar when it opens on a
+    // hero, so its headings keep the level the author wrote.
+    if (
+      (token.type === "heading_open" || token.type === "heading_close") &&
+      !(state.env as { keepHeadings?: boolean })?.keepHeadings
+    ) {
       const level = Number(token.tag.slice(1)) || 1;
       token.tag = "h" + Math.min(level + 1, 6);
       continue;
@@ -62,8 +67,16 @@ md.core.ruler.push("ledgr_transforms", (state) => {
     // a plain styled link. With a map present but the id unresolved (trashed,
     // not the owner's, or template), the mention flattens to a muted,
     // non-navigating span instead of a dead link.
-    const mentions = (state.env as { mentions?: Map<string, ResolvedMention> })
-      ?.mentions;
+    const env = state.env as {
+      mentions?: Map<string, ResolvedMention>;
+      publicLinks?: Map<string, string>;
+    };
+    const mentions = env?.mentions;
+    // A Website Page is public, so `/items/<id>` would hand a stranger a login
+    // wall and leak the owner's item id. With `publicLinks` in the env, a
+    // mention links only where the page's module found a public address for it
+    // (a Link item's URL, a live share link) and is plain text otherwise.
+    const publicLinks = env?.publicLinks;
     if (token.type === "inline" && token.children) {
       const kids = token.children;
       for (let j = 0; j < kids.length; j++) {
@@ -71,6 +84,23 @@ md.core.ruler.push("ledgr_transforms", (state) => {
         const href = kids[j].attrGet("href") ?? "";
         if (!href.startsWith(MENTION_URI_PREFIX)) continue;
         const id = mentionItemId(href);
+        if (publicLinks) {
+          const url = id ? publicLinks.get(id) : undefined;
+          if (url) {
+            kids[j].attrs = [["href", url], ["class", "mention"]];
+            continue;
+          }
+          kids[j].tag = "span";
+          kids[j].attrs = [["class", "mention"]];
+          for (let k = j + 1; k < kids.length; k++) {
+            if (kids[k].type === "link_close") {
+              kids[k].tag = "span";
+              kids[k].attrs = null;
+              break;
+            }
+          }
+          continue;
+        }
         const resolved = id && mentions ? mentions.get(id) : undefined;
         if (id && (!mentions || resolved)) {
           // Tappable in-app link. With a resolved map, add the type class and
@@ -293,20 +323,41 @@ function prepare(markdown: string, comments: boolean): string {
 // always stripped (a page is public). Each markdown run renders through the
 // shared prepare chain, so mentions, colors and headings behave as they do on a
 // shared document.
+//
+// `renderBlock` lets the page's module lay out a block itself (cards split at
+// each `###`, a hero guessing its parts); returning undefined falls back to the
+// plain section. `publicLinks` switches mentions to the public-page rule above.
+// `keepHeadings` skips the document render's one-level heading shift.
+export type BlockRenderer = (
+  block: { name: string; args: string; children: FencedNode[] },
+  helpers: { renderChildren: () => string; renderMarkdown: (text: string) => string }
+) => string | undefined;
+
 export function markdownToBlockHtml(
   markdown: string,
-  mentions?: Map<string, ResolvedMention>
+  opts: {
+    mentions?: Map<string, ResolvedMention>;
+    publicLinks?: Map<string, string>;
+    renderBlock?: BlockRenderer;
+    keepHeadings?: boolean;
+  } = {}
 ): string {
   if (!markdown) return "";
+  const env = { mentions: opts.mentions, publicLinks: opts.publicLinks, keepHeadings: opts.keepHeadings };
+  const renderMarkdown = (text: string) => md.render(prepare(text, false), env);
   const emit = (nodes: FencedNode[]): string =>
     nodes
-      .map((n) =>
-        n.kind === "markdown"
-          ? md.render(prepare(n.text, false), { mentions })
-          : `<section class="lb lb-${n.name}"${n.args ? ` data-args="${escapeAttr(n.args)}"` : ""}>` +
-            emit(n.children) +
-            "</section>"
-      )
+      .map((n) => {
+        if (n.kind === "markdown") return renderMarkdown(n.text);
+        const renderChildren = () => emit(n.children);
+        const custom = opts.renderBlock?.(n, { renderChildren, renderMarkdown });
+        if (custom !== undefined) return custom;
+        return (
+          `<section class="lb lb-${n.name}"${n.args ? ` data-args="${escapeAttr(n.args)}"` : ""}>` +
+          renderChildren() +
+          "</section>"
+        );
+      })
       .join("");
   return emit(parseFencedBlocks(stripComments(flattenTabs(markdown))));
 }

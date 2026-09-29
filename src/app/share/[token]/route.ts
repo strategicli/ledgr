@@ -19,6 +19,9 @@ import { getSettings } from "@/lib/settings";
 import { isItemBody, MARKDOWN_FORMAT } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
 import { moduleIsOn } from "@/lib/modules/gate";
+import { WEBSITE_PAGE_TYPE } from "@/modules/website-pages/manifest";
+import { renderWebPage } from "@/modules/website-pages/lib/page-html";
+import { resolvePublicLinks } from "@/modules/website-pages/lib/public-links";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +107,26 @@ export async function GET(
       )
     : undefined;
 
+  // A Website Page shares as a designed web page, not a document, while its
+  // module is on (turning the module off falls back to the document render, so
+  // the link keeps working). Mentions follow the public-page rule: a Link item's
+  // URL or a live share link, else plain text, never an in-app address.
+  if (
+    shared.type === WEBSITE_PAGE_TYPE &&
+    (await moduleIsOn(shared.ownerId, "website-pages"))
+  ) {
+    const pageMentions = await resolveMentions(
+      shared.ownerId,
+      collectMentionIdsFromMarkdown(shareBody.text)
+    );
+    const page = renderWebPage(resolved.title, shareBody.text, {
+      mentions: pageMentions,
+      publicLinks: await resolvePublicLinks(shared.ownerId, pageMentions),
+      footerHtml: `Shared from ${whose}`,
+    });
+    return new NextResponse(page, { headers: SHARE_HEADERS });
+  }
+
   const html = renderPrintDocument(resolved.title, shareBody, {
     audio: track
       ? { src: attachmentUrlWithShare(track.id, token) }
@@ -118,16 +141,16 @@ export async function GET(
     theme: shared.options.theme ?? ownerSettings.theme,
   });
 
-  return new NextResponse(html, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      // Statically cacheable at the CDN (PRD §6.5) so a popular link barely
-      // touches the origin, but a short window so revocation propagates fast:
-      // revocation is immediate at the origin, and at most ~60s at the edge.
-      "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
-      // Don't let a shared link leak into search indexes or referrers.
-      "X-Robots-Tag": "noindex, nofollow",
-      "Referrer-Policy": "no-referrer",
-    },
-  });
+  return new NextResponse(html, { headers: SHARE_HEADERS });
 }
+
+const SHARE_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  // Statically cacheable at the CDN (PRD §6.5) so a popular link barely
+  // touches the origin, but a short window so revocation propagates fast:
+  // revocation is immediate at the origin, and at most ~60s at the edge.
+  "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+  // Don't let a shared link leak into search indexes or referrers.
+  "X-Robots-Tag": "noindex, nofollow",
+  "Referrer-Policy": "no-referrer",
+};

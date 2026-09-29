@@ -136,6 +136,9 @@ export type ResolvedShare = {
   body: unknown;
   // Read for the preview track (src/lib/preview-audio.ts), nothing else.
   properties: unknown;
+  // The item's type key, so the share route can hand a type with its own page
+  // render (a Website Page) to that module instead of the document render.
+  type: string;
   options: ShareOptions;
 };
 
@@ -154,6 +157,7 @@ export async function resolveShareToken(
       title: items.title,
       body: items.body,
       properties: items.properties,
+      type: items.type,
       options: shareTokens.options,
     })
     .from(shareTokens)
