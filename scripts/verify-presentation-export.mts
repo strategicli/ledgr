@@ -4,7 +4,7 @@
 //   npx tsx scripts/verify-presentation-export.mts
 import assert from "node:assert/strict";
 import { deckToProPresenterText } from "../src/modules/presentations/lib/propresenter";
-import { slideToBlocks, isImageOnlySlide } from "../src/modules/presentations/lib/slide-blocks";
+import { slideToBlocks, isImageOnlySlide, videoOnlySlide } from "../src/modules/presentations/lib/slide-blocks";
 
 // --- deckToProPresenterText --------------------------------------------------
 
@@ -50,6 +50,15 @@ const imageOnly = slideToBlocks("![a photo](/files/abc)");
 assert.deepEqual(imageOnly, [{ kind: "image", src: "/files/abc" }]);
 assert.ok(isImageOnlySlide(imageOnly));
 assert.ok(!isImageOnlySlide(heading));
+
+// A slide that is only a YouTube/Vimeo link, however the editor wrote it, is a
+// video slide; a link with other text, or a non-video link, is not.
+const NOCOOKIE = "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ";
+assert.equal(videoOnlySlide("https://www.youtube.com/watch?v=dQw4w9WgXcQ")?.src, NOCOOKIE);
+assert.equal(videoOnlySlide("<https://youtu.be/dQw4w9WgXcQ>")?.src, NOCOOKIE);
+assert.equal(videoOnlySlide("[watch](https://youtu.be/dQw4w9WgXcQ)")?.url, "https://youtu.be/dQw4w9WgXcQ");
+assert.equal(videoOnlySlide("# Intro\nhttps://youtu.be/dQw4w9WgXcQ"), null);
+assert.equal(videoOnlySlide("https://example.com/talk"), null);
 
 // Emphasis and links strip inside every block kind (no `#` marker -> paragraph).
 assert.deepEqual(slideToBlocks("**Bold heading**"), [{ kind: "paragraph", text: "Bold heading" }]);

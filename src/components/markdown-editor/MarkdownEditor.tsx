@@ -181,6 +181,29 @@ function filesFrom(data: DataTransfer | null): File[] {
   return Array.from(data.files);
 }
 
+// A browser's "Copy image" on an animated GIF puts only a still PNG of the
+// first frame on the clipboard, plus HTML naming the original address. When
+// that address is a GIF, fetch the real bytes so the paste keeps animating.
+// Takes the clipboard HTML as a string: the DataTransfer goes dead once the
+// paste handler returns. Null (use the still image) when there's no such
+// address or it won't load.
+// ponytail: fetched from the browser, so a host without CORS headers falls
+// back to the still; Giphy/Tenor/Wikimedia send them. A server-side fetch
+// is the upgrade if a common host doesn't.
+async function animatedGifFrom(html: string): Promise<File | null> {
+  const src = /<img[^>]+src=["']([^"']+)["']/i.exec(html)?.[1]?.replace(/&amp;/g, "&");
+  if (!src || !/^https?:/i.test(src)) return null;
+  try {
+    const res = await fetch(src);
+    const blob = res.ok ? await res.blob() : null;
+    if (!blob || blob.type !== "image/gif") return null;
+    const name = decodeURIComponent(new URL(src).pathname.split("/").pop() || "") || "image.gif";
+    return new File([blob], /\.gif$/i.test(name) ? name : `${name}.gif`, { type: "image/gif" });
+  } catch {
+    return null;
+  }
+}
+
 // Insert a linked filename at the current selection, trailing space included —
 // the space keeps back-to-back inserts from fusing into one link and gives the
 // caret a mark-free spot to keep typing from. Shared by fresh uploads and by
@@ -791,7 +814,14 @@ export default function MarkdownEditor({
         const files = filesFrom(event.clipboardData);
         if (files.length === 0) return false;
         event.preventDefault();
-        void insertUploadedFiles(view, files, upload);
+        // A lone still image may be a copied GIF's first frame: swap in the
+        // real GIF when the clipboard names one (animatedGifFrom).
+        const lone = files.length === 1 && files[0].type.startsWith("image/") && files[0].type !== "image/gif";
+        const html = lone ? event.clipboardData?.getData("text/html") ?? "" : "";
+        void (async () => {
+          const gif = html ? await animatedGifFrom(html) : null;
+          await insertUploadedFiles(view, gif ? [gif] : files, upload);
+        })();
         return true;
       },
       handleDrop: (view, event) => {

@@ -4,6 +4,8 @@
 // image/table, in source order. Pure — no DB, no React — so
 // scripts/verify-presentation-export.mts can exercise it directly.
 
+import { embedFor } from "@/lib/embed";
+
 export type SlideBlock =
   | { kind: "heading"; text: string }
   | { kind: "paragraph"; text: string }
@@ -116,4 +118,19 @@ export function slideToBlocks(md: string): SlideBlock[] {
 // A slide whose only content is one image (the player's "layout-image" case).
 export function isImageOnlySlide(blocks: SlideBlock[]): boolean {
   return blocks.length === 1 && blocks[0].kind === "image";
+}
+
+// A line that is nothing but one web address, however the editor wrote it:
+// bare, <autolinked>, or [label](address).
+const LINK_ONLY_RE = /^\s*(?:<(https?:\/\/[^>\s]+)>|\[[^\]]*\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/\S+))\s*$/;
+
+// A slide whose only content is one YouTube or Vimeo link: the player shows it
+// as a video, the PowerPoint export as an online video. `url` is the address
+// as written (the offline fallback links to it), `src` the embeddable player.
+export function videoOnlySlide(md: string): { url: string; src: string } | null {
+  const lines = (md ?? "").split("\n").filter((l) => l.trim());
+  const m = lines.length === 1 ? LINK_ONLY_RE.exec(lines[0]) : null;
+  const url = m ? (m[1] ?? m[2] ?? m[3]) : "";
+  const target = url ? embedFor(url) : null;
+  return target?.kind === "video" ? { url, src: target.src } : null;
 }
