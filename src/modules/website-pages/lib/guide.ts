@@ -21,7 +21,7 @@ export function websitePagesGuide(): string {
     .map(([id, l]) => `- **${l.name}** (\`${id}\`, font \`${l.font}\`): ${l.diff} Reach for it when: ${l.when}`)
     .join("\n");
   const palettes = Object.entries(PALETTES)
-    .map(([id, p]) => `- **${p.name}** (\`${id}\`${p.suggested ? ", suggested" : ""}): ${p.why} Light lead ${p.light.lead}, support ${p.light.support}, highlight ${p.light.hl}.`)
+    .map(([id, p]) => `- **${p.name}** (\`${id}\`): ${p.why} Light lead ${p.light.lead}, support ${p.light.support}, highlight ${p.light.hl}.`)
     .join("\n");
   const fonts = Object.entries(FONTS).map(([id, f]) => `- **${f.name}** (\`${id}\`): ${f.why}`).join("\n");
   const starters = STARTERS.map((s) => `- **${s.name}** (\`${s.id}\`, opens as ${LANGUAGES[s.design.language].name} · ${PALETTES[s.design.palette].name}): ${s.description}`).join("\n");

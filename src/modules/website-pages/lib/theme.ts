@@ -10,7 +10,7 @@
 export type Mode = "light" | "dark";
 type Swatch = { lead: string; support: string; hl: string; bg: string };
 
-export const PALETTES: Record<string, { name: string; suggested?: boolean; why: string; light: Swatch; dark: Swatch }> = {
+export const PALETTES: Record<string, { name: string; why: string; light: Swatch; dark: Swatch }> = {
   slate: {
     name: "Slate",
     why: "Blue lead, steel-gray support, a bright sky highlight. Clear and trustworthy; fits almost anything.",
@@ -35,10 +35,9 @@ export const PALETTES: Record<string, { name: string; suggested?: boolean; why: 
     light: { lead: "#3a3d8f", support: "#5b6ab8", hl: "#f0a36b", bg: "#f6f6fb" },
     dark: { lead: "#a3a8ff", support: "#9fb0ef", hl: "#ffb98a", bg: "#10111c" },
   },
-  // Claude Design's suggested fifth palette; kept marked until Tyler decides.
+  // Claude Design's fifth palette, kept by Tyler 2026-09-29.
   tide: {
     name: "Tide",
-    suggested: true,
     why: "Deep sea-teal with a soft rose highlight. Cool like Slate and Navy, but with no blue, and not as earthy as Forest.",
     light: { lead: "#0f6b6f", support: "#4f7a80", hl: "#e46f8a", bg: "#f3f7f7" },
     dark: { lead: "#5fd0cf", support: "#9cc2c6", hl: "#ff9bb0", bg: "#0c1516" },

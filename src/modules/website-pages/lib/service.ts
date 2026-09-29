@@ -51,7 +51,7 @@ export async function describeSites(ownerId: string, origin: string) {
 export function designOptions() {
   return {
     languages: Object.entries(LANGUAGES).map(([id, l]) => ({ id, name: l.name, defaultFont: l.font, whatItIs: l.diff, reachForItWhen: l.when })),
-    palettes: Object.entries(PALETTES).map(([id, p]) => ({ id, name: p.name, suggested: !!p.suggested, why: p.why, light: p.light, dark: p.dark })),
+    palettes: Object.entries(PALETTES).map(([id, p]) => ({ id, name: p.name, why: p.why, light: p.light, dark: p.dark })),
     fonts: Object.entries(FONTS).map(([id, f]) => ({ id, name: f.name, why: f.why })),
     starters: STARTERS.map((s) => ({ id: s.id, name: s.name, description: s.description, design: s.design })),
   };

@@ -133,7 +133,6 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
                 ))}
               </span>
               <span className="ml-1">{p.name}</span>
-              {p.suggested && <span className="text-neutral-500">(suggested)</span>}
             </button>
           ))}
         </div>
