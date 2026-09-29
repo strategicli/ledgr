@@ -1082,9 +1082,14 @@ above the writing area:
 Collection, Timeline, Stats, Quotes, Call to action, Callout, or Video or link.
 Each arrives with sample text showing its parts. **/icon** opens an icon picker
 right where you are: search, choose a size, click one, and its code lands at
-the cursor. In the page, each section's
-first line shows as a small labeled tag; **hover it** to see how that section
-works, and click into it to edit the line itself. You can also type the lines
+the cursor. In the page, each section shows a quiet label with a one-line
+summary ("Writing · 4 newest · list", "3 columns", "2 parts") and a thin line
+down its left side; the section you're in lights up in your highlight color,
+and a section inside another is numbered. **Hover a label** (or the **?** on
+the section you're in) for a help card: what it does, each setting with its
+choices, and **Insert an example**. A setting the section doesn't know turns
+amber with a suggested fix. Icon codes show as small tokens; click one to edit
+it, and click a label to edit the section's first line. You can also type the lines
 yourself: a section is a line \`::: name\` above its content and a line \`:::\`
 below it. A misspelled or unfinished section never breaks the page; its
 content just shows as plain text.
