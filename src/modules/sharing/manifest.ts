@@ -19,5 +19,9 @@ export const sharingModule: ModuleManifest = {
   // Issuance (/api/items/[id]/share) stays behind sign-in. The `(.*)` matters:
   // a bare "/share" would match only the empty path, not /share/<token>.
   publicPaths: ["/share(.*)"],
-  routes: ["src/app/share/[token]/route.ts", "src/app/api/items/[id]/share/route.ts"],
+  routes: [
+    "src/app/share/[token]/route.ts",
+    "src/app/api/items/[id]/share/route.ts",
+    "src/app/api/machine/items/[id]/share/route.ts",
+  ],
 };

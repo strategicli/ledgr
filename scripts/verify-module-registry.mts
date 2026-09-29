@@ -467,7 +467,7 @@ check(
   JSON.stringify(sharing?.mcpTools?.tools?.map((x) => x.name)) === JSON.stringify(sharing?.mcpTools?.names)
 );
 const sharingRoutes = sharing?.routes ?? [];
-check("sharing lists its route files", sharingRoutes.length === 2);
+check("sharing lists its route files", sharingRoutes.length === 3);
 for (const r of sharingRoutes) {
   check(`route file exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
 }

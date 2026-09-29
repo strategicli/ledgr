@@ -150,6 +150,7 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    Person when People is off. Test on a data copy first. Later: Songs/Papers/Mindmap
    code move, builder tools, web clipper, push into Notification center, digest +
    Overview. Skipped: custom layouts. Parked: Google.
+9. **Machine share route** (branch `feat/machine-share-route`): `POST /api/machine/items/<id>/share` lets a Flow Launcher plugin mint a share link with an API credential. Additive API surface, not core (ADR-183); listed in the Sharing manifest, 404 when Sharing is off. Not yet tried against a live credential.
 
 ## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
 
