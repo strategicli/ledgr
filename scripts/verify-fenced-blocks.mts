@@ -274,8 +274,9 @@ console.log("\nPart E: /icon picker");
     // Clicking an icon chip reopens the picker on that code, to swap or resize it.
     const text = ed.state.doc.textContent;
     const from = 1 + text.indexOf(":home:large:");
-    openIconPicker(ed as any, { replace: { from, to: from + ":home:large:".length, name: "home", size: "large" } });
+    openIconPicker(ed as any, { replace: { from, to: from + ":home:large:".length, name: "home", size: "large" }, anchor: { left: 240, bottom: 120 } });
     const again = document.querySelector(".ledgr-icon-picker") as any;
+    check("chip: the picker opens under the clicked chip", again?.style.left === "240px" && again?.style.top === "126px", `${again?.style.left} ${again?.style.top}`);
     check("chip: the picker opens on the current icon and size", !!again?.querySelector('.ledgr-icon-picker-grid button.is-current[aria-label="home"]') && [...again.querySelectorAll(".ledgr-icon-picker-sizes button")].some((b: any) => b.textContent === "Large" && b.className === "is-selected"));
     press([...again.querySelectorAll(".ledgr-icon-picker-sizes button")].find((b: any) => b.textContent === "Small"));
     press(again.querySelector('.ledgr-icon-picker-grid button[aria-label="heart"]'));

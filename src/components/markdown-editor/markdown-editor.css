@@ -1301,11 +1301,14 @@ body[data-comments="icons"] .cmt-note {
 }
 .ledgr-icon-picker-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 0.2rem;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 .ledgr-icon-picker-grid button {
+  min-width: 0;
   display: grid;
   place-items: center;
   aspect-ratio: 1;
