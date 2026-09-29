@@ -701,13 +701,25 @@ export default function SettingsForm({
             </Row>
             <Row
               label="Collapsible headings"
-              help="A fold arrow on each heading hides or shows the section beneath it. View only, nothing changes in the saved note. Takes effect on the next page load."
+              help="A fold arrow on each heading hides or shows the section beneath it. Collapsed sections are remembered on this device only; nothing changes in the saved note. Takes effect on the next page load."
             >
               <input
                 type="checkbox"
                 aria-label="Collapsible headings"
                 checked={settings.collapsibleHeadingsEnabled}
                 onChange={(e) => void save({ collapsibleHeadingsEnabled: e.target.checked })}
+                className="ledgr-check"
+              />
+            </Row>
+            <Row
+              label="Collapsible bullets"
+              help="A fold arrow on any bullet, numbered, or checklist item with something nested under it hides everything beneath that item. Click the arrow or the bullet itself. Collapsed items are remembered on this device only; nothing changes in the saved note. Takes effect on the next page load."
+            >
+              <input
+                type="checkbox"
+                aria-label="Collapsible bullets"
+                checked={settings.collapsibleListsEnabled}
+                onChange={(e) => void save({ collapsibleListsEnabled: e.target.checked })}
                 className="ledgr-check"
               />
             </Row>
@@ -720,8 +732,9 @@ export default function SettingsForm({
                   <code className="rounded bg-surface-3 px-1 py-0.5 font-mono text-[11px] text-ink-muted">
                     /toggle
                   </code>{" "}
-                  slash command. Existing toggles still show when this is off. Takes effect on the
-                  next page load.
+                  slash command. A toggle remembers whether it&apos;s open or closed as part of the note,
+                  so it looks the same on every device. Existing toggles still show when this is
+                  off. Takes effect on the next page load.
                 </>
               }
             >

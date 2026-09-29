@@ -66,8 +66,10 @@ import {
 } from "./toggle-extension";
 import {
   CollapsibleHeadings,
-  setHeadingsCollapsible,
+  setFoldSettings,
+  expandAllFolds,
 } from "./collapsible-headings";
+import { EXPAND_ALL_EVENT } from "@/lib/editor/fold-events";
 import {
   SlashCommands,
   setSlashEditorItem,
@@ -279,11 +281,12 @@ async function insertUploadedFiles(
 }
 
 // Editor settings the canvas needs (app-wide): the hidden-toolbar ids plus the
-// two feature switches. Fetched once per page load (memoized) so every editor
+// fold/toggle feature switches. Fetched once per page load (memoized) so every editor
 // instance shares the single request.
 type EditorSettings = {
   hidden: string[];
   collapsibleHeadings: boolean;
+  collapsibleLists: boolean;
   toggleBlocks: boolean;
 };
 let editorSettingsPromise: Promise<EditorSettings> | null = null;
@@ -298,10 +301,16 @@ function loadEditorSettings(): Promise<EditorSettings> {
           : [],
         // Default on when the field is absent (matches DEFAULT_SETTINGS).
         collapsibleHeadings: s.collapsibleHeadingsEnabled !== false,
+        collapsibleLists: s.collapsibleListsEnabled !== false,
         toggleBlocks: s.toggleBlocksEnabled !== false,
       };
     })
-    .catch(() => ({ hidden: [], collapsibleHeadings: true, toggleBlocks: true }));
+    .catch(() => ({
+      hidden: [],
+      collapsibleHeadings: true,
+      collapsibleLists: true,
+      toggleBlocks: true,
+    }));
   return editorSettingsPromise;
 }
 
@@ -1178,12 +1187,27 @@ export default function MarkdownEditor({
     loadEditorSettings().then((s) => {
       setHiddenTb(new Set(s.hidden));
       setToggleBlocksOn(s.toggleBlocks);
-      // Gate the "/toggle" slash entry (module-level flag) and switch heading
-      // folding on/off in the plugin, now that the setting has resolved.
+      // Gate the "/toggle" slash entry (module-level flag) and switch heading /
+      // list folding on in the plugin, which then restores this item's
+      // remembered folds (per device), now that the settings have resolved.
       setSlashToggleEnabled(s.toggleBlocks);
-      if (editor) setHeadingsCollapsible(editor, s.collapsibleHeadings);
+      if (editor)
+        setFoldSettings(editor, {
+          headings: s.collapsibleHeadings,
+          lists: s.collapsibleLists,
+          itemId,
+        });
     });
-  }, [editor]);
+  }, [editor, itemId]);
+  // "Expand all" in the item's ⋯ menu opens every fold in this item's editor.
+  useEffect(() => {
+    if (!editor || !itemId) return;
+    const onExpand = (e: Event) => {
+      if ((e as CustomEvent<{ itemId?: string }>).detail?.itemId === itemId) expandAllFolds(editor);
+    };
+    window.addEventListener(EXPAND_ALL_EVENT, onExpand);
+    return () => window.removeEventListener(EXPAND_ALL_EVENT, onExpand);
+  }, [editor, itemId]);
   // Register the "/file" slash command's picker for THIS editor instance (a
   // WeakMap entry in slash-suggestion, so it can't outlive the editor). Gated on
   // the uploader being wired, same as the toolbar's insert buttons. Keyed on
@@ -1466,7 +1490,7 @@ export default function MarkdownEditor({
       { id: "quote", title: "Quote", keys: "Mod-Shift-b", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
       { id: "code", title: "Code block", keys: "Mod-Alt-c", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
       { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-      { id: "toggle", title: "Toggle (collapsible block; wraps the selection)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
+      { id: "toggle", title: "Toggle (collapsible block; wraps the selection; stays open or closed as you leave it)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
         const sel = editor.state.selection;
         if (!sel.empty && wrapSelectionInToggle(editor)) return;
         insertToggle(editor);

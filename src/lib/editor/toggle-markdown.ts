@@ -40,22 +40,36 @@ export type ToggleMatch = {
 };
 
 // Match a toggle block at the START of `src`. Tolerant of extra attributes on
-// the tag, CRLF, and missing/extra blank lines; the body is lazy so a nested
-// </details> would close the outer one early (nested toggles are a known
-// limitation, not a common shape). Returns null when `src` doesn't open with
-// a <details> disclosure in our shape.
-const TOGGLE_BLOCK_RE =
-  /^<details(\s+open)?[^>]*>[ \t]*\r?\n<summary>([\s\S]*?)<\/summary>[ \t]*\r?\n+([\s\S]*?)\r?\n+<\/details>[ \t]*(?:\r?\n|$)/;
+// the tag, CRLF, and missing/extra blank lines. Toggles NEST: the closing
+// </details> is found by counting <details>/</details> lines, so an inner
+// toggle's close can't end the outer one early (the old lazy regex did, and the
+// inner toggle then saved as escaped text). Returns null when `src` doesn't open
+// with a <details> disclosure in our shape, or never closes.
+const OPEN_RE = /^<details(\s+open)?[^>]*>[ \t]*\r?\n<summary>([\s\S]*?)<\/summary>[ \t]*(?:\r?\n|$)/;
+const OPEN_LINE = /^[ \t]*<details(?:\s[^>]*)?>/;
+const CLOSE_LINE = /^[ \t]*<\/details>[ \t]*$/;
 
 export function matchToggleBlock(src: string): ToggleMatch | null {
-  const m = TOGGLE_BLOCK_RE.exec(src);
-  if (!m) return null;
-  return {
-    open: !!m[1],
-    summary: m[2].trim(),
-    body: m[3].trim(),
-    raw: m[0],
-  };
+  const head = OPEN_RE.exec(src);
+  if (!head) return null;
+  let depth = 1;
+  let offset = head[0].length;
+  while (offset < src.length) {
+    const nl = src.indexOf("\n", offset);
+    const lineEnd = nl < 0 ? src.length : nl + 1;
+    const line = src.slice(offset, lineEnd).replace(/\r?\n$/, "");
+    if (OPEN_LINE.test(line)) depth++;
+    else if (CLOSE_LINE.test(line) && --depth === 0) {
+      return {
+        open: !!head[1],
+        summary: head[2].trim(),
+        body: src.slice(head[0].length, offset).trim(),
+        raw: src.slice(0, lineEnd),
+      };
+    }
+    offset = lineEnd;
+  }
+  return null;
 }
 
 // Where the next possible toggle starts, for marked's tokenizer `start` hook

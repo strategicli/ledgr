@@ -182,6 +182,7 @@ export const Toggle = Node.create({
       chevron.className = "ledgr-toggle-chevron";
       chevron.contentEditable = "false";
       chevron.setAttribute("aria-label", "Expand or collapse");
+      chevron.title = "Open or close. Saved with the note, on every device.";
       // The glyph is a nested span so CSS rotates the glyph in place — the button
       // itself is an enlarged (touch-friendly) hit area that must not rotate.
       const glyph = document.createElement("span");
@@ -279,12 +280,19 @@ export const Toggle = Node.create({
     ) => {
       const m = matchToggleBlock(src);
       if (!m) return undefined;
+      // Inside a list item marked lexes in "not top-level" mode, where a
+      // paragraph comes back as a bare block `text` token. Those would land as
+      // loose text in toggleContent (block+), so promote them back to
+      // paragraphs: same inline tokens, the node the schema expects.
+      const bodyTokens = (helper.blockTokens(m.body) as { type: string }[]).map((t) =>
+        t.type === "text" ? { ...t, type: "paragraph" } : t
+      );
       return {
         type: "toggle",
         raw: m.raw,
         toggleOpen: m.open,
         summaryTokens: helper.inlineTokens(m.summary),
-        bodyTokens: helper.blockTokens(m.body),
+        bodyTokens,
       };
     },
   },
@@ -337,59 +345,66 @@ export function insertToggle(editor: Editor): void {
 }
 
 // Convert the current block(s)/selection INTO a toggle (as opposed to inserting a
-// fresh empty one): the first selected top-level block's inline text becomes the
-// summary line, the remaining block(s) become its content (an empty paragraph
-// when only a single block was wrapped, since toggleContent is block+). When the
-// first block isn't a textblock (a list, a blockquote), the summary starts empty
-// and every wrapped block goes into the content. Returns false when it can't wrap
-// — a selection already inside a toggle (don't nest a toggle in itself), or no
-// block to wrap — so callers (toolbar, slash menu) can fall back to insertToggle.
-// The node shape it builds is exactly what parse/serialize already round-trip, so
-// the markdown contract is unchanged.
+// fresh empty one): the first wrapped block's inline text becomes the summary
+// line, the remaining block(s) become its content (an empty paragraph when only a
+// single block was wrapped, since toggleContent is block+). When the first block
+// isn't a textblock (a list, a blockquote), the summary starts empty and every
+// wrapped block goes into the content.
+//
+// It wraps at the INNERMOST level where a toggle is allowed: a paragraph inside
+// another toggle (toggles nest), a nested sub-list under a bullet, or a
+// top-level block. It walks outward from the selection until the schema accepts
+// a toggle there (a list item's first line must stay a paragraph, so a caret on
+// a bullet's own line wraps the list around it). Returns false only when nothing
+// can be wrapped, so callers (toolbar, slash menu) can fall back to insertToggle.
+// The node shape it builds is exactly what parse/serialize already round-trip.
 export function wrapSelectionInToggle(editor: Editor): boolean {
   const { state } = editor;
+  const tr = wrapInToggleTr(state);
+  if (!tr) return false;
+  editor.view.dispatch(tr);
+  editor.view.focus();
+  return true;
+}
+
+// Pure core of wrapSelectionInToggle (state → Transaction | null), node-testable.
+export function wrapInToggleTr(state: EditorState): Transaction | null {
   const { schema, selection } = state;
   const toggleType = schema.nodes.toggle;
   const summaryType = schema.nodes.toggleSummary;
   const contentType = schema.nodes.toggleContent;
   const paragraphType = schema.nodes.paragraph;
-  if (!toggleType || !summaryType || !contentType || !paragraphType) return false;
+  if (!toggleType || !summaryType || !contentType || !paragraphType) return null;
 
   const { $from, $to } = selection;
-  if ($from.depth < 1) return false;
-  // Already inside a toggle: bail so the caller inserts a fresh empty one rather
-  // than nesting a toggle within itself.
-  for (let d = $from.depth; d > 0; d--) {
-    if ($from.node(d).type.name === "toggle") return false;
+  let d = $from.sharedDepth($to.pos);
+  if ($from.node(d).isTextblock) d--;
+  for (; d >= 0; d--) {
+    const parent = $from.node(d);
+    const start = $from.index(d);
+    const end = $to.indexAfter(d);
+    if (end <= start || !parent.canReplaceWith(start, end, toggleType)) continue;
+
+    const from = $from.posAtIndex(start, d);
+    const to = $from.posAtIndex(end, d);
+    const blocks: PMNode[] = [];
+    for (let i = start; i < end; i++) blocks.push(parent.child(i));
+
+    const first = blocks[0];
+    const summary = summaryType.create(null, first.isTextblock ? first.content : undefined);
+    const contentBlocks = first.isTextblock ? blocks.slice(1) : blocks;
+    if (contentBlocks.length === 0) contentBlocks.push(paragraphType.create());
+    const toggle = toggleType.create({ open: true }, [
+      summary,
+      contentType.create(null, contentBlocks),
+    ]);
+
+    const tr = state.tr.replaceRangeWith(from, to, toggle);
+    // Drop the caret into the summary line so its title is immediately editable
+    // (two positions in: enter the toggle, then the summary).
+    const summaryPos = Math.min(from + 2, tr.doc.content.size);
+    tr.setSelection(TextSelection.near(tr.doc.resolve(summaryPos), 1)).scrollIntoView();
+    return tr;
   }
-
-  // The whole top-level blocks the selection touches (before the first, after the
-  // last) — so a partial selection still wraps entire blocks, never a fragment.
-  const from = $from.before(1);
-  const to = $to.after(1);
-  const blocks: PMNode[] = [];
-  state.doc.slice(from, to).content.forEach((node) => blocks.push(node));
-  if (blocks.length === 0) return false;
-
-  const first = blocks[0];
-  const firstIsTextblock = first.isTextblock;
-  const summary = summaryType.create(
-    null,
-    firstIsTextblock ? first.content : undefined
-  );
-  const contentBlocks = firstIsTextblock ? blocks.slice(1) : blocks;
-  if (contentBlocks.length === 0) contentBlocks.push(paragraphType.create());
-  const toggle = toggleType.create({ open: true }, [
-    summary,
-    contentType.create(null, contentBlocks),
-  ]);
-
-  const tr = state.tr.replaceRangeWith(from, to, toggle);
-  // Drop the caret into the summary line so its title is immediately editable
-  // (two positions in: enter the toggle, then the summary).
-  const summaryPos = Math.min(from + 2, tr.doc.content.size);
-  tr.setSelection(TextSelection.near(tr.doc.resolve(summaryPos), 1)).scrollIntoView();
-  editor.view.dispatch(tr);
-  editor.view.focus();
-  return true;
+  return null;
 }

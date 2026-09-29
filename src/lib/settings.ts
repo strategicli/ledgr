@@ -476,6 +476,10 @@ export type UserSettings = {
   // heading (view-only, never written to the body). On by default. When off the
   // markdown editor renders headings plainly.
   collapsibleHeadingsEnabled: boolean;
+  // Editor: the same fold chevron on bullet, numbered, and checklist items that
+  // have something nested under them. View-only; folds (headings and list items)
+  // are remembered per device in localStorage. On by default.
+  collapsibleListsEnabled: boolean;
   // Editor: offer the collapsible "toggle" block (a <details> disclosure) via
   // the toolbar button and the "/toggle" slash command. On by default. When off
   // those creation affordances hide; existing toggles in a body still render.
@@ -660,6 +664,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   noteEditingPromptItemId: null,
   agent: DEFAULT_AGENT,
   collapsibleHeadingsEnabled: true,
+  collapsibleListsEnabled: true,
   toggleBlocksEnabled: true,
   deskWorkspaces: [],
   searchSynonyms: {},
@@ -1030,6 +1035,10 @@ export function parseSettings(raw: unknown): UserSettings {
     typeof r.collapsibleHeadingsEnabled === "boolean"
       ? r.collapsibleHeadingsEnabled
       : DEFAULT_SETTINGS.collapsibleHeadingsEnabled;
+  const collapsibleListsEnabled =
+    typeof r.collapsibleListsEnabled === "boolean"
+      ? r.collapsibleListsEnabled
+      : DEFAULT_SETTINGS.collapsibleListsEnabled;
   const toggleBlocksEnabled =
     typeof r.toggleBlocksEnabled === "boolean"
       ? r.toggleBlocksEnabled
@@ -1077,6 +1086,7 @@ export function parseSettings(raw: unknown): UserSettings {
     noteEditingPromptItemId,
     agent,
     collapsibleHeadingsEnabled,
+    collapsibleListsEnabled,
     toggleBlocksEnabled,
     deskWorkspaces,
     searchSynonyms,
