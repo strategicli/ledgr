@@ -471,9 +471,18 @@ Original write-up (kept for the decisions and caveats):
 
 **Steps if it goes ahead:** (1) `explorations/app-type.md` capturing the above; (2) the Brandon conversation — a shipped pre-built type lands on his instance (precedent: `file` ADR-236, `passage` ADR-060), a non-markdown-family `format` value touches the body contract, and the bridge is new API surface, so this wants an ADR even though much is additive; (3) slice 1 = the type + render-body-as-HTML-in-sandbox, nothing else; (4) `saveState`/`loadState`; (5) `getRelated` with related-items-only scoping; (6) first two templates; (7) revisit `explorations/flexible-surfaces.md` and `dashboard-widgets.md`, which circle the same instinct.
 
-## 🟡 IN PROGRESS — Website Pages (Tyler, 2026-09-28) — branch `feat/website-pages`
+## 🟢 SHIPPED, follow-ups queued — Website Pages (Tyler, 2026-09-28/29)
 
-Share pages that read like web pages: a Website Page type (module), layout blocks in the markdown (`::: hero` … `:::`), five design languages, fonts and three-color palettes, collections with subpages. **Full design, decisions and slice order: `explorations/website-pages.md`.** Built so far: the block syntax (ADR-284) and slice 1: the `website-pages` module + `website-page` type (migration 0068) + `renderWebPage` with `hero`/`cards`/`callout` in Modern/Slate, served by the share route, with the public-page mention rule. Also built: Publish + subpages + site menu + `::: collection`, and the Claude Design system (theme, fonts, new blocks, Personal site starter, look picker, `/` page blocks). Also: page options at the top, icons, Journal starter, editor block frames with hover help, MCP tools + guide resource, machine API, manual chapter. Next: Tyler's test round on the local copy, then the PR; after that the Portfolio, Event and Project starters. Tide kept as the fifth palette (2026-09-29).  Privacy fork settled: items reach a page only through an explicit "published on" relation, never via a tag.
+Live on `main` and `prod-brandon` (module **off by default**; Tyler turns it on at Build → Modules). Shipped in #469 (the feature), #470 (block-helper redesign from Claude Design), #476 / #477 / #479 (headings and quotes stay on a block's rail, clickable icon chips, picker anchored to the chip). **Full design, decisions and reference: `explorations/website-pages.md`; ops: runbook §1v; assistants: `ledgr://guide/website-pages`.** Claude Design project with the visual system and starter boards: "Ledgr Design System" (`387b329e-ce58-4c79-be5b-9d5d2241b397`, via the `claude_design` MCP).
+
+Next, in Tyler's order of interest:
+1. **Module-off safeguard.** A Website Page opened while the module is off shows the plain note canvas (Tyler hit this). Show "Website Pages is off. Turn it on in Build → Modules" on the page instead, and find where he could create one with the module off (the type should be hidden from creation then; ask which button he used).
+2. **Instance defaults (ADR-272 step 6)**, offered to Tyler: his copy starts with his own modules on, Brandon's with them off.
+3. **Starters: Portfolio, Event, Project.** Boards are in the Claude Design project; mostly new combinations of existing blocks.
+4. **Collection "See all" pages** (`/share/<token>/<collection>`), so "3 newest" can link to the full list.
+5. **Live checks Tyler owns:** a look change reaching a shared link within ~1 min (edge cache), the help card's hover feel, rails beside pictures.
+
+Housekeeping: the shared dev database still holds test sites from the build (Jonah Reyes, Still Water, "New Test Site") and their sample notes; clear when Tyler says. The repo root has two untracked files that predate this work (`pnpm-lock.yaml`, `pnpm-workspace.yaml`); `release:prod` needs a clean tree, so they were stashed around each release and restored. Ask Tyler whether they belong.
 
 ## 💡 IDEA — a Form type: surveys and sign-ups that write back into Ledgr (Tyler, 2026-09-28) — **separate from Website Pages, not started**
 
