@@ -7,3 +7,5 @@
 **Separate idea:** What version are we on? V0.5 or v.06? Just curious. It would be nice to have in mind what we are looking for to get this to v1.0.
 
 Separate idea this is a test
+
+**Brandon → Tyler (2026-09-28):** Added `POST /api/machine/items/<id>/share` (machine API token, optional `{showIcons:false}`) so a Flow Launcher plugin can mint share links. Additive API surface, not core (ADR-183); it lives with the Sharing module and answers 404 when Sharing is off.

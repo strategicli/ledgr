@@ -55,6 +55,11 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   },
   {
     method: "POST",
+    path: "/api/machine/items/<id>/share",
+    what: "mint a public share link for an item; optional body {\"showIcons\": false}. Returns token, path, absolute url and options (404 when the item is missing or the Sharing module is off)",
+  },
+  {
+    method: "POST",
     path: "/api/machine/relations",
     what: "link items to each other by id (a write to /items can do this inline with tags / relateTo)",
   },
