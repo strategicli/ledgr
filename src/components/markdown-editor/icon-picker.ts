@@ -18,14 +18,20 @@ let lastSize = "";
 
 // Opened from "/icon" (insert at the caret) or from a click on an icon chip in
 // the editor (replace that code: the chip's icon and size come preselected).
-export type IconPickerOptions = { replace?: { from: number; to: number; name: string; size?: string } };
+// `anchor` is where the popup opens under: the clicked chip. Without one it
+// opens at the caret. (A chip's code is hidden text, so its caret coordinates
+// read as the page's top-left corner; the chip's own box is the right anchor.)
+export type IconPickerOptions = {
+  replace?: { from: number; to: number; name: string; size?: string };
+  anchor?: { left: number; bottom: number };
+};
 
 export function openIconPicker(editor: Editor, opts: IconPickerOptions = {}): void {
   document.querySelectorAll(".ledgr-icon-picker").forEach((n) => n.remove());
   const replace = opts.replace;
   if (replace) lastSize = replace.size && SIZES.some((sz) => sz.id === replace.size) ? replace.size : "";
   const at = replace ? replace.from : editor.state.selection.from;
-  const coords = editor.view.coordsAtPos(at);
+  const coords = opts.anchor ?? editor.view.coordsAtPos(at);
   const popup = document.createElement("div");
   popup.className = "ledgr-icon-picker";
   popup.setAttribute("role", "dialog");

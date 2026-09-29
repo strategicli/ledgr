@@ -326,7 +326,8 @@ function iconToken(name: string, size: string | undefined, key: string, from: nu
     // A click reopens the icon picker on this icon, to swap it or resize it.
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
-      openIconPicker(editor, { replace: { from, to, name: key, size } });
+      const r = el.getBoundingClientRect();
+      openIconPicker(editor, { replace: { from, to, name: key, size }, anchor: { left: r.left, bottom: r.bottom } });
     });
     return el;
   };
