@@ -107,7 +107,26 @@ check("rankCommands: unmatched entries drop out", rankCommands(statics, "qqzz", 
 const work = dynamicCommandEntries({ types: [{ key: "note", label: "Note", icon: "notes" }], views: [], templates: [], savedSearches: [] }, "work");
 const build = dynamicCommandEntries({ types: [{ key: "note", label: "Note", icon: "notes" }], views: [], templates: [], savedSearches: [] }, "build");
 check("dynamic type href is the item list in Work", work[0].kind === "destination" && work[0].href === "/list/note");
-check("dynamic type href is the edit page in Build", build[0].kind === "destination" && build[0].href === "/build/types/note/edit");
+check("dynamic type href is the item list in Build too", build[0].kind === "destination" && build[0].href === "/list/note");
+check("Build adds an 'Edit <type>' row for the editor", build.some((e) => e.kind === "destination" && e.label === "Edit Note" && e.href === "/build/types/note/edit"));
+
+// Exact name wins: typing a type's exact name puts the Types group first, so
+// Enter lands on that type's home page even in Work (where Items lead).
+const exactRanked = rankCommands([...statics, ...work], "note", "work");
+check("an exact type name moves Types to the front", groupOrder("work", exactRanked, "note")[0] === "Types");
+check("an exact name outranks a prefix", (matchScore("Task", "task") ?? 0) > (matchScore("Tasks", "task") ?? 0));
+check("Desk is findable when its module is on", staticCommandEntries([]).some((e) => e.href === "/desk"));
+
+// A switched-off module leaves no door in the palette (ADR-272): its page, its
+// Build section, and its settings rows all drop out, and nothing from any module
+// shows while the off-list is still loading.
+const deskOff = staticCommandEntries(["desk", "ai-memory", "notification-center"]);
+check("Desk is gone when the desk module is off", !deskOff.some((e) => e.href === "/desk"));
+check("AI Memory is gone when its module is off", !deskOff.some((e) => e.href === "/build/memory"));
+check("notification settings are gone when that module is off", !deskOff.some((e) => e.href === "/settings#notifications"));
+const loading = staticCommandEntries(null);
+check("no module entries while the off-list loads", !loading.some((e) => ["/desk", "/build/memory", "/build/loose-ends", "/notifications"].includes(e.href)));
+check("core entries still show while the off-list loads", loading.some((e) => e.href === "/inbox") && loading.some((e) => e.href === "/build/types"));
 
 // A template has no builder route of its own; it opens its prototype item's
 // canvas (the templates index links the same way). Guards the 404 regression.

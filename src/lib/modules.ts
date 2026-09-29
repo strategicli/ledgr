@@ -721,8 +721,7 @@ export type ModuleNavEntry = NonNullable<ModuleManifest["nav"]>[number] & {
 // in `off`. It takes the off list rather than an owner id so the client sidebar
 // can call it with the ids the server already worked out (`offModuleIds`): the
 // per-request resolver behind isModuleEnabled does not exist in the browser.
-// With no list it returns every registered module's entries, which is what the
-// command palette and describe_workspace index.
+// With no list it returns every registered module's entries.
 export function navEntriesForModules(off: readonly string[] = []): ModuleNavEntry[] {
   return allModules()
     .filter((m) => !off.includes(m.id))

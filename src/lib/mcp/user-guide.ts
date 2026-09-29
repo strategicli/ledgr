@@ -107,7 +107,8 @@ a "topic") alongside tag whenever one grouping axis isn't enough.
 ## Three ways to reach anything
 
 - **Command palette:** **Ctrl/⌘+K** anywhere. Searches your items, pages, saved
-  views, types, Build sections and settings at once.
+  views, dashboards, types, Build sections and settings at once. Type a type's
+  exact name to jump to that type's home page.
 - **Quick capture:** press **q** anywhere, or the **+ New** button in the nav.
 - **The nav bar:** yours to arrange, at \`/build/navigation\`.
 
@@ -814,9 +815,12 @@ Timeline chip opens the review timeline, and a key-link chip opens the link.
 
 ## Search
 
-- **Command palette (Ctrl/⌘+K)** — the fast one. Items, pages, views, types,
-  saved searches, Build sections and settings. A leading \`/type\` scopes it, as
-  in \`/task budget\`. It remembers your last query: close it and reopen, and
+- **Command palette (Ctrl/⌘+K)** — the fast one. Items, pages, views,
+  dashboards, types, saved searches, Build sections and each setting by name.
+  An exact name wins: typing \`Project\` opens the Project type's home page,
+  and in Build an \`Edit Project\` row opens its editor. Pages from a module
+  you've switched off on Build → Modules don't appear. A leading \`/type\`
+  scopes it, as in \`/task budget\`. It remembers your last query: close it and reopen, and
   your text and results are still there.
 - **Recent searches.** Both the palette (with the box empty) and \`/search\`
   (before you've searched) show your last searches as clickable rows or chips,
