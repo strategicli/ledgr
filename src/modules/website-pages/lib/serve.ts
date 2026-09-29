@@ -54,20 +54,16 @@ export async function renderSiteSubpage(
 ): Promise<string | null> {
   if (!(await isSite(shared))) return null;
   const home = await homeText(shared, token);
-  // First pass finds the item; its body's mentions then resolve with the site.
-  const first = await loadSite(shared.ownerId, token, {
-    title: home.title,
-    bodyText: home.text,
-    properties: shared.properties,
-  });
-  const item = first.site.items.find((i) => i.slug === slug);
-  if (!item) return null;
+  // One load: the site with every published body's mentions resolved, so the
+  // subpage's own mentions are covered without a second round trip.
   const { site, mentions, publicLinks } = await loadSite(
     shared.ownerId,
     token,
     { title: home.title, bodyText: home.text, properties: shared.properties },
-    item.bodyText
+    { withItemBodies: true }
   );
+  const item = site.items.find((i) => i.slug === slug);
+  if (!item) return null;
   // Neighbors in the site's publish order (newest first), for Previous / Next.
   const idx = site.items.findIndex((i) => i.id === item.id);
   const near = (i: number) => (site.items[i] ? { href: site.items[i].href, title: site.items[i].title } : undefined);

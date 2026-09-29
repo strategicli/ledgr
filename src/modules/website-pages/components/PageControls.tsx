@@ -23,6 +23,7 @@ const chip = (on: boolean) =>
 export default function PageControls({ itemId, initial }: { itemId: string; initial: PageInfo }) {
   const [design, setDesign] = useState<Design>(initial.design);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
   async function pick(next: Partial<Design>) {
@@ -42,6 +43,8 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
         body: JSON.stringify({ propertyPatch: { design: merged } }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 4000);
     } catch {
       setDesign(prev);
       setError("Couldn't save the look. Try again.");
@@ -80,7 +83,18 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
 
   return (
     <div className="flex flex-col gap-3 text-xs">
-      {initial.empty && initial.starters.length > 0 && (
+      {busy && (
+        <div role="status" className="flex items-center gap-2 rounded border border-[var(--accent)] px-3 py-2 text-neutral-200">
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+          Setting up your page… it opens with the sample sections in a moment.
+        </div>
+      )}
+      {saved && (
+        <span role="status" className="text-emerald-400">
+          Saved. Refresh the live page to see it (a shared link can take up to a minute to update for everyone).
+        </span>
+      )}
+      {initial.empty && initial.starters.length > 0 && !busy && (
         <div className="flex flex-col gap-1.5">
           <span className="text-neutral-400">Start from a starter: sample sections you type over.</span>
           {initial.starters.map((st) => (
@@ -146,7 +160,8 @@ export default function PageControls({ itemId, initial }: { itemId: string; init
         <span className="mt-1.5 block text-neutral-500">
           Type <code>:name:</code> anywhere on the page to draw an icon in the page&apos;s colors; add a size with{" "}
           <code>:name:large:</code> (small, medium, large, xl) or <code>:name:48:</code> for pixels. At the start of a
-          card or column heading it replaces the dot. Click one to copy its code.
+          card or column heading it replaces the dot. They work anywhere, even the site name and menu, and everyday
+          names like <code>:star:</code> or <code>:mail:</code> work too. Click one to copy its code.
         </span>
         <div className="mt-1.5 flex flex-wrap gap-1">
           {(Object.keys(NAV_ICONS) as NavIconKey[]).map((key) => (

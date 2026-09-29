@@ -456,8 +456,8 @@ function siteHeader(site: SiteContext, publicLinks: Map<string, string>, current
     '<header class="site-head">' +
     `<a class="site-name" href="${esc(site.homeHref)}">${esc(site.name)}</a>` +
     (nav
-      ? `<nav class="site-nav" aria-label="Site">${withIcons(nav)}</nav>` +
-        `<details class="site-menu"><summary>Menu</summary><nav aria-label="Site">${withIcons(nav)}</nav></details>`
+      ? `<nav class="site-nav" aria-label="Site">${nav}</nav>` +
+        `<details class="site-menu"><summary>Menu</summary><nav aria-label="Site">${nav}</nav></details>`
       : "") +
     "</header>"
   );
@@ -503,14 +503,28 @@ function withPlaceholders(html: string): string {
 // scale with the page's type) or `:home:48:` (exact pixels, 8 to 256).
 const ICON_CODE = /(^|[^\w:]):([a-z][a-z0-9-]{1,30})(?::(small|medium|large|xl|\d{1,3}))?:(?![\w:])/g;
 const ICON_SIZES: Record<string, string> = { small: "0.85em", medium: "1.5em", large: "2.5em", xl: "4em" };
+// Friendly names people reach for, mapped onto Ledgr's own icon keys.
+export const ICON_ALIASES: Record<string, string> = {
+  star: "starred", mail: "email", user: "person", users: "people", group: "people", team: "people",
+  music: "song", link: "links", map: "place", location: "place", photo: "image", picture: "image",
+  play: "video", food: "utensils", coffee: "utensils", clock: "recent", time: "recent", dollar: "money",
+  message: "chat", settings: "gear", edit: "edit-doc", pencil: "edit-doc", warning: "alert", file: "document",
+  school: "graduation-cap", work: "briefcase", tree: "plant", idea: "lightbulb", award: "trophy",
+  sparkles: "sparkle", bible: "scripture", prayer: "cross",
+};
+const iconKey = (name: string): string | null => {
+  const key = ICON_ALIASES[name] ?? name;
+  return isNavIcon(key) ? key : null;
+};
 export function withIcons(html: string): string {
   return html
     .split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<[^>]+>)/)
     .map((part) =>
       part.startsWith("<")
         ? part
-        : part.replace(ICON_CODE, (m, pre: string, key: string, size?: string) => {
-            if (!isNavIcon(key)) return m;
+        : part.replace(ICON_CODE, (m, pre: string, name: string, size?: string) => {
+            const key = iconKey(name);
+            if (!key) return m;
             const px = size && /^\d+$/.test(size) ? Math.min(256, Math.max(8, Number(size))) : 0;
             const dim = px ? `${px}px` : size ? ICON_SIZES[size] : "";
             const style = dim ? ` style="width:${dim};height:${dim}"` : "";
@@ -550,7 +564,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
   const isSubpage = !!m && !hasHero(markdown);
   const { lede, rest } = isSubpage ? splitLede(markdown) : { lede: "", rest: markdown };
   let proseRuns = 0;
-  const body = withIcons(withPlaceholders(withHeadingIds(
+  const body = withPlaceholders(withHeadingIds(
     markdownToBlockHtml(rest, {
       mentions: opts.mentions,
       publicLinks,
@@ -560,7 +574,7 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
       // wherever it falls after stats, an embed or other blocks.
       wrapTopRun: (html) => section("prose", html, proseRuns++ === 0 ? " lb-prose--first" : ""),
     })
-  )));
+  ));
   // A page with no hero still needs a headline: the item title stands in, with a
   // subpage's label, date and lede around it.
   const labelLine = [m?.label, m?.publishedAt ? formatDate(m.publishedAt) : "", isSubpage ? readingTime(markdown) : ""].filter(Boolean).join(" · ");
@@ -587,23 +601,27 @@ export function renderWebPage(title: string, markdown: string, opts: WebPageOpti
     ? section("keep", `<div class="lb-head"><h2>Keep reading</h2></div><div class="lb-grid">${m.more.map(itemCard).join("")}</div>`)
     : "";
   const footBlock = opts.site ? findBlock(parseFencedBlocks(opts.site.homeMarkdown), "footer") : undefined;
-  const footLeft = footBlock ? withIcons(render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "")) : "";
+  const footLeft = footBlock ? render(markdownOf(footBlock.children)).replace(/^\s*<p>|<\/p>\s*$/g, "") : "";
   // The footer is the owner's: exactly the `::: footer` block, or nothing.
   // (footerHtml is kept for renders outside a site, such as previews.)
   const footer =
     footLeft || opts.footerHtml
       ? `<footer class="page-foot">${footLeft ? `<span>${footLeft}</span>` : ""}${opts.footerHtml ? `<span>${opts.footerHtml}</span>` : ""}</footer>`
       : "";
-  const pageTitle = opts.site && opts.site.name !== title ? `${title} · ${opts.site.name}` : title;
+  // Icon codes draw everywhere on the page; the browser tab gets plain words.
+  const plain = (t: string) => t.replace(ICON_CODE, "$1").replace(/\s{2,}/g, " ").trim();
+  const pageTitle = plain(opts.site && opts.site.name !== title ? `${title} · ${opts.site.name}` : title);
   return (
     "<!doctype html>" +
     '<html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     `<title>${esc(pageTitle)}</title><style>${fontFaces(design)}${themeCss(design)}${STYLE}</style></head>` +
     `<body><div class="site${isSubpage ? " site--sub" : ""}" data-language="${esc(design.language)}">` +
-    (opts.site ? siteHeader(opts.site, publicLinks, opts.currentHref) : "") +
-    `<main class="page">${header}<div class="lb-article">${body}</div>${pager}${withPlaceholders(more)}</main>` +
-    footer +
+    withIcons(
+      (opts.site ? siteHeader(opts.site, publicLinks, opts.currentHref) : "") +
+        `<main class="page">${header}<div class="lb-article">${body}</div>${pager}${withPlaceholders(more)}</main>` +
+        footer
+    ) +
     "</div></body></html>"
   );
 }

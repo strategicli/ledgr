@@ -24,8 +24,9 @@ export async function loadSite(
   ownerId: string,
   token: string,
   page: { title: string; bodyText: string; properties: unknown },
-  // Extra markdown whose mentions must resolve too (the subpage being shown).
-  alsoResolve = ""
+  // A subpage render also resolves mentions in the published bodies (it shows
+  // one of them), in the same single query.
+  opts: { withItemBodies?: boolean } = {}
 ): Promise<LoadedSite> {
   const home = siteHome(token);
   const published = await listPublishedItems(ownerId, readPublications(page.properties));
@@ -41,7 +42,9 @@ export async function loadSite(
   }));
   const mentions = await resolveMentions(
     ownerId,
-    collectMentionIdsFromMarkdown(`${page.bodyText}\n\n${alsoResolve}`)
+    collectMentionIdsFromMarkdown(
+      [page.bodyText, ...(opts.withItemBodies ? items.map((i) => i.bodyText) : [])].join("\n\n")
+    )
   );
   // A mention of something published on this site goes to its subpage; anything
   // else follows the ordinary public rule (a Link's URL, a live share link, text).

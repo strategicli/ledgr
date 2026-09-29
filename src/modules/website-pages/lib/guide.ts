@@ -7,6 +7,7 @@ import { BLOCK_HELP, LAYOUT_SNIPPETS } from "@/lib/editor/layout-snippets";
 import { NAV_ICONS } from "@/lib/nav-icons";
 import { FONTS, LANGUAGES, PALETTES } from "@/modules/website-pages/lib/theme";
 import { STARTERS } from "@/modules/website-pages/lib/starters";
+import { ICON_ALIASES } from "@/modules/website-pages/lib/page-html";
 
 export const WEBSITE_PAGES_GUIDE_URI = "ledgr://guide/website-pages";
 
@@ -90,6 +91,8 @@ ${chrome}
   card or column heading it becomes the heading's badge. Add a size after the
   name: \`:home:small:\`, \`:home:medium:\`, \`:home:large:\`, \`:home:xl:\`
   (these scale with the page's type) or \`:home:48:\` (exact pixels, 8 to 256).
+  Icons work everywhere on a page: headings, the site name, the menu, the footer.
+  Common names map onto Ledgr's set (${Object.entries(ICON_ALIASES).map(([a, k]) => `\`:${a}:\` → ${k}`).join(", ")}).
   Unknown names stay text. Available: ${icons}
 - Alignment words go on a block's first line: \`::: columns center\`,
   \`::: columns split\` (first column left, middle centered, last right; on a
