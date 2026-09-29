@@ -7,7 +7,8 @@
 // Only routes that actually exist are offered, so a configured slot never
 // dead-links. `badgeEligible` marks the one destination (Inbox) that can show a
 // count badge for now.
-import { BUILD_ENTRIES, buildNavFor, type BuildEntry } from "@/lib/build-nav";
+import { buildNavFor, type BuildEntry } from "@/lib/build-nav";
+import { navEntriesForModules } from "@/lib/modules";
 import { isIconRef } from "@/lib/nav-icons";
 import { SEARCH_HREF, type NavBadge, type NavDestKind } from "@/lib/settings";
 
@@ -75,9 +76,6 @@ function toBuildToolDest(e: BuildEntry): DestOption {
   };
 }
 
-// Every Build tool, every module's included.
-export const BUILD_TOOL_DESTS: DestOption[] = BUILD_ENTRIES.map(toBuildToolDest);
-
 export function buildDestOptions(
   views: { id: string; name: string }[],
   types: { key: string; label: string; icon: string | null }[],
@@ -125,13 +123,17 @@ export function buildDestOptions(
   ];
 }
 
-// The built-in pages of switched-off modules, for Nav to hide a slot already
-// pointing at one. This hides the slot, not the route (the route's own gate
-// answers 404 while the module is off).
+// The pages of switched-off modules, for Nav to hide a slot already pointing at
+// one: module-tagged built-ins (Desk) and every Build page a switched-off
+// module adds (AI Memory, Loose Ends). This hides the slot, not the route (the
+// route's own gate answers 404 while the module is off).
 export function offModuleHrefs(offModules: readonly string[]): Set<string> {
-  return new Set(
-    BUILTIN_DESTS.filter((d) => d.moduleId && offModules.includes(d.moduleId)).map((d) => d.href)
-  );
+  return new Set([
+    ...BUILTIN_DESTS.filter((d) => d.moduleId && offModules.includes(d.moduleId)).map((d) => d.href),
+    ...navEntriesForModules()
+      .filter((e) => offModules.includes(e.moduleId))
+      .map((e) => e.href),
+  ]);
 }
 
 // Find the option a stored href points at (to resolve badge-eligibility and the

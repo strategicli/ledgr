@@ -20,9 +20,9 @@ export default async function TypesDirectory() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
 
-  // listTypes() excludes hidden types by default and carries the model's own
+  // listTypes({ ownerId: owner.id }) excludes hidden types by default and carries the model's own
   // ordering, so this directory reads the same as Build → Model Overview.
-  const [types, counts] = await Promise.all([listTypes(), itemCountsByType(owner.id)]);
+  const [types, counts] = await Promise.all([listTypes({ ownerId: owner.id }), itemCountsByType(owner.id)]);
 
   return (
     <ListPage title="Types" subtitle={`${types.length} type${types.length === 1 ? "" : "s"}`}>

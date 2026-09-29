@@ -21,6 +21,8 @@ import {
   parseTypeToken,
   type TypeMeta,
 } from "@/components/search/type-token";
+import { moduleOnIn } from "@/lib/modules";
+import "@/lib/modules/register";
 import { formatPassageRef, parsePassageRef } from "@/lib/passages/ref";
 import {
   createMentionTarget,
@@ -50,7 +52,23 @@ type Item = {
 // the scope token when active, else null. create-on-miss is deliberately OFF for
 // this scope — you can't create a verse.
 const PASSAGE_SCOPE_RE = /^\/(ref|passage|verse|scripture)(?:\s+([\s\S]*))?$/i;
+// The scope belongs to the Passages module (off by default): while it is off,
+// "/ref" is not a scope at all, as if never built (ADR-272). Read once per page
+// load from the owner's settings; until it answers, the scope stays off.
+let passagesOn = false;
+let passagesLoad: Promise<void> | null = null;
+function loadPassagesOn(): Promise<void> {
+  passagesLoad ??= fetch("/api/settings")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      passagesOn = moduleOnIn(d?.settings?.modules ?? {}, "passages");
+    })
+    .catch(() => {});
+  return passagesLoad;
+}
+
 function passageScope(query: string): string | null {
+  if (!passagesOn) return null;
   const m = PASSAGE_SCOPE_RE.exec(query.trim());
   return m ? (m[2] ?? "").trim() : null;
 }
@@ -87,6 +105,7 @@ function escapeHtml(text: string): string {
 async function fetchItems(query: string, selfId?: string): Promise<Item[]> {
   // Passage scope short-circuits the item search: resolve the reference locally
   // (no server round-trip, no item lookup).
+  await loadPassagesOn();
   const scope = passageScope(query);
   if (scope !== null) return passageCandidates(scope);
   const parsed = parseTypeToken(query, await loadTypes());

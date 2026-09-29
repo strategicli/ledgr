@@ -169,7 +169,7 @@ try {
   check("updateType toggled showInQuickCapture", updated.showInQuickCapture === false);
   check("updateType grew the schema", updated.propertySchema.length === 2);
 
-  const list = await listTypes();
+  const list = await listTypes({ ownerId: null });
   check("listTypes includes the new type", list.some((t) => t.key === k1));
   check("listTypes sorts system types first", (() => {
     const firstUser = list.findIndex((t) => !t.isSystem);
@@ -192,8 +192,8 @@ try {
   const unmarked = await getType("unmarked").catch(() => null);
   if (unmarked) {
     check("unmarked is a hidden system type", unmarked.isSystem === true && unmarked.hidden === true);
-    check("unmarked is excluded from listTypes()", !(await listTypes()).some((t) => t.key === "unmarked"));
-    check("unmarked shows when includeHidden", (await listTypes({ includeHidden: true })).some((t) => t.key === "unmarked"));
+    check("unmarked is excluded from listTypes({ ownerId: null })", !(await listTypes({ ownerId: null })).some((t) => t.key === "unmarked"));
+    check("unmarked shows when includeHidden", (await listTypes({ includeHidden: true, ownerId: null })).some((t) => t.key === "unmarked"));
   } else {
     check("unmarked type present (run db:migrate / db:seed)", false, "no 'unmarked' row");
   }
@@ -206,7 +206,7 @@ try {
   await deleteType(k2);
   // ADR-058: deleteType soft-deletes — the type drops out of listTypes/pickers
   // but getType still resolves it (so trashed items keep their label).
-  check("deleted type is gone from listTypes", !(await listTypes()).some((t) => t.key === k2));
+  check("deleted type is gone from listTypes", !(await listTypes({ ownerId: null })).some((t) => t.key === k2));
 } finally {
   // items FK to users + types; delete items first, then the test types, then users.
   await db.delete(items).where(eq(items.ownerId, ownerId));

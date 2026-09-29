@@ -2,10 +2,12 @@
 // client sidebar import this through register.ts, so nothing here reaches the
 // database. The two MCP tools, the memory-protocol resource and the search_items
 // hook are attached on the server by ./server.ts. The `memory` item type is a
-// row in the `types` table (drizzle/0040_memory_type.sql), so it is data and
-// stays put when the module is off; only the tools, the resource and the Build
-// page go quiet.
-import type { ModuleManifest } from "@/lib/modules";
+// row in the `types` table (drizzle/0040_memory_type.sql). The manifest claims
+// it, so while the module is off the type drops out of every list and picker
+// and can't gain new items (ADR-272: an off module is gone, as if never built).
+// The memories themselves stay in the database untouched.
+import { DEFAULT_CANVAS, type ModuleManifest } from "@/lib/modules";
+import { MARKDOWN_FORMAT } from "@/lib/body";
 
 // Appended to the MCP server's instructions only when AI Memory is on (ADR-137).
 // The connect-time instructions are the one place every client reliably
@@ -33,7 +35,7 @@ export const aiMemoryModule: ModuleManifest = {
   description:
     "Lets Claude keep durable memories in Ledgr over MCP, with a Build → AI Memory page to review them.",
   enabledByDefault: false,
-  types: [],
+  types: [{ key: "memory", label: "Memory", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS }],
   exporters: [],
   mcpTools: { names: ["get_memory_stumps", "remember"], instructions: MEMORY_INSTRUCTIONS },
   // "affiliate" (connected nodes) nods to the memory relation graph.

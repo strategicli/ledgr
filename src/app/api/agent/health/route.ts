@@ -5,6 +5,7 @@ import { agentAvailable, sameOrigin } from "@/modules/agent/lib/gate";
 import { authMode, explainError, health, lockedOptions, noteError, noteOk, resultError, run } from "@/modules/agent/lib/runtime";
 import { usageByDay } from "@/modules/agent/lib/chat";
 import { requireOwner } from "@/lib/api";
+import { routeGate } from "@/lib/modules/gate";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +18,14 @@ function sdkVersion(): string | null {
   }
 }
 
-// GET /api/agent/health — the Settings panel's status line. Unlike the other
-// agent routes it answers even while the agent is switched off, so Settings can
-// say whether this machine can run it at all.
+// GET /api/agent/health — the assistant's settings status line. Like every
+// other agent route it answers only while the module is on (ADR-272): an off
+// module has no settings panel to feed.
 export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "agent");
+  if (off) return off;
   const available = agentAvailable();
   return NextResponse.json({
     available,
@@ -35,13 +38,16 @@ export async function GET() {
 }
 
 // POST /api/agent/health — "Check sign-in": one tool-less, one-turn call on the
-// cheapest model, so the owner can prove the login works before switching the
-// agent on (and after a restart, when the in-process health above is blank).
+// cheapest model, so the owner can prove the login works (after switching the
+// agent on, or after a restart, when the in-process health above is blank).
+// Only while the module is on (ADR-272).
 export async function POST(request: Request) {
   if (!agentAvailable()) return new NextResponse(null, { status: 404 });
   if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "agent");
+  if (off) return off;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 60_000);
   try {

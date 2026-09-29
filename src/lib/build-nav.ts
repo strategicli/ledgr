@@ -191,14 +191,12 @@ export function buildNavFor(off: readonly string[] = []): BuildGroup[] {
   });
 }
 
-// Every registered module's entries included, on or off: the full taxonomy, for
-// checks and lookups. Anything the owner SEES (the sidebar, the picker, the
-// command palette) uses `buildNavFor(offModules)` instead, so a switched-off
-// module's page drops out.
-export const BUILD_NAV: BuildGroup[] = buildNavFor();
-
-// Every Build entry as a flat list (group order preserved), on or off.
-export const BUILD_ENTRIES: BuildEntry[] = BUILD_NAV.flatMap((g) => g.entries);
+// There is deliberately no exported "every module's entries" list. One used to
+// exist (BUILD_NAV / BUILD_ENTRIES), and the command palette and describe_workspace
+// both read it, which is how switched-off modules' pages leaked into them
+// (ADR-272). Anything that renders or reports Build pages calls
+// `buildNavFor(offModuleIds(settings))`; a check that needs everything calls
+// `buildNavFor()` and says so.
 
 // True for any route that renders within the Build surface (so NavShell shows
 // the Build sidebar). Model Overview is `/build` exactly; everything else is a

@@ -10,7 +10,8 @@ import {
   USER_GUIDE_RESOURCE,
   USING_LEDGR_GUIDE,
 } from "../src/lib/mcp/user-guide";
-import { BUILD_ENTRIES } from "../src/lib/build-nav";
+import { buildNavFor } from "../src/lib/build-nav";
+const BUILD_ENTRIES = buildNavFor().flatMap((g) => g.entries);
 import { staticCommandEntries, rankCommands } from "../src/lib/command-index";
 import { markdownToHtml } from "../src/lib/markdown-render";
 

@@ -111,7 +111,7 @@ export async function POST(request: Request, context: Context) {
 
     const type = String(raw.type ?? "");
     if (!ALLOWED.has(type)) {
-      const live = await listTypes(); // excludes hidden + deleted types
+      const live = await listTypes({ ownerId: owner.id }); // excludes hidden + deleted types
       if (!live.some((t) => t.key === type)) {
         return NextResponse.json({ error: "unsupported contained type" }, { status: 400 });
       }

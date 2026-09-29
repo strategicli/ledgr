@@ -3,6 +3,7 @@
 // or marks all unread → read. Owner-scoped via requireOwner; the store helpers
 // already scope every query to the owner.
 import { NextResponse } from "next/server";
+import { routeGate } from "@/lib/modules/gate";
 import { errorResponse, requireOwner } from "@/lib/api";
 import {
   isNotificationState,
@@ -27,6 +28,8 @@ function parseFilter(raw: string | null): ListFilter {
 export async function GET(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "notification-center");
+  if (off) return off;
   try {
     const url = new URL(request.url);
     const filter = parseFilter(url.searchParams.get("filter"));
@@ -46,6 +49,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "notification-center");
+  if (off) return off;
   try {
     const body = (await request.json()) as {
       ids?: unknown;

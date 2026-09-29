@@ -1,5 +1,6 @@
 // Save Offline (PRD §4.7): one tap makes a document available with no
-// network at all. Three legs: (1) export to OneDrive now via POST /api/export,
+// network at all. Three legs: (1) export to OneDrive now via POST /api/export
+// (only while the OneDrive export module is on),
 // (2) pin the self-contained print render (/items/[id]/print) plus its images
 // into the service worker's ledgr-pin-v1 cache — *verified* with a cache.match
 // round-trip before "saved ✓" is shown, never best-effort, (3) the print
@@ -26,11 +27,6 @@ async function exportLeg(): Promise<LegState> {
         phase: "fail",
         detail: "OneDrive export not configured yet (runbook §1b)",
       };
-    }
-    // The OneDrive export module is off (Build → Modules): the pin leg below
-    // still saves the document on this device.
-    if (res.status === 404) {
-      return { phase: "fail", detail: "OneDrive export is switched off under Build → Modules" };
     }
     if (!res.ok) return { phase: "fail", detail: `export failed (${res.status})` };
     // errors/remaining are counts, not arrays (ExportRunResult). This read used
@@ -141,9 +137,13 @@ function Row({ state }: { state: LegState }) {
 
 export default function SaveOffline({
   itemId,
+  oneDrive,
   bare = false,
 }: {
   itemId: string;
+  // Whether the OneDrive export module is on. While it is off the OneDrive leg
+  // doesn't exist: no request, no row (ADR-272).
+  oneDrive: boolean;
   // Drop the standalone canvas wrapper (width + padding) when nested inside a
   // parent section that already provides alignment — e.g. the shared footer's
   // "Export & sharing" details. Default keeps the widget-card usage unchanged.
@@ -174,10 +174,13 @@ export default function SaveOffline({
 
   async function run() {
     if (busy) return;
-    setExportState({ phase: "busy" });
+    if (oneDrive) setExportState({ phase: "busy" });
     setPinState({ phase: "busy" });
     // Independent legs: a 503 from OneDrive must not block the pin.
-    const [exp, pin] = await Promise.all([exportLeg(), pinLeg(itemId)]);
+    const [exp, pin] = await Promise.all([
+      oneDrive ? exportLeg() : Promise.resolve<LegState>({ phase: "idle" }),
+      pinLeg(itemId),
+    ]);
     setExportState(exp);
     setPinState(pin);
     if (pin.phase === "ok") setAlreadyPinned(true);
@@ -224,7 +227,7 @@ export default function SaveOffline({
       </div>
       {(exportState.phase !== "idle" || pinState.phase !== "idle") && (
         <ul className="mt-1.5 flex flex-col gap-0.5">
-          <Row state={exportState} />
+          {oneDrive && <Row state={exportState} />}
           <Row state={pinState} />
         </ul>
       )}

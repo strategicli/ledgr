@@ -5012,3 +5012,22 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Rejected.** *`{hero}` / `{slide 1}` tokens* (Tyler's first sketch): they show as literal text, invite the serializer escape churn the color marks already had to be patched against (`MarkdownEscapeFix`), "slide" already means the ADR-176 screen mark, and inferring a layout from scattered tokens is fragile. *HTML-comment markers like canvas tabs (`<!-- tab: -->`)*: invisible in other readers, which is right for tabs but wrong for layout, and comments do not nest. *`markdown-it-container`*: a dependency for ~60 lines of line classification (Principle 5), and it would only cover the server render, not the strip or the tree the page render needs.
 
 **Consequences.** A body can now carry page structure that every non-page reader drops cleanly. Pandoc's own `.docx` path keeps a fenced div as a div, so an exported page body degrades the same way outside Ledgr. The editor shows fences as plain lines until a later slice adds node views that frame each block.
+
+## ADR-285: a switched-off module is gone, as if never built
+
+**Date:** 2026-09-29
+**Status:** accepted (refines ADR-272).
+
+**Context.** ADR-272 made modules per-owner switches. An audit (2026-09-29) found the server side sound (module routes, jobs, MCP tools, resources and hooks all check the switch) but several shared lists built once with every module in them, so an off module could not *run* yet could still be *seen and reached*: the command palette and `describe_workspace` read an unfiltered `BUILD_NAV`; `listTypes()` with no owner returned every type, which fed `/api/types` and eight pickers (that is how Website Page showed everywhere); `createItem` accepted an off module's type; the editor's `/ref` picker ignored Passages; a nav slot pinned to an off module's Build page survived; Save Offline still called OneDrive; the notification and push APIs and the agent health check answered while off; and AI Memory's `memory` type was deliberately left visible. Brandon's bar: when a module is off its code is off, like it doesn't exist, with only empty seams left in core. Data stays in the database.
+
+**Decision.**
+1. **No unfiltered list is exported.** `BUILD_NAV` / `BUILD_ENTRIES` / `BUILD_TOOL_DESTS` are deleted. Anything that renders or reports Build pages calls `buildNavFor(offModuleIds(settings))`.
+2. **`listTypes` requires `ownerId: string | null`.** Owner-facing callers pass the owner, which drops switched-off modules' types; `null` is the explicit "every type" for resolving labels/schemas of existing items. The compiler now makes every caller choose.
+3. **Creation refuses an off module's type.** `assertTypeExists(type, ownerId)` on create, retype and move-type. Existing items keep their type and open on the plain document page.
+4. **An off type's list page and editor 404**, like a type that never existed.
+5. **AI Memory claims its `memory` type**, so it follows the same rule. No exception remains.
+6. **Every remaining surface checks the switch:** the `/ref` scope (`moduleOnIn` on the client), pinned nav slots (`offModuleHrefs` covers module Build pages), Save Offline's OneDrive leg (prop, no request), the notification/push APIs and the Today push toggle, and `/api/agent/health` (the agent settings block shows only while the agent is on).
+
+**Rejected.** Filtering in each caller: that is how the leaks happened. A lint rule against unfiltered lists: removing the lists is simpler and cannot be bypassed.
+
+**Consequences.** New shared indexes must take the off-list, or they won't compile against the removed exports. The User Guide still describes every module, on purpose: it is the map of what can be switched on, like the Modules page. Deleting a module's data is a separate, not-built option.

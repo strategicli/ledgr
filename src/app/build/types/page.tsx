@@ -36,7 +36,7 @@ export default async function BuildTypes() {
 
   // includeHidden so hidden types appear here (dimmed) to be un-hidden.
   const [types, settings] = await Promise.all([
-    listTypes({ includeHidden: true }),
+    listTypes({ includeHidden: true, ownerId: owner.id }),
     getSettings(owner.id),
   ]);
   const capabilities = attachableCapabilities(owner.id);

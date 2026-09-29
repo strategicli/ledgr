@@ -401,12 +401,15 @@ const listTypesCached = cache(async (includeHidden: boolean): Promise<TypeDefini
     );
 });
 
-// Pass `ownerId` on a surface where new items are made (quick capture, the
-// "+ New" menus, MCP list_types / describe_workspace): the types of any module
-// that owner has switched off on Build → Modules drop out (ADR-272). Without it
-// every type is returned, which is what lookups for existing items need.
+// `ownerId` is required, on purpose (ADR-272): every caller has to say whether
+// the owner's switched-off modules apply. Pass the owner's id on anything the
+// owner sees or picks from (lists, pickers, nav, MCP): the types of any module
+// they have switched off on Build → Modules drop out, as if never built. Pass
+// `null` only to resolve labels/icons/schemas for items that already exist,
+// where every type is needed. An optional `ownerId` used to default to "every
+// type", which is how an off module's types leaked into eight pickers.
 export async function listTypes(
-  opts: { includeHidden?: boolean; ownerId?: string } = {}
+  opts: { includeHidden?: boolean; ownerId: string | null }
 ): Promise<TypeDefinition[]> {
   const all = await listTypesCached(opts.includeHidden === true);
   if (!opts.ownerId) return all;

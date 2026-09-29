@@ -72,7 +72,7 @@ export async function getFavoriteItems(ownerId: string): Promise<FavoriteRow[]> 
     );
 
   // Type → icon, so each row shows its type's glyph (best-effort; falls back).
-  const typeIcon = new Map((await listTypes({ includeHidden: true })).map((t) => [t.key, t.icon]));
+  const typeIcon = new Map((await listTypes({ includeHidden: true, ownerId: null })).map((t) => [t.key, t.icon]));
   const byId = new Map(rows.map((r) => [r.id, r]));
 
   // Emit in the saved order; skip ids that didn't resolve.

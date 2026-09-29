@@ -15,6 +15,7 @@ import { canvasIdForType, capabilityById } from "@/lib/modules";
 import { BUILTIN_TOOL_TYPE_KEYS, isWidgetAvailable, widgetsForScope } from "@/lib/widgets";
 import { customToolDefs } from "@/lib/custom-tools";
 import ToolTypeToggle from "@/components/build/ToolTypeToggle";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { tocForType } from "@/lib/toc";
@@ -32,6 +33,8 @@ export default async function EditType({
   if (!owner) redirect("/sign-in");
 
   const { key } = await params;
+  // A switched-off module's type is gone, as if never built (ADR-272).
+  if ((await disabledModuleTypeKeys(owner.id)).has(key)) notFound();
   const type = await getType(key).catch((err) => {
     if (err instanceof ItemError && err.code === "not_found") notFound();
     throw err;
@@ -45,7 +48,7 @@ export default async function EditType({
   const attached = cap ? { id: cap.id, label: cap.label } : null;
   const itemCount = await countItemsOfType(key);
   // Live types feed a relation field's target-type dropdown (ADR-067).
-  const availableTypes = (await listTypes()).map((t) => ({
+  const availableTypes = (await listTypes({ ownerId: owner.id })).map((t) => ({
     key: t.key,
     label: t.label,
   }));

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import QuickCapture from "@/components/today/QuickCapture";
 import PushToggle from "@/components/pwa/PushToggle";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
 import RollOverdueButton from "@/components/today/RollOverdueButton";
 import FocusStar from "@/components/today/FocusStar";
 import SubtaskCheckbox from "@/components/subtasks/SubtaskCheckbox";
@@ -376,7 +377,8 @@ export default async function TodayHome() {
           <Link href="/items" className="text-neutral-500 hover:text-neutral-300">
             All items →
           </Link>
-          <PushToggle />
+          {/* Push alerts belong to the notification center module. */}
+          {(await notificationCenterOn(owner.id)) && <PushToggle />}
         </p>
       </div>
     </main>
