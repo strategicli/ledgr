@@ -23,7 +23,9 @@ import { markdownToBlockHtml, markdownToText, type BlockRenderer } from "@/lib/m
 import { parseFencedBlocks, readBlockSettings, type FencedNode } from "@/lib/editor/fenced-blocks";
 import type { ResolvedMention } from "@/lib/mentions";
 import { DEFAULT_DESIGN, FONTS, LANGUAGES, themeCss, type Design } from "@/modules/website-pages/lib/theme";
-import { isNavIcon, navIconPaths } from "@/lib/nav-icons";
+import { navIconPaths } from "@/lib/nav-icons";
+import { ICON_ALIASES, ICON_CODE, ICON_SIZES, iconKey } from "@/lib/icon-codes";
+export { ICON_ALIASES };
 
 // One published item as a site shows it: in a collection card, a menu entry, or
 // its own subpage. The caller (the share routes) builds these; everything here
@@ -499,23 +501,6 @@ function withPlaceholders(html: string): string {
 // `:name:` draws one of Ledgr's own icons (src/lib/nav-icons.ts) in the page's
 // colors. Only real icon names turn into icons, so `10:30:45` or an unknown
 // `:word:` stays text, and code blocks are never touched.
-// A size may follow the name: `:home:large:` (small, medium, large, xl, which
-// scale with the page's type) or `:home:48:` (exact pixels, 8 to 256).
-const ICON_CODE = /(^|[^\w:]):([a-z][a-z0-9-]{1,30})(?::(small|medium|large|xl|\d{1,3}))?:(?![\w:])/g;
-const ICON_SIZES: Record<string, string> = { small: "0.85em", medium: "1.5em", large: "2.5em", xl: "4em" };
-// Friendly names people reach for, mapped onto Ledgr's own icon keys.
-export const ICON_ALIASES: Record<string, string> = {
-  star: "starred", mail: "email", user: "person", users: "people", group: "people", team: "people",
-  music: "song", link: "links", map: "place", location: "place", photo: "image", picture: "image",
-  play: "video", food: "utensils", coffee: "utensils", clock: "recent", time: "recent", dollar: "money",
-  message: "chat", settings: "gear", edit: "edit-doc", pencil: "edit-doc", warning: "alert", file: "document",
-  school: "graduation-cap", work: "briefcase", tree: "plant", idea: "lightbulb", award: "trophy",
-  sparkles: "sparkle", bible: "scripture", prayer: "cross",
-};
-const iconKey = (name: string): string | null => {
-  const key = ICON_ALIASES[name] ?? name;
-  return isNavIcon(key) ? key : null;
-};
 export function withIcons(html: string): string {
   return html
     .split(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<[^>]+>)/)

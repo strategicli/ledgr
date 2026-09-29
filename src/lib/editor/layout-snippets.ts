@@ -164,3 +164,43 @@ export const BLOCK_HELP: Record<string, { label: string; hint: string }> = {
   menu: { label: "Menu", hint: "The site's menu, shown at the top of every page. One line per entry: a link, an @-mention of a published item, a #heading on this page, or plain text." },
   footer: { label: "Footer", hint: "The bottom of every page, exactly as you write it (links, icons and all). Leave it out for no footer." },
 };
+
+// The help card on a block's label (Claude Design "Block Helper Redesign"): one
+// sentence, then each setting with its allowed values, or for blocks without
+// settings, how to write them. Keys listed here are also what the editor checks
+// a settings line against ("1 setting not recognised").
+export type BlockSetting = { key: string; desc: string; values?: string[] };
+export const BLOCK_CARD: Record<string, { sentence: string; settings?: BlockSetting[]; howTo?: string }> = {
+  hero: { sentence: "The opening section of the page.", howTo: "A short line, then # Headline, a paragraph, and a line of links for buttons. The first picture is the art." },
+  cards: { sentence: "A row of cards.", howTo: "Each ### heading starts a card. Add center to the first line to center them." },
+  columns: { sentence: "Side-by-side points.", howTo: "Each ### heading starts a column. Add center or split to the first line to align them." },
+  collection: {
+    sentence: "Lists items you've published to this page. Nothing unpublished ever shows.",
+    settings: [
+      { key: "title", desc: "Heading above the list" },
+      { key: "label", desc: "Small line above the title" },
+      { key: "type", desc: "Only this type: note, project, link, devotional…" },
+      { key: "tag", desc: "Only items with this tag" },
+      { key: "show", desc: "How many, and in what order", values: ["6 newest", "3 oldest", "all"] },
+      { key: "layout", desc: "How they're shown", values: ["grid", "list", "hero", "series"] },
+      { key: "button", desc: "Hero layout only: the button's text" },
+    ],
+  },
+  topics: {
+    sentence: "Every tag on your published items, with counts.",
+    settings: [
+      { key: "title", desc: "Heading above the tags (default Topics)" },
+      { key: "label", desc: "Small line above the title" },
+      { key: "exclude", desc: "Tags to leave out, comma separated" },
+    ],
+  },
+  timeline: { sentence: "Rows of when, what and a detail.", howTo: "- **2024** What happened. _a detail_" },
+  stats: { sentence: "Key facts in a row.", howTo: "- **Started** March 2023" },
+  quotes: { sentence: "Kind words, one card per quote.", howTo: "> What they said.\n>\n> — Who said it" },
+  cta: { sentence: "A closing band with a heading and buttons.", howTo: "## Heading, a line of text, then a line of links." },
+  callout: { sentence: "A tinted aside readers shouldn't miss.", howTo: "Any short paragraph." },
+  embed: { sentence: "A video that plays on the page, or a link card.", howTo: "A YouTube or Vimeo link, then a caption line." },
+  row: { sentence: "Shows the blocks inside it next to each other.", howTo: "Put two ::: blocks inside; this one uses ::::." },
+  menu: { sentence: "The site's menu, on every page.", howTo: "One line per entry: a link, an @-mention, a #heading, or plain text." },
+  footer: { sentence: "The bottom of every page, exactly as written.", howTo: "Any text, links or icons." },
+};
