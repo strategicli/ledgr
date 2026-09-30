@@ -1,4 +1,4 @@
-// Claude Runs (ADR-284). Scheduled Claude tasks file their report as a
+// Claude Runs (ADR-286). Scheduled Claude tasks file their report as a
 // `claude_run` item and tick "Notify me" when the owner should hear about it;
 // this module sends one phone ping for that and trashes runs after 60 days.
 // Pure: the save hooks live in ./server.ts, the cleanup job is

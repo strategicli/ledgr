@@ -18,11 +18,15 @@ import {
   NOTIFICATION_KINDS,
   notificationEnabled,
   SECTION_STYLES,
+  PAGE_WIDTHS,
+  COMMENT_DISPLAYS,
   TEXT_SIZES,
   TEXT_SIZE_PX,
   UI_DENSITIES,
   type RailAnchor,
   type SectionStyle,
+  type PageWidth,
+  type CommentDisplay,
   type TextSize,
   type UiDensity,
   type UserSettings,
@@ -60,6 +64,17 @@ const SECTION_STYLE_LABELS: Record<SectionStyle, string> = {
   heavy: "Heavy",
   light: "Light",
   unified: "Unified",
+};
+
+const PAGE_WIDTH_LABELS: Record<PageWidth, string> = {
+  standard: "Standard",
+  wide: "Wide",
+  full: "Full",
+};
+
+const COMMENT_DISPLAY_LABELS: Record<CommentDisplay, string> = {
+  margin: "In the margin",
+  icons: "As icons",
 };
 
 const TEXT_SIZE_LABELS: Record<TextSize, string> = { sm: "S", base: "M", lg: "L", xl: "XL" };
@@ -577,6 +592,34 @@ export default function SettingsForm({
                 }}
               />
             </Row>
+            <Row
+              label="Page width"
+              help="How wide an item's page runs, on the full page and in Desk panels. Standard is a comfortable reading column; Wide and Full use more of a big monitor."
+            >
+              <Seg
+                options={PAGE_WIDTHS}
+                value={settings.pageWidth}
+                label={(w) => PAGE_WIDTH_LABELS[w]}
+                onChange={(w) => {
+                  document.body.setAttribute("data-page-width", w);
+                  void save({ pageWidth: w });
+                }}
+              />
+            </Row>
+            <Row
+              label="Comments"
+              help="In the margin shows each comment as a card beside the text on a wide screen, which narrows the text. As icons shows a small speech bubble in the text instead: hover it to read the note, click it to edit."
+            >
+              <Seg
+                options={COMMENT_DISPLAYS}
+                value={settings.commentDisplay}
+                label={(d) => COMMENT_DISPLAY_LABELS[d]}
+                onChange={(d) => {
+                  document.body.setAttribute("data-comments", d);
+                  void save({ commentDisplay: d });
+                }}
+              />
+            </Row>
           </Card>
         </Group>
 
@@ -658,13 +701,25 @@ export default function SettingsForm({
             </Row>
             <Row
               label="Collapsible headings"
-              help="A fold arrow on each heading hides or shows the section beneath it. View only, nothing changes in the saved note. Takes effect on the next page load."
+              help="A fold arrow on each heading hides or shows the section beneath it. Collapsed sections are remembered on this device only; nothing changes in the saved note. Takes effect on the next page load."
             >
               <input
                 type="checkbox"
                 aria-label="Collapsible headings"
                 checked={settings.collapsibleHeadingsEnabled}
                 onChange={(e) => void save({ collapsibleHeadingsEnabled: e.target.checked })}
+                className="ledgr-check"
+              />
+            </Row>
+            <Row
+              label="Collapsible bullets"
+              help="A fold arrow on any bullet, numbered, or checklist item with something nested under it hides everything beneath that item. Click the arrow or the bullet itself. Collapsed items are remembered on this device only; nothing changes in the saved note. Takes effect on the next page load."
+            >
+              <input
+                type="checkbox"
+                aria-label="Collapsible bullets"
+                checked={settings.collapsibleListsEnabled}
+                onChange={(e) => void save({ collapsibleListsEnabled: e.target.checked })}
                 className="ledgr-check"
               />
             </Row>
@@ -677,8 +732,9 @@ export default function SettingsForm({
                   <code className="rounded bg-surface-3 px-1 py-0.5 font-mono text-[11px] text-ink-muted">
                     /toggle
                   </code>{" "}
-                  slash command. Existing toggles still show when this is off. Takes effect on the
-                  next page load.
+                  slash command. A toggle remembers whether it&apos;s open or closed as part of the note,
+                  so it looks the same on every device. Existing toggles still show when this is
+                  off. Takes effect on the next page load.
                 </>
               }
             >

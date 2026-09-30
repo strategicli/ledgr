@@ -50,14 +50,14 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
     entries: [
       // Types & Properties is the one entry that expands this phase: its
       // dropdown lists the user's actual types for a quick edit-jump.
-      { label: "Types & Properties", href: "/build/types", icon: "layers", expandable: true },
+      { label: "Types & Properties", href: "/build/types", icon: "layers", expandable: true, keywords: ["types", "fields", "properties", "quick-add", "chips", "statuses"] },
       { label: "Templates", href: "/build/templates", icon: "document" },
       { label: "Workflows & Wikis", href: "/build/new", icon: "board" },
       { label: "Bespoke Tools", href: "/build/tools", icon: "bolt" },
       // The storage browser (ADR-237): every uploaded file, its item, and
       // whether the item still points at it. Data, not maintenance — files are
       // content the owner owns, not a mess to clean (that's hygiene's sweep).
-      { label: "Files", href: "/build/files", icon: "folder" },
+      { label: "Files", href: "/build/files", icon: "folder", keywords: ["uploads", "attachments", "storage", "images"] },
       // Capture & Inbox (ADR-249): where each arrival path lands — queued in the
       // Inbox, filed straight away, or dropped into a project — plus the web
       // clipper setup, moved here from the bottom of User Settings so "how does
@@ -74,9 +74,9 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
   {
     label: "INTERFACE",
     entries: [
-      { label: "Views", href: "/build/views", icon: "views" },
+      { label: "Views", href: "/build/views", icon: "views", keywords: ["filter", "board", "table", "saved view"] },
       { label: "Dashboards", href: "/dashboards", icon: "dashboard" },
-      { label: "Navigation", href: "/build/navigation", icon: "navigation" },
+      { label: "Navigation", href: "/build/navigation", icon: "navigation", keywords: ["nav bar", "bottom bar", "menu", "search mode", "rail"] },
     ],
   },
   {
@@ -102,20 +102,20 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
         icon: "book",
         keywords: ["help", "docs", "documentation", "manual", "how to"],
       },
-      { label: "Data Hygiene", href: "/build/hygiene", icon: "filter" },
+      { label: "Data Hygiene", href: "/build/hygiene", icon: "filter", keywords: ["cleanup", "clean up", "duplicates", "unused files"] },
       // (Loose Ends, /build/loose-ends, lands here from the relatedness
       // module's manifest while that module is on.)
-      { label: "Import & Migration", href: "/build/import", icon: "download" },
+      { label: "Import & Migration", href: "/build/import", icon: "download", keywords: ["import", "notion", "migration"] },
       // Labelled "AI & MCP", not "Claude": the MCP server is client-agnostic
       // (any MCP-speaking AI can connect), so the surface name stays generic
       // even though Claude is the reference client. Route slug stays /claude.
-      { label: "AI & MCP", href: "/build/claude", icon: "bolt" },
+      { label: "AI & MCP", href: "/build/claude", icon: "bolt", keywords: ["claude", "mcp", "connector", "ai"] },
       // API Tokens (ADR-179): tokens for non-AI callers — an external app that
       // pushes data in over /api/machine/*. Its own entry rather than a section
       // on AI & MCP, because "give my app an API token" doesn't read as an AI
       // task; the previous home (User Settings → Save from the web) was
       // effectively undiscoverable for that.
-      { label: "API", href: "/build/api", icon: "tools" },
+      { label: "API", href: "/build/api", icon: "tools", keywords: ["token", "api token", "credential", "key"] },
       // (AI Memory, /build/memory, lands here from the ai-memory module's
       // manifest while that module is on.)
       // The one deliberate both-places entry: also reachable from the Work kebab
@@ -148,7 +148,7 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
         label: "Network",
         href: "/build/network",
         icon: "affiliate",
-        keywords: ["sync", "hub", "spoke", "device", "peer", "topology", "replication"],
+        keywords: ["sync", "hub", "spoke", "device", "peer", "topology", "replication", "tailscale", "private access"],
       },
       {
         label: "Scheduled Jobs",
@@ -160,7 +160,7 @@ export const CORE_BUILD_NAV: BuildGroup[] = [
         label: "Backups",
         href: "/build/backups",
         icon: "download",
-        keywords: ["backup", "snapshot", "restore", "recovery"],
+        keywords: ["backup", "snapshot", "restore", "recovery", "onedrive", "weekly"],
       },
     ],
   },
@@ -191,14 +191,12 @@ export function buildNavFor(off: readonly string[] = []): BuildGroup[] {
   });
 }
 
-// Every registered module's entries included, on or off: the full taxonomy the
-// command palette and describe_workspace index. The sidebar and the picker use
-// `buildNavFor(offModules)` instead, so a switched-off module's page drops out.
-export const BUILD_NAV: BuildGroup[] = buildNavFor();
-
-// Every Build entry as a flat list (group order preserved), for the command
-// palette's section index.
-export const BUILD_ENTRIES: BuildEntry[] = BUILD_NAV.flatMap((g) => g.entries);
+// There is deliberately no exported "every module's entries" list. One used to
+// exist (BUILD_NAV / BUILD_ENTRIES), and the command palette and describe_workspace
+// both read it, which is how switched-off modules' pages leaked into them
+// (ADR-272). Anything that renders or reports Build pages calls
+// `buildNavFor(offModuleIds(settings))`; a check that needs everything calls
+// `buildNavFor()` and says so.
 
 // True for any route that renders within the Build surface (so NavShell shows
 // the Build sidebar). Model Overview is `/build` exactly; everything else is a

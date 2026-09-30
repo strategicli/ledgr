@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { routeGate } from "@/lib/modules/gate";
 import { errorResponse, requireOwner } from "@/lib/api";
 import { deleteSubscription, saveSubscription } from "@/lib/push/store";
 
@@ -40,6 +41,8 @@ function readSubscription(raw: unknown): {
 export async function POST(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "notification-center");
+  if (off) return off;
   try {
     const sub = readSubscription(await request.json());
     if (!sub) {
@@ -58,6 +61,8 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
+  const off = await routeGate(owner.id, "notification-center");
+  if (off) return off;
   try {
     const raw = await request.json().catch(() => ({}));
     const endpoint = (raw as Body).endpoint;

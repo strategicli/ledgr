@@ -4996,7 +4996,43 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 
 **Affects:** `drizzle/0067_core_types.sql`, `drizzle/meta/_journal.json`, `scripts/verify-core-types-migrated.mts`, `scripts/package-install-test.mjs`, runbook §1a.
 
-## ADR-284: Claude Runs, a type for scheduled Claude reports that pings the phone only when the run decides to
+## ADR-284: layout blocks join the body dialect as Pandoc fenced divs (`::: name` … `:::`)
+
+**Date:** 2026-09-28
+**Status:** accepted (built on `feat/website-pages`; the first slice of Website Pages, `explorations/website-pages.md`).
+
+**Context.** Website Pages (Tyler) turn items into shared pages that read like web pages: a hero, cards, a carousel, sections pulled from other items. The layout has to live in the markdown body, because the body is the only source of truth (ADR-037/040) and a second stored layout document would be exactly the second source those ADRs forbid. The dialect has no block container today, so this adds one.
+
+**Decision.**
+1. **Syntax: Pandoc fenced divs.** A line `::: name [args]` opens a block, a line of three or more colons closes the innermost open one, and blocks nest by giving the outer fence more colons (`:::: carousel` around `::: slide`). The name is lowercase letters, digits and dashes. Collection sections configure themselves with `key: value` lines inside the block (`readBlockSettings`).
+2. **Only complete, named pairs count.** An opener without a name, a closer with nothing open, and an opener that never closes all stay literal text, so a stray `:::` someone typed is never reinterpreted. Lines inside a ``` or ~~~ code fence are never fences. Parser: `src/lib/editor/fenced-blocks.ts`.
+3. **The document render strips the fences and keeps the content.** `prepare()` in `markdown-render.ts` runs `stripFencedBlocks`, so share, print, Save Offline, export and the FTS document all read a page body as plain prose. This is dialect-wide: any type's body gets the strip. The *layout* render (`markdownToBlockHtml`, which emits nested `<section class="lb lb-<name>">` with `data-args`) is used only by the Website Page type. It emits structure and class names only; the look belongs to the design-language stylesheet.
+4. **The editor needs no extension.** Fence lines live in the rich editor as ordinary paragraph text and survive a rich-to-source flip. The one normalization (a blank line added after an opener that sits on a heading; a closer typed tight under a paragraph rides it as a soft break) is stable after the first flip and keeps every fence at the start of its own line, which is all the line-based parser needs. Pinned by `scripts/verify-fenced-blocks.mts`.
+
+**Rejected.** *`{hero}` / `{slide 1}` tokens* (Tyler's first sketch): they show as literal text, invite the serializer escape churn the color marks already had to be patched against (`MarkdownEscapeFix`), "slide" already means the ADR-176 screen mark, and inferring a layout from scattered tokens is fragile. *HTML-comment markers like canvas tabs (`<!-- tab: -->`)*: invisible in other readers, which is right for tabs but wrong for layout, and comments do not nest. *`markdown-it-container`*: a dependency for ~60 lines of line classification (Principle 5), and it would only cover the server render, not the strip or the tree the page render needs.
+
+**Consequences.** A body can now carry page structure that every non-page reader drops cleanly. Pandoc's own `.docx` path keeps a fenced div as a div, so an exported page body degrades the same way outside Ledgr. The editor shows fences as plain lines until a later slice adds node views that frame each block.
+
+## ADR-285: a switched-off module is gone, as if never built
+
+**Date:** 2026-09-29
+**Status:** accepted (refines ADR-272).
+
+**Context.** ADR-272 made modules per-owner switches. An audit (2026-09-29) found the server side sound (module routes, jobs, MCP tools, resources and hooks all check the switch) but several shared lists built once with every module in them, so an off module could not *run* yet could still be *seen and reached*: the command palette and `describe_workspace` read an unfiltered `BUILD_NAV`; `listTypes()` with no owner returned every type, which fed `/api/types` and eight pickers (that is how Website Page showed everywhere); `createItem` accepted an off module's type; the editor's `/ref` picker ignored Passages; a nav slot pinned to an off module's Build page survived; Save Offline still called OneDrive; the notification and push APIs and the agent health check answered while off; and AI Memory's `memory` type was deliberately left visible. Brandon's bar: when a module is off its code is off, like it doesn't exist, with only empty seams left in core. Data stays in the database.
+
+**Decision.**
+1. **No unfiltered list is exported.** `BUILD_NAV` / `BUILD_ENTRIES` / `BUILD_TOOL_DESTS` are deleted. Anything that renders or reports Build pages calls `buildNavFor(offModuleIds(settings))`.
+2. **`listTypes` requires `ownerId: string | null`.** Owner-facing callers pass the owner, which drops switched-off modules' types; `null` is the explicit "every type" for resolving labels/schemas of existing items. The compiler now makes every caller choose.
+3. **Creation refuses an off module's type.** `assertTypeExists(type, ownerId)` on create, retype and move-type. Existing items keep their type and open on the plain document page.
+4. **An off type's list page and editor 404**, like a type that never existed.
+5. **AI Memory claims its `memory` type**, so it follows the same rule. No exception remains.
+6. **Every remaining surface checks the switch:** the `/ref` scope (`moduleOnIn` on the client), pinned nav slots (`offModuleHrefs` covers module Build pages), Save Offline's OneDrive leg (prop, no request), the notification/push APIs and the Today push toggle, and `/api/agent/health` (the agent settings block shows only while the agent is on).
+
+**Rejected.** Filtering in each caller: that is how the leaks happened. A lint rule against unfiltered lists: removing the lists is simpler and cannot be bypassed.
+
+**Consequences.** New shared indexes must take the off-list, or they won't compile against the removed exports. The User Guide still describes every module, on purpose: it is the map of what can be switched on, like the Modules page. Deleting a module's data is a separate, not-built option.
+
+## ADR-286: Claude Runs, a type for scheduled Claude reports that pings the phone only when the run decides to
 
 **Date:** 2026-09-30
 **Status:** accepted (Brandon-directed).
@@ -5004,7 +5040,7 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 **Context.** Brandon's scheduled Claude tasks report through the Claude app's notifications, which take several taps and load one at a time. He wanted the reports in Ledgr and a phone ping only when a run genuinely needs him: never at the start of a run, only at the end, and only when the agent decides. Ledgr already had working Web Push (ADR-034) but only the paused notification center (ADR-130) and two paused crons used it, and a local hub had no push keys.
 
 **Decision.**
-1. **A `claude_run` type** (migration `0068_claude_run_type.sql`, additive, `ON CONFLICT DO NOTHING`, mirrored in seed.mjs), visible in lists, out of quick capture, with one `notifyMe` checkbox. The report is the body; its first line is the ping text.
+1. **A `claude_run` type** (migration `0069_claude_run_type.sql`, additive, `ON CONFLICT DO NOTHING`, mirrored in seed.mjs), visible in lists, out of quick capture, with one `notifyMe` checkbox. The report is the body; its first line is the ping text.
 2. **A `claude-runs` module, default off.** While on, its MCP instruction block tells every client the contract: file one run at the END, tick Notify me only when the owner must know. A save hook pings once when a run has Notify me ticked, claiming the run by stamping `properties.notifiedAt` before sending, so no save or race pings twice. No push keys or no device reached is written to Build → Errors, never silent.
 3. **A new `onUpdate` module hook** in core, fired (fire and forget) only when an update writes `properties` or `propertyPatch`, so a run that ticks Notify me after it was created still pings. Not run on the sync apply path, so only the copy that took the write sends.
 4. **Runs past 60 days go to Trash** nightly (`claude-run-cleanup` in supervisor/jobs.json, shared, stands down while the module is off). Trash's own 30-day purge finishes the job.
@@ -5012,4 +5048,4 @@ Tyler's broader feedback on ADR-125: the whole-body cap came from one niche use 
 
 **Rejected.** Reviving the notification center: a second inbox beside the records it points at. A standalone Android app, or a wrapper with Tailscale built in: the hub is already reachable without a VPN, Android allows one VPN at a time, and a sideloaded Go-plus-Kotlin build is a second product to maintain. ntfy as a bridge: a public server in the path for something Ledgr could do in a day. A dedicated `record_run` MCP tool: the generic create and update tools already carry the checkbox, and a hook covers every write path, not just MCP.
 
-**Affects:** `drizzle/0068_claude_run_type.sql`, journal, `scripts/seed.mjs`, `src/lib/modules.ts` (onUpdate), `src/lib/item-mutations.ts`, `src/modules/claude-runs/`, `src/lib/modules/register.ts`, `server-slots.ts`, `src/app/api/machine/claude-run-cleanup/`, `supervisor/jobs.json`, `supervisor/lib.mjs`, `supervisor/ledgr-supervisor.mjs`, user guide, runbook §1e and §1p, supervisor README, `scripts/verify-claude-runs.mts`, `scripts/verify-claude-runs-db.mts`, and expectation updates in `verify-supervisor`, `verify-pairing`, `verify-first-run`.
+**Affects:** `drizzle/0069_claude_run_type.sql`, journal, `scripts/seed.mjs`, `src/lib/modules.ts` (onUpdate), `src/lib/item-mutations.ts`, `src/modules/claude-runs/`, `src/lib/modules/register.ts`, `server-slots.ts`, `src/app/api/machine/claude-run-cleanup/`, `supervisor/jobs.json`, `supervisor/lib.mjs`, `supervisor/ledgr-supervisor.mjs`, user guide, runbook §1e and §1p, supervisor README, `scripts/verify-claude-runs.mts`, `scripts/verify-claude-runs-db.mts`, and expectation updates in `verify-supervisor`, `verify-pairing`, `verify-first-run`.

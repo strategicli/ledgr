@@ -18,12 +18,30 @@
 // detaching from its comment the moment the page moves.
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "./useIsDesktop";
 
 // Matches the gutter breakpoint in markdown-editor.css. Below it there is no
 // margin to edit in, so the panel becomes a popup.
 const GUTTER = "(min-width: 1024px)";
+
+// The owner's comment display (User Settings → Appearance), stamped on <body> by
+// the root layout. "icons" means no gutter at any width, so every comment opens
+// as a popup, the same as on a phone.
+export const commentsAsIcons = () =>
+  typeof document !== "undefined" && document.body.dataset.comments === "icons";
+
+// Flip the comment display for the whole app: live on this page (the CSS reads
+// the body attribute), saved for the next load.
+function toggleCommentDisplay() {
+  const next = commentsAsIcons() ? "margin" : "icons";
+  document.body.dataset.comments = next;
+  void fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commentDisplay: next }),
+  });
+}
 
 export default function CommentPopover({
   value,
@@ -57,7 +75,29 @@ export default function CommentPopover({
   onDismiss?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const inGutter = useMediaQuery(GUTTER) && at !== null;
+  // Frozen at open: flipping the display from this panel re-lays the page behind
+  // it, but the open panel stays where it is instead of jumping.
+  const [asIcons, setAsIcons] = useState(commentsAsIcons);
+  const [frozenIcons] = useState(asIcons);
+  const inGutter = useMediaQuery(GUTTER) && at !== null && !frozenIcons;
+  const displaySwitch = (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        toggleCommentDisplay();
+        setAsIcons(!asIcons);
+      }}
+      title={
+        asIcons
+          ? "Show comments as cards in the right margin (wide screens)"
+          : "Show comments as small icons in the text, so the page keeps its full width"
+      }
+      className="rounded px-2 py-1 text-xs text-ink-faint hover:bg-surface-3 hover:text-ink-muted"
+    >
+      {asIcons ? "Show in margin" : "Show as icons"}
+    </button>
+  );
   const dismiss = onDismiss ?? onClose;
 
   // Escape cancels; a click outside dismisses. The scrim covers the outside case
@@ -110,7 +150,7 @@ export default function CommentPopover({
             }}
             className="w-full resize-y rounded bg-surface-1 px-2 py-1 text-[13px] leading-snug text-ink placeholder:text-ink-faint"
           />
-          <div className="mt-1.5 flex items-center gap-1">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -131,6 +171,7 @@ export default function CommentPopover({
                 Delete
               </button>
             )}
+            {displaySwitch}
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -147,10 +188,13 @@ export default function CommentPopover({
         // Read-only: the note's own rendered HTML, so bold, links, and mention
         // chips look exactly as they do in the margin card. Same trust basis as
         // the rest of MarkdownPreview (the owner's own content).
-        <div
-          className="ledgr-prose text-[13px] leading-snug [&>*]:my-0"
-          dangerouslySetInnerHTML={{ __html: html ?? "" }}
-        />
+        <>
+          <div
+            className="ledgr-prose ledgr-prose-compact !text-[13px] !leading-snug [&>*]:my-0"
+            dangerouslySetInnerHTML={{ __html: html ?? "" }}
+          />
+          <div className="mt-1.5 flex justify-end">{displaySwitch}</div>
+        </>
       )}
     </div>
   );

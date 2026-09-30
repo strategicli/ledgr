@@ -173,5 +173,124 @@ console.log("Part C — Enter/Backspace commands (headless ProseMirror state)");
   }
 }
 
+console.log("Part D — nested toggles, toggles in a bullet / quote (double round-trip)");
+{
+  const { MarkdownManager } = await import("@tiptap/markdown");
+  const { getSchema } = await import("@tiptap/core");
+  const StarterKit = (await import("@tiptap/starter-kit")).default;
+  const { Toggle, ToggleSummary, ToggleContent } = await import(
+    "../src/components/markdown-editor/toggle-extension"
+  );
+  const { markdownToHtml } = await import("../src/lib/markdown-render");
+  const exts = [StarterKit, Toggle, ToggleSummary, ToggleContent] as never;
+  const mgr = new MarkdownManager({ extensions: exts });
+  const schema = getSchema(exts);
+  const inner = toggleToMarkdown("Inner", "inner body", false);
+  const cases: Record<string, string> = {
+    nested: toggleToMarkdown("Outer", `${inner}\n\nafter inner`, true),
+    deep: toggleToMarkdown("A", toggleToMarkdown("B", toggleToMarkdown("C", "deepest", true), true), true),
+    inBullet:
+      "- parent bullet\n\n  <details open>\n  <summary>Inner</summary>\n\n  line one\n\n  line two\n\n  </details>\n- next",
+    inQuote: "> <details open>\n> <summary>Q</summary>\n>\n> body\n>\n> </details>",
+  };
+  const count = (json: unknown, type: string): number => {
+    const n = json as { type?: string; content?: unknown[] };
+    return (n.type === type ? 1 : 0) + (n.content ?? []).reduce<number>((a, c) => a + count(c, type), 0);
+  };
+  const expected: Record<string, number> = { nested: 2, deep: 3, inBullet: 1, inQuote: 1 };
+  for (const [name, md] of Object.entries(cases)) {
+    const j1 = mgr.parse(md);
+    let valid = true;
+    try {
+      schema.nodeFromJSON(j1).check();
+    } catch {
+      valid = false;
+    }
+    truthy(`${name}: parses to a schema-valid doc`, valid, JSON.stringify(j1));
+    truthy(`${name}: ${expected[name]} toggle node(s)`, count(j1, "toggle") === expected[name], count(j1, "toggle"));
+    const out1 = mgr.serialize(j1 as never);
+    truthy(`${name}: no escaped tags`, !out1.includes("&lt;details"), JSON.stringify(out1));
+    const out2 = mgr.serialize(mgr.parse(out1) as never);
+    truthy(`${name}: stable on second round-trip`, out2 === out1, JSON.stringify({ out1, out2 }));
+    const html = markdownToHtml(out1);
+    truthy(
+      `${name}: server render has ${expected[name]} <details>`,
+      (html.match(/<details/g) ?? []).length === expected[name],
+      html
+    );
+  }
+  // Inner toggle's closed state survives inside an open outer toggle.
+  const j = mgr.parse(cases.nested) as { content: { attrs: { open: boolean }; content: { content: { type: string; attrs?: { open: boolean } }[] }[] }[] };
+  const innerNode = j.content[0].content[1].content[0];
+  truthy("nested: outer open, inner closed", j.content[0].attrs.open === true && innerNode.attrs?.open === false, JSON.stringify(innerNode));
+}
+
+console.log("Part E — wrap-in-toggle wraps at the innermost allowed level");
+{
+  const { getSchema } = await import("@tiptap/core");
+  const StarterKit = (await import("@tiptap/starter-kit")).default;
+  const { EditorState, TextSelection } = await import("@tiptap/pm/state");
+  const { Toggle, ToggleSummary, ToggleContent, wrapInToggleTr } = await import(
+    "../src/components/markdown-editor/toggle-extension"
+  );
+  const schema = getSchema([StarterKit, Toggle, ToggleSummary, ToggleContent] as never);
+  const p = (t: string) => ({ type: "paragraph", content: [{ type: "text", text: t }] });
+  const at = (doc: import("@tiptap/pm/model").Node, text: string) => {
+    let pos = -1;
+    doc.descendants((n, q) => {
+      if (pos < 0 && n.isText && n.text === text) pos = q + 1;
+      return pos < 0;
+    });
+    return pos;
+  };
+  // Inside a toggle's body: the paragraph becomes a nested toggle.
+  {
+    const doc = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "toggle",
+          attrs: { open: true },
+          content: [
+            { type: "toggleSummary", content: [{ type: "text", text: "Outer" }] },
+            { type: "toggleContent", content: [p("wrap me"), p("stay")] },
+          ],
+        },
+      ],
+    });
+    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, at(doc, "wrap me")) });
+    const tr = wrapInToggleTr(state);
+    const outer = tr?.doc.child(0);
+    const body = outer?.child(1);
+    truthy("wrap inside a toggle nests (no bail)", !!tr && body?.child(0).type.name === "toggle", tr?.doc.toString());
+    truthy("nested wrap keeps the sibling paragraph", body?.child(1)?.textContent === "stay");
+  }
+  // Inside a nested bullet: the sub-list under the parent bullet is wrapped.
+  {
+    const li = (t: string, extra: unknown[] = []) => ({ type: "listItem", content: [p(t), ...extra] });
+    const doc = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        { type: "bulletList", content: [li("parent", [{ type: "bulletList", content: [li("child")] }])] },
+      ],
+    });
+    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, at(doc, "child")) });
+    const tr = wrapInToggleTr(state);
+    const parentItem = tr?.doc.child(0).child(0);
+    truthy(
+      "wrap in a nested bullet wraps the sub-list inside the parent bullet",
+      parentItem?.child(1)?.type.name === "toggle" && parentItem.child(0).textContent === "parent",
+      tr?.doc.toString()
+    );
+  }
+  // Top level: unchanged behavior.
+  {
+    const doc = schema.nodeFromJSON({ type: "doc", content: [p("top")] });
+    const state = EditorState.create({ schema, doc, selection: TextSelection.create(doc, 2) });
+    const tr = wrapInToggleTr(state);
+    truthy("top-level paragraph wraps", tr?.doc.child(0).type.name === "toggle" && tr.doc.child(0).child(0).textContent === "top");
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

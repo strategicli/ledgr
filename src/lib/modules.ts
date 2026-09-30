@@ -426,13 +426,23 @@ export function isModuleEnabled(moduleId: string, ownerId?: string): boolean {
   return resolver(moduleId, ownerId) ?? m.enabledByDefault;
 }
 
+// Is this module on, given an owner's settings.modules map (the owner's switch,
+// else the manifest default; core always on)? Pure, so a client component that
+// already fetched settings can ask without server code.
+export function moduleOnIn(flags: Record<string, boolean>, moduleId: string): boolean {
+  if (moduleId === coreModule.id) return true;
+  const m = allModules().find((x) => x.id === moduleId);
+  if (!m) return false;
+  return flags[moduleId] ?? m.enabledByDefault;
+}
+
 // The type keys whose module is switched off, given an owner's settings.modules
 // map. The async paths (listTypes, quick capture, MCP) read settings directly
 // and call this, so they never depend on the per-request preload. Core types are
 // never in it.
 export function typeKeysOfDisabledModules(flags: Record<string, boolean>): string[] {
   return allModules()
-    .filter((m) => m.id !== coreModule.id && (flags[m.id] ?? m.enabledByDefault) === false)
+    .filter((m) => !moduleOnIn(flags, m.id))
     .flatMap((m) => m.types.map((t) => t.key));
 }
 
@@ -667,7 +677,7 @@ export type ModuleHooks = {
   onBodySave?: HookFn;
   // After an item is created. Fire and forget: the caller's reply never waits.
   onCreate?: HookFn;
-  // After an update that wrote the item's properties (ADR-284). Fire and
+  // After an update that wrote the item's properties (ADR-286). Fire and
   // forget, like onCreate, and never on the sync apply path, so only the copy
   // that took the write reacts to it.
   onUpdate?: HookFn;
@@ -725,8 +735,7 @@ export type ModuleNavEntry = NonNullable<ModuleManifest["nav"]>[number] & {
 // in `off`. It takes the off list rather than an owner id so the client sidebar
 // can call it with the ids the server already worked out (`offModuleIds`): the
 // per-request resolver behind isModuleEnabled does not exist in the browser.
-// With no list it returns every registered module's entries, which is what the
-// command palette and describe_workspace index.
+// With no list it returns every registered module's entries.
 export function navEntriesForModules(off: readonly string[] = []): ModuleNavEntry[] {
   return allModules()
     .filter((m) => !off.includes(m.id))

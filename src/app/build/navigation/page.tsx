@@ -22,7 +22,7 @@ export default async function NavigationBuilder() {
 
   const [views, types, settings, dashboards] = await Promise.all([
     listViews(owner.id),
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
     getSettings(owner.id),
     listDashboards(owner.id),
   ]);

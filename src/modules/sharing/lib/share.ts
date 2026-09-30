@@ -136,6 +136,9 @@ export type ResolvedShare = {
   body: unknown;
   // Read for the preview track (src/lib/preview-audio.ts), nothing else.
   properties: unknown;
+  // The item's type key, so the share route can hand a type with its own page
+  // render (a Website Page) to that module instead of the document render.
+  type: string;
   options: ShareOptions;
 };
 
@@ -154,6 +157,7 @@ export async function resolveShareToken(
       title: items.title,
       body: items.body,
       properties: items.properties,
+      type: items.type,
       options: shareTokens.options,
     })
     .from(shareTokens)
@@ -169,3 +173,16 @@ export async function resolveShareToken(
   if (!row) return null;
   return { ...row, options: (row.options as ShareOptions) ?? {} };
 }
+
+// The response headers every public share page carries, the document render and
+// a Website Page's home and subpages alike.
+export const SHARE_PAGE_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  // Statically cacheable at the CDN (PRD §6.5) so a popular link barely
+  // touches the origin, but a short window so revocation propagates fast:
+  // revocation is immediate at the origin, and at most ~60s at the edge.
+  "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+  // Don't let a shared link leak into search indexes or referrers.
+  "X-Robots-Tag": "noindex, nofollow",
+  "Referrer-Policy": "no-referrer",
+};

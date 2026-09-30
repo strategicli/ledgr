@@ -1,4 +1,4 @@
-// Server-only slots for Claude Runs (ADR-284), imported for effect by
+// Server-only slots for Claude Runs (ADR-286), imported for effect by
 // src/lib/modules/server-slots.ts. Idempotent under dev HMR.
 import { allModules, type HookFn } from "@/lib/modules";
 import "@/lib/modules/register";

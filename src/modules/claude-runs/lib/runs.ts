@@ -1,4 +1,4 @@
-// The two things Claude Runs does (ADR-284): ping once when a run asks for it,
+// The two things Claude Runs does (ADR-286): ping once when a run asks for it,
 // and move old runs to Trash. Deterministic, no model (Principle 3).
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";

@@ -66,13 +66,17 @@ import {
 } from "./toggle-extension";
 import {
   CollapsibleHeadings,
-  setHeadingsCollapsible,
+  setFoldSettings,
+  expandAllFolds,
 } from "./collapsible-headings";
+import { EXPAND_ALL_EVENT } from "@/lib/editor/fold-events";
 import {
   SlashCommands,
+  setSlashEditorItem,
   setSlashFilePicker,
   setSlashToggleEnabled,
 } from "./slash-suggestion";
+import { LayoutBlocksView } from "./layout-blocks-view";
 import { mentionStorage, type MentionStorage } from "./mention-node-view";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
 import type { ResolvedMention } from "@/lib/mentions";
@@ -177,6 +181,29 @@ function filesFrom(data: DataTransfer | null): File[] {
   return Array.from(data.files);
 }
 
+// A browser's "Copy image" on an animated GIF puts only a still PNG of the
+// first frame on the clipboard, plus HTML naming the original address. When
+// that address is a GIF, fetch the real bytes so the paste keeps animating.
+// Takes the clipboard HTML as a string: the DataTransfer goes dead once the
+// paste handler returns. Null (use the still image) when there's no such
+// address or it won't load.
+// ponytail: fetched from the browser, so a host without CORS headers falls
+// back to the still; Giphy/Tenor/Wikimedia send them. A server-side fetch
+// is the upgrade if a common host doesn't.
+async function animatedGifFrom(html: string): Promise<File | null> {
+  const src = /<img[^>]+src=["']([^"']+)["']/i.exec(html)?.[1]?.replace(/&amp;/g, "&");
+  if (!src || !/^https?:/i.test(src)) return null;
+  try {
+    const res = await fetch(src);
+    const blob = res.ok ? await res.blob() : null;
+    if (!blob || blob.type !== "image/gif") return null;
+    const name = decodeURIComponent(new URL(src).pathname.split("/").pop() || "") || "image.gif";
+    return new File([blob], /\.gif$/i.test(name) ? name : `${name}.gif`, { type: "image/gif" });
+  } catch {
+    return null;
+  }
+}
+
 // Insert a linked filename at the current selection, trailing space included —
 // the space keeps back-to-back inserts from fusing into one link and gives the
 // caret a mark-free spot to keep typing from. Shared by fresh uploads and by
@@ -277,11 +304,12 @@ async function insertUploadedFiles(
 }
 
 // Editor settings the canvas needs (app-wide): the hidden-toolbar ids plus the
-// two feature switches. Fetched once per page load (memoized) so every editor
+// fold/toggle feature switches. Fetched once per page load (memoized) so every editor
 // instance shares the single request.
 type EditorSettings = {
   hidden: string[];
   collapsibleHeadings: boolean;
+  collapsibleLists: boolean;
   toggleBlocks: boolean;
 };
 let editorSettingsPromise: Promise<EditorSettings> | null = null;
@@ -296,10 +324,16 @@ function loadEditorSettings(): Promise<EditorSettings> {
           : [],
         // Default on when the field is absent (matches DEFAULT_SETTINGS).
         collapsibleHeadings: s.collapsibleHeadingsEnabled !== false,
+        collapsibleLists: s.collapsibleListsEnabled !== false,
         toggleBlocks: s.toggleBlocksEnabled !== false,
       };
     })
-    .catch(() => ({ hidden: [], collapsibleHeadings: true, toggleBlocks: true }));
+    .catch(() => ({
+      hidden: [],
+      collapsibleHeadings: true,
+      collapsibleLists: true,
+      toggleBlocks: true,
+    }));
   return editorSettingsPromise;
 }
 
@@ -751,6 +785,9 @@ export default function MarkdownEditor({
       // The "/" slash-command menu (headings + toggle). Toggle entry gated by
       // toggleBlocksEnabled (setSlashToggleEnabled below).
       SlashCommands,
+      // Layout blocks (ADR-284) drawn as labeled frames with hover help, on
+      // items registered as pages only; display-only decorations.
+      LayoutBlocksView,
       // Live in-place updates: the fading highlight over a patched range.
       LiveFlash,
     ],
@@ -777,7 +814,14 @@ export default function MarkdownEditor({
         const files = filesFrom(event.clipboardData);
         if (files.length === 0) return false;
         event.preventDefault();
-        void insertUploadedFiles(view, files, upload);
+        // A lone still image may be a copied GIF's first frame: swap in the
+        // real GIF when the clipboard names one (animatedGifFrom).
+        const lone = files.length === 1 && files[0].type.startsWith("image/") && files[0].type !== "image/gif";
+        const html = lone ? event.clipboardData?.getData("text/html") ?? "" : "";
+        void (async () => {
+          const gif = html ? await animatedGifFrom(html) : null;
+          await insertUploadedFiles(view, gif ? [gif] : files, upload);
+        })();
         return true;
       },
       handleDrop: (view, event) => {
@@ -1173,12 +1217,27 @@ export default function MarkdownEditor({
     loadEditorSettings().then((s) => {
       setHiddenTb(new Set(s.hidden));
       setToggleBlocksOn(s.toggleBlocks);
-      // Gate the "/toggle" slash entry (module-level flag) and switch heading
-      // folding on/off in the plugin, now that the setting has resolved.
+      // Gate the "/toggle" slash entry (module-level flag) and switch heading /
+      // list folding on in the plugin, which then restores this item's
+      // remembered folds (per device), now that the settings have resolved.
       setSlashToggleEnabled(s.toggleBlocks);
-      if (editor) setHeadingsCollapsible(editor, s.collapsibleHeadings);
+      if (editor)
+        setFoldSettings(editor, {
+          headings: s.collapsibleHeadings,
+          lists: s.collapsibleLists,
+          itemId,
+        });
     });
-  }, [editor]);
+  }, [editor, itemId]);
+  // "Expand all" in the item's ⋯ menu opens every fold in this item's editor.
+  useEffect(() => {
+    if (!editor || !itemId) return;
+    const onExpand = (e: Event) => {
+      if ((e as CustomEvent<{ itemId?: string }>).detail?.itemId === itemId) expandAllFolds(editor);
+    };
+    window.addEventListener(EXPAND_ALL_EVENT, onExpand);
+    return () => window.removeEventListener(EXPAND_ALL_EVENT, onExpand);
+  }, [editor, itemId]);
   // Register the "/file" slash command's picker for THIS editor instance (a
   // WeakMap entry in slash-suggestion, so it can't outlive the editor). Gated on
   // the uploader being wired, same as the toolbar's insert buttons. Keyed on
@@ -1192,6 +1251,13 @@ export default function MarkdownEditor({
     );
     return () => setSlashFilePicker(editor, null);
   }, [editor, hasUploader]);
+  // Tell the slash menu which item this editor holds, so page blocks show only
+  // on items registered for them (setLayoutBlocksFor, the Website Pages control).
+  useEffect(() => {
+    if (!editor) return;
+    setSlashEditorItem(editor, itemId ?? null);
+    return () => setSlashEditorItem(editor, null);
+  }, [editor, itemId]);
   // Scrub deleted files out of the live doc (see scrubDeletedFile above).
   useEffect(() => {
     if (!editor || !itemId) return;
@@ -1454,7 +1520,7 @@ export default function MarkdownEditor({
       { id: "quote", title: "Quote", keys: "Mod-Shift-b", icon: TOOLBAR_ICONS.quote, active: toolbar.isBlockquote, run: () => editor.chain().focus().toggleBlockquote().run() },
       { id: "code", title: "Code block", keys: "Mod-Alt-c", icon: TOOLBAR_ICONS.code, active: toolbar.isCodeBlock, run: () => editor.chain().focus().toggleCodeBlock().run() },
       { id: "table", title: "Insert table", icon: TOOLBAR_ICONS.table, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-      { id: "toggle", title: "Toggle (collapsible block; wraps the selection)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
+      { id: "toggle", title: "Toggle (collapsible block; wraps the selection; stays open or closed as you leave it)", icon: TOOLBAR_ICONS.toggle, when: toggleBlocksOn, active: toolbar.isToggle, run: () => {
         const sel = editor.state.selection;
         if (!sel.empty && wrapSelectionInToggle(editor)) return;
         insertToggle(editor);

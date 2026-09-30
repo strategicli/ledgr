@@ -1,4 +1,4 @@
-// Claude Runs (ADR-284), the database half, against the DEV database under a
+// Claude Runs (ADR-286), the database half, against the DEV database under a
 // throwaway owner. A local HTTP server stands in for the push service, so the
 // real encrypt-and-send path runs end to end: a run pings only when "Notify me"
 // is ticked, only once, on create or on a later update; with push unset it

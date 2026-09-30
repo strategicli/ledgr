@@ -61,7 +61,7 @@ export async function resolveSurfaces(
 ): Promise<ResolvedSurface[]> {
   let cap = capability;
   if (cap === undefined) {
-    const defs = await listTypes({ includeHidden: true });
+    const defs = await listTypes({ includeHidden: true, ownerId: null });
     cap = defs.find((t) => t.key === item.type)?.capability ?? null;
   }
   return resolveSurfacesSync(item, cap);

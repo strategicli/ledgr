@@ -208,9 +208,9 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
-// The `claude_run` type (ADR-284): scheduled Claude runs file their report here
+// The `claude_run` type (ADR-286): scheduled Claude runs file their report here
 // and tick "Notify me" when the owner should get a phone ping. Mirrors
-// drizzle/0068_claude_run_type.sql for fresh databases.
+// drizzle/0069_claude_run_type.sql for fresh databases.
 await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, property_schema)
   VALUES (

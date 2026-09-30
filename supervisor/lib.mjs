@@ -391,7 +391,7 @@ export function planInstallSecrets({ stored, extraEnv, processEnv, generate, mak
     }
     apply[k] = next[k];
   }
-  // The Web Push keypair (ADR-284), so phone notifications work on a local
+  // The Web Push keypair (ADR-286), so phone notifications work on a local
   // install with no key pasted anywhere. Made as a PAIR: a public key without
   // its private half is useless, so a private key set by the owner means none
   // of the three is generated or applied.

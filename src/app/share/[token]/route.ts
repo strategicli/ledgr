@@ -7,7 +7,7 @@
 // is a plain 404.
 import { NextResponse } from "next/server";
 import { renderPrintDocument } from "@/lib/print-html";
-import { resolveShareToken } from "@/modules/sharing/lib/share";
+import { resolveShareToken, SHARE_PAGE_HEADERS } from "@/modules/sharing/lib/share";
 import { resolveMentions } from "@/lib/mentions";
 import { bodyMarkdown } from "@/lib/body";
 import { collectMentionIdsFromMarkdown } from "@/lib/editor/mention-markdown";
@@ -19,6 +19,7 @@ import { getSettings } from "@/lib/settings";
 import { isItemBody, MARKDOWN_FORMAT } from "@/lib/body";
 import { captureError, createLogger } from "@/lib/log";
 import { moduleIsOn } from "@/lib/modules/gate";
+import { renderSiteHome } from "@/modules/website-pages/lib/serve";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,12 @@ export async function GET(
       )
     : undefined;
 
+  // A Website Page shares as a designed web page (the home of its site), not a
+  // document, while its module is on; switched off, the same link falls back to
+  // the document render below, so it keeps working.
+  const page = await renderSiteHome(shared, token);
+  if (page) return new NextResponse(page, { headers: SHARE_PAGE_HEADERS });
+
   const html = renderPrintDocument(resolved.title, shareBody, {
     audio: track
       ? { src: attachmentUrlWithShare(track.id, token) }
@@ -118,16 +125,5 @@ export async function GET(
     theme: shared.options.theme ?? ownerSettings.theme,
   });
 
-  return new NextResponse(html, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      // Statically cacheable at the CDN (PRD §6.5) so a popular link barely
-      // touches the origin, but a short window so revocation propagates fast:
-      // revocation is immediate at the origin, and at most ~60s at the edge.
-      "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
-      // Don't let a shared link leak into search indexes or referrers.
-      "X-Robots-Tag": "noindex, nofollow",
-      "Referrer-Policy": "no-referrer",
-    },
-  });
+  return new NextResponse(html, { headers: SHARE_PAGE_HEADERS });
 }

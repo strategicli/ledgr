@@ -31,6 +31,7 @@ import {
 } from "@/lib/body";
 import { extractBodyText, notesMarkdown } from "@/lib/body-text";
 import { canonicalFormatForType } from "@/lib/modules";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 // Type-only (erased at runtime): types.ts imports ItemError from items.ts, so
 // a value import of getType would form a circular dependency. getType is
 // loaded dynamically inside moveItemType instead.
@@ -138,9 +139,17 @@ export type ItemPatch = Partial<ItemInput> & {
   expectedBodyDigest?: string;
 };
 
-async function assertTypeExists(type: string): Promise<string | null> {
+async function assertTypeExists(type: string, creatingFor?: string): Promise<string | null> {
   // A soft-deleted type (ADR-058) is excluded: you can't create or retype an
   // item into a type that's sitting in Trash.
+  //
+  // `creatingFor` (the owner id) is passed on create and retype: a type whose
+  // module that owner has switched off is refused too, so an off module's type
+  // can't gain new items from the app, MCP, or Change type (ADR-272). Existing
+  // items keep their type; this only stops new ones.
+  if (creatingFor && (await disabledModuleTypeKeys(creatingFor)).has(type)) {
+    throw new ItemError("bad_request", `the '${type}' type belongs to a module that is switched off`);
+  }
   //
   // Returns the type's attached bespoke-tool `capability`, because the caller
   // needs it to resolve the canonical body format (ADR-260) and this row is
@@ -332,7 +341,7 @@ function requireStatusKey(
 }
 
 export async function createItem(ownerId: string, input: ItemInput) {
-  const capability = await assertTypeExists(input.type);
+  const capability = await assertTypeExists(input.type, ownerId);
   // is_template is set explicitly on a prototype root, else inherited from a
   // template parent (ADR-093), so a subtask under a prototype is template
   // content too without any caller doing anything special.
@@ -480,7 +489,7 @@ export async function updateItem(
   if (existing.length === 0) throw new ItemError("not_found", "item not found");
 
   let typeCapability: string | null | undefined;
-  if (patch.type !== undefined) typeCapability = await assertTypeExists(patch.type);
+  if (patch.type !== undefined) typeCapability = await assertTypeExists(patch.type, ownerId);
   if (patch.parentId != null) {
     await assertValidParent(ownerId, patch.parentId, id);
   }
@@ -784,7 +793,7 @@ export async function updateItem(
       await advanceNextActionIfPinned(ownerId, parent.id, updated.id).catch(() => {});
     }
   }
-  // Modules' onUpdate hooks (ADR-284), only when properties were written, so an
+  // Modules' onUpdate hooks (ADR-286), only when properties were written, so an
   // ordinary title or body save costs nothing more. Fire and forget, as onCreate.
   if (patch.properties !== undefined || patch.propertyPatch !== undefined) {
     void runHooks("onUpdate", { ownerId, itemId: id, type: updated.type });
@@ -856,7 +865,7 @@ export async function moveItemType(
   if (item.type === targetType) {
     throw new ItemError("bad_request", "item is already that type");
   }
-  await assertTypeExists(targetType); // bad_request for a missing/trashed type
+  await assertTypeExists(targetType, ownerId); // bad_request for a missing/trashed/switched-off type
 
   // Dynamic import breaks the items.ts <-> types.ts value cycle (types.ts imports
   // ItemError from there). Both type defs are best-effort: an unregistered type

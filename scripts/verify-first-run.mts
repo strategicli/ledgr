@@ -93,7 +93,7 @@ const gen = () => `generated-${++n}`.padEnd(64, "x");
   check("an unreadable file is treated as empty", !!p.write && !!p.apply.LEDGR_OAUTH_SECRET);
 }
 check("only the connector secret is generated (API tokens are minted in the app)", JSON.stringify(INSTALL_SECRET_KEYS) === '["LEDGR_OAUTH_SECRET"]');
-// The Web Push keypair (ADR-284): made once as a pair, reused, and never made
+// The Web Push keypair (ADR-286): made once as a pair, reused, and never made
 // when the owner set their own private key.
 {
   const makeVapid = () => makeVapidKeys("a@b.c");

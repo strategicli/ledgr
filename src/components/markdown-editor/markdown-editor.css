@@ -601,6 +601,54 @@
   display: none;
 }
 
+/* Collapsible list items (bullets, numbers, checklists). The arrow sits LEFT of
+   the li's box, past the bullet/number marker (--fold-gap), and unlike the
+   heading arrow it takes pointer events: a click on it targets the li itself,
+   which collapsible-headings.ts reads as "clientX left of the li" (the marker
+   counts too, a bigger tap target). Only the innermost hovered item shows its
+   arrow, so hovering a nested bullet doesn't light up every ancestor. */
+.ledgr-prose li.ledgr-foldable-li {
+  position: relative;
+  --fold-gap: 1.2rem;
+}
+.ledgr-prose ul[data-type="taskList"] li.ledgr-foldable-li {
+  --fold-gap: 0.1rem;
+}
+.ledgr-prose li.ledgr-foldable-li::before {
+  content: "▸";
+  position: absolute;
+  right: calc(100% + var(--fold-gap));
+  top: 0;
+  width: 1.2rem;
+  height: 1.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--ink-subtle);
+  opacity: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: rotate(90deg);
+}
+.ledgr-prose li.ledgr-foldable-li:hover:not(:has(li:hover))::before {
+  opacity: 0.55;
+}
+.ledgr-prose li.ledgr-foldable-li.is-collapsed::before {
+  opacity: 0.7;
+  transform: rotate(0deg);
+}
+/* A collapsed item's marker fills in darker, a quiet "there's more here" cue. */
+.ledgr-prose li.ledgr-foldable-li.is-collapsed::marker {
+  color: var(--ink);
+}
+@media (pointer: coarse) {
+  .ledgr-prose li.ledgr-foldable-li::before {
+    opacity: 0.4;
+  }
+}
+
 /* The "/" slash-command menu — mirrors the mention/token popups. */
 .ledgr-slash-popup {
   position: absolute;
@@ -905,10 +953,10 @@
    container-width: a narrow Desk panel on a wide screen still gets the gutter.
    Wrap in @container once .ledgr-prose's host declares container-type. */
 @media (min-width: 1024px) {
-  .ledgr-prose:has(.cmt-note) {
+  body:not([data-comments="icons"]) .ledgr-prose:has(.cmt-note) {
     padding-right: 15rem;
   }
-  .ledgr-prose .cmt-note {
+  body:not([data-comments="icons"]) .ledgr-prose .cmt-note {
     float: right;
     clear: right;
     width: 13rem;
@@ -946,4 +994,345 @@
     -webkit-mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
     mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
   }
+}
+
+/* The "Icons" comment display (User Settings, or the comment popup's own
+   switch): the same bubble at EVERY width, so a comment never costs the page a
+   15rem gutter. Hovering one peeks the note (CommentPeek.tsx); clicking opens it.
+   Same declarations as the narrow block above; keep the two in step. */
+body[data-comments="icons"] .cmt-note {
+  display: inline-block;
+  /* Box is the tap target (~22×18px); the bubble is drawn 0.9rem centered in
+     it, so the extra area is invisible but still touchable. */
+  width: 1.4rem;
+  height: 1.15rem;
+  vertical-align: -0.2em;
+  margin: 0 0.05rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 0;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--cmt-line-strong);
+  -webkit-mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
+  mask: var(--cmt-bubble) no-repeat center / 0.9rem 0.9rem;
+}
+
+/* Layout blocks on a page (layout-blocks-view.ts), per Claude Design's "Block
+   Helper Redesign": quiet labels with a summary, one continuous rail per block
+   (nested blocks +16px), the highlight color only on the block the caret is in,
+   settings as a key/value grid, icon codes as tokens, a fixed amber for problems.
+   Display only; the markdown is untouched. Colors come from the theme tokens so
+   every Ledgr theme works; --accent is the owner's highlight color. */
+.ledgr-prose {
+  --lb-rail: var(--color-neutral-800, #2e2e2e);
+  --lb-rail-nested: var(--color-neutral-700, #3a3a3a);
+  --lb-muted: var(--color-neutral-500, #8f8f8f);
+  --lb-faint: var(--color-neutral-600, #5f5f5f);
+  --lb-warn: #e0a44a;
+}
+.ledgr-prose .lb-ed-head,
+.ledgr-prose .lb-ed-in,
+.ledgr-prose .lb-ed-fence {
+  position: relative;
+  margin-left: var(--lb-indent);
+}
+.ledgr-prose .lb-ed-head::before,
+.ledgr-prose .lb-ed-in::before,
+.ledgr-prose .lb-ed-fence::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--lb-indent));
+  width: var(--lb-indent);
+  background: var(--lb-rails);
+  pointer-events: none;
+}
+/* Contiguous rails: blocks inside a rail space themselves with padding, not
+   margins, so the line never breaks between paragraphs. */
+.ledgr-prose .lb-ed-in {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-block: 0.3em;
+}
+.ledgr-prose .lb-ed-in.is-active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 6%, transparent), transparent 60%);
+}
+.ledgr-prose .lb-ed-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 1.1em;
+  padding: 2px 0 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: default;
+  user-select: none;
+}
+.ledgr-prose .lb-ed-head.is-active {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 6%, transparent), transparent 60%);
+}
+.ledgr-prose .lb-ed-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--lb-faint);
+  flex: none;
+}
+.ledgr-prose .lb-ed-num {
+  font: 600 11px/1 ui-monospace, Menlo, monospace;
+  color: var(--lb-faint);
+}
+.ledgr-prose .lb-ed-label {
+  font-weight: 600;
+  color: var(--lb-muted);
+  cursor: help;
+}
+.ledgr-prose .lb-ed-summary {
+  color: var(--lb-faint);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledgr-prose .lb-ed-head.is-active .lb-ed-mark { background: var(--accent); }
+.ledgr-prose .lb-ed-head.is-active .lb-ed-label { color: var(--accent); }
+.ledgr-prose .lb-ed-head.is-active .lb-ed-summary { color: var(--lb-muted); }
+.ledgr-prose .lb-ed-q {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--color-neutral-700, #4a4a4a);
+  color: var(--lb-muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+}
+.ledgr-prose .lb-ed-issue { color: var(--lb-warn); }
+.ledgr-prose .lb-ed-fix {
+  flex-basis: 100%;
+  color: var(--lb-muted);
+}
+.ledgr-prose .lb-ed-fix code { color: var(--color-neutral-200, #e8e8e8); }
+.ledgr-prose .lb-ed-fix button { color: var(--accent); margin-left: 4px; }
+/* Fence lines collapse unless the caret is on them. */
+.ledgr-prose .lb-ed-fence:not(.lb-ed-raw) {
+  font-size: 0;
+  line-height: 0;
+  height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+.ledgr-prose .lb-ed-fence.lb-ed-close:not(.lb-ed-raw) { height: 10px; margin-bottom: 1em; }
+.ledgr-prose .lb-ed-fence.lb-ed-raw {
+  font: 13px/1.6 ui-monospace, Menlo, monospace;
+  color: var(--lb-muted);
+  margin-top: 0;
+  margin-bottom: 0;
+}
+/* Settings: a key / value grid in mono. */
+.ledgr-prose .lb-ed-settings {
+  font: 13.5px/1.7 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+}
+.ledgr-prose .lb-ed-key { color: var(--lb-faint); }
+.ledgr-prose .lb-ed-badkey {
+  color: var(--lb-warn);
+  text-decoration: underline wavy var(--lb-warn) 1px;
+  text-underline-offset: 3px;
+}
+/* Icon codes as tokens; raw (accent-tinted) while the caret touches them. */
+.ledgr-prose .lb-ed-code-hidden { font-size: 0; }
+.ledgr-prose .lb-ed-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 5px;
+  background: var(--color-neutral-800, #262626);
+  color: var(--color-neutral-400, #9a9a9a);
+  font: 500 12px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: 0.15em;
+  cursor: pointer;
+}
+.ledgr-prose .lb-ed-token:hover { color: var(--color-neutral-200, #e5e5e5); }
+.ledgr-prose .lb-ed-token-size { color: var(--lb-faint); }
+.ledgr-prose .lb-ed-code-raw {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+/* Headings inside a block stay inside it: the collapsible-headings fold
+   (padding-left + a matching negative margin, and a chevron on ::before) would
+   pull a heading out past the block's rail. Inside a page block the heading
+   takes the block's indent and its ::before draws the rail like every line. */
+.ledgr-prose h1.ledgr-foldable.lb-ed-in,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in {
+  padding-left: 0;
+  margin-left: var(--lb-indent);
+}
+.ledgr-prose h1.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h2.ledgr-foldable.lb-ed-in::before,
+.ledgr-prose h3.ledgr-foldable.lb-ed-in::before {
+  content: "";
+  display: block;
+  left: calc(-1 * var(--lb-indent));
+  width: var(--lb-indent);
+  font-size: 0;
+  background: var(--lb-rails);
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+/* Quotes inside a block drop their own bar and padding: the block's rail
+   already frames them, and the quote's 3px border would push the rail right
+   and add a second line. The text keeps its muted quote color. */
+.ledgr-prose blockquote.lb-ed-in {
+  border-left: 0;
+  padding-left: 0;
+}
+
+/* The help card (appended to <body>, so not scoped to .ledgr-prose). */
+.lb-help-card {
+  position: fixed;
+  z-index: 70;
+  width: min(380px, calc(100vw - 16px));
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -12px rgb(0 0 0 / 0.6);
+  overflow: hidden;
+  color: #e8e8e8;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+.lb-help-head { padding: 14px 18px 12px; }
+.lb-help-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lb-help-top strong { font-size: 15px; }
+.lb-help-top code { font: 500 11px/1 ui-monospace, Menlo, monospace; color: #7a7a7a; }
+.lb-help-head p { margin: 6px 0 0; color: #bdbdbd; }
+.lb-help-settings {
+  border-top: 1px solid #333;
+  padding: 10px 18px 12px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 7px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #9a9a9a;
+}
+.lb-help-settings code { font-family: ui-monospace, Menlo, monospace; color: #e8e8e8; }
+.lb-help-settings .is-current { color: #f0f0f0; font-weight: 600; }
+.lb-help-desc { display: block; color: #7a7a7a; font-size: 12px; }
+.lb-help-howto {
+  margin: 0;
+  border-top: 1px solid #333;
+  padding: 10px 18px 12px;
+  font: 12.5px/1.6 ui-monospace, Menlo, monospace;
+  color: #cfcfcf;
+  white-space: pre-wrap;
+}
+.lb-help-foot {
+  border-top: 1px solid #333;
+  padding: 10px 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  background: #1f1f1f;
+}
+.lb-help-foot button { color: #6db3f2; }
+.lb-help-foot a { color: #9a9a9a; text-decoration: none; }
+
+/* The "/icon" picker (icon-picker.ts): search, size, grid, at the caret. */
+.ledgr-icon-picker {
+  position: fixed;
+  z-index: 60;
+  width: 20rem;
+  max-height: 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.ledgr-icon-picker-search {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.375rem;
+  background: #0f0f0f;
+  color: #e5e5e5;
+  font-size: 0.8rem;
+}
+.ledgr-icon-picker-sizes {
+  display: flex;
+  gap: 0.25rem;
+}
+.ledgr-icon-picker-sizes button {
+  flex: 1;
+  padding: 0.2rem 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.3rem;
+  color: #a3a3a3;
+  font-size: 0.72rem;
+}
+.ledgr-icon-picker-sizes button.is-selected {
+  border-color: var(--accent);
+  color: #f5f5f5;
+}
+.ledgr-icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+.ledgr-icon-picker-grid button {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 0.3rem;
+  color: #d4d4d4;
+}
+.ledgr-icon-picker-grid button:hover {
+  background: #262626;
+  color: var(--accent);
+}
+.ledgr-icon-picker-grid button.is-current {
+  background: #262626;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+.ledgr-icon-picker-raw {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  color: #a3a3a3;
+}
+.ledgr-icon-picker-raw:hover { color: #f5f5f5; }
+.ledgr-icon-picker-empty {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  color: #737373;
+  font-size: 0.8rem;
 }

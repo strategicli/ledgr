@@ -11,7 +11,7 @@ export async function GET() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
   try {
-    return NextResponse.json({ types: await listTypes() });
+    return NextResponse.json({ types: await listTypes({ ownerId: owner.id }) });
   } catch (err) {
     return errorResponse(err);
   }

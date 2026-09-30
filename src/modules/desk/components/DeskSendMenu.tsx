@@ -61,12 +61,19 @@ export function DeskSendItems({
   itemId,
   currentItemId,
   onDone,
+  beside = true,
+  className = itemClass,
 }: {
   itemId: string;
   // The inline-reference path (a mention/link inside an item you're reading)
   // passes the item you're reading explicitly; it wins over any page host.
   currentItemId?: string;
   onDone?: () => void;
+  // false on the item page's own ⋯ menu: the only host there is the item
+  // itself, and opening an item beside itself means nothing.
+  beside?: boolean;
+  // Lets a host menu match its own row styling.
+  className?: string;
 }) {
   const router = useRouter();
   const available = useDeskAvailable();
@@ -91,12 +98,14 @@ export function DeskSendItems({
 
   return (
     <>
-      <button type="button" role="menuitem" className={itemClass} onClick={openInDesk}>
+      <button type="button" role="menuitem" className={className} onClick={openInDesk}>
         ▤ Send to Desk
       </button>
-      <button type="button" role="menuitem" className={itemClass} onClick={openBeside}>
-        {besideLabel(host)}
-      </button>
+      {beside && (
+        <button type="button" role="menuitem" className={className} onClick={openBeside}>
+          {besideLabel(host)}
+        </button>
+      )}
     </>
   );
 }

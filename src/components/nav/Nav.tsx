@@ -78,7 +78,7 @@ export default async function Nav() {
     getSettings(owner.id),
     // The owner's live types (non-hidden, non-deleted) for the Build sidebar's
     // Types & Properties dropdown. Tiny instance-global table; cheap to read.
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
     disabledModuleTypeKeys(owner.id),
   ]);
   // A switched-off module's types (ADR-272) are not offered for new items.

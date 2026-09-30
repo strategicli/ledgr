@@ -251,7 +251,8 @@ export default async function MarkdownCanvas({ item, ownerId, arrange = false }:
       if (id === "related") return <RelatedPanel ownerId={ownerId} itemId={item.id} bare />;
       if (id === "discover")
         return isModuleEnabled("relatedness", ownerId) ? <ModuleItemPanel id="discover" itemId={item.id} title={item.title} bare /> : null;
-      if (id === "saveOffline") return <SaveOffline itemId={item.id} />;
+      if (id === "saveOffline")
+        return <SaveOffline itemId={item.id} oneDrive={isModuleEnabled("onedrive-export", ownerId)} />;
       // The sharing module's control (ADR-272 step 4). Checked here too so a
       // switched-off module leaves no empty "Share" card in the grid.
       if (id === "share")

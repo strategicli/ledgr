@@ -1,4 +1,4 @@
--- The `claude_run` type (ADR-284): one record per scheduled Claude run that has
+-- The `claude_run` type (ADR-286): one record per scheduled Claude run that has
 -- something worth keeping. Claude writes the report as the body at the END of a
 -- run and ticks "Notify me" only when the owner should hear about it; the
 -- claude-runs module then sends one Web Push and stamps properties.notifiedAt so

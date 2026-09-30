@@ -1,4 +1,4 @@
-// Claude Runs (ADR-284), the pure half: the ping's summary line, the module's
+// Claude Runs (ADR-286), the pure half: the ping's summary line, the module's
 // registration, its save hooks, its nightly job, and the type migration.
 // The database half (the real send path, once-only, cleanup) is
 // verify-claude-runs-db.mts.
@@ -37,7 +37,7 @@ const jobs = JSON.parse(readFileSync("supervisor/jobs.json", "utf8"));
 const job = jobs["claude-run-cleanup"];
 check("nightly cleanup job, gated on the module", job?.path === "/api/machine/claude-run-cleanup" && job?.module === "claude-runs" && typeof job?.at === "string");
 
-const mig = readFileSync("drizzle/0068_claude_run_type.sql", "utf8");
+const mig = readFileSync("drizzle/0069_claude_run_type.sql", "utf8");
 check("migration inserts the type with a Notify me checkbox", /'claude_run', 'Claude Run'/.test(mig) && /"key":"notifyMe"/.test(mig));
 check("migration is additive only", !/\b(DROP|DELETE FROM|TRUNCATE|ALTER TABLE|UPDATE)\b/i.test(mig.replace(/--.*$/gm, "")));
 check("seed mirrors it", readFileSync("scripts/seed.mjs", "utf8").includes("'claude_run', 'Claude Run'"));

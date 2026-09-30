@@ -32,7 +32,7 @@ export default async function BuildHome() {
   if (!owner) redirect("/sign-in");
 
   const [types, views, templates, counts, dashboards, usedViews] = await Promise.all([
-    listTypes(),
+    listTypes({ ownerId: owner.id }),
     listViews(owner.id),
     listTemplates(owner.id),
     itemCountsByType(owner.id),

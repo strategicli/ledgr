@@ -24,12 +24,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import SpeedSelect, { readSpeed } from "@/components/ui/SpeedSelect";
 
-// Up to 3x: speechSynthesis caps rate at 10, but voices vary in how gracefully
-// they hold together past ~2x, so the ceiling here is "still intelligible for
-// skimming," not the API limit.
-const RATE_OPTIONS = [0.8, 1, 1.2, 1.5, 2, 2.5, 3] as const;
-export const RATE_STORAGE_KEY = "ledgr.listen.rate";
 export const VOICE_STORAGE_KEY = "ledgr.listen.voice";
 const MAX_CHUNK_CHARS = 250;
 
@@ -204,14 +200,6 @@ export default function ListenBar({
     setArmed(false); // Stop disarms — back to fully hidden (no idle bar).
     releaseWakeLock();
   }
-  function changeRate(n: number) {
-    setRate(n);
-    try {
-      localStorage.setItem(RATE_STORAGE_KEY, String(n));
-    } catch {
-      // Best-effort persistence only.
-    }
-  }
   function changeVoice(uri: string) {
     setVoiceURI(uri);
     try {
@@ -280,12 +268,7 @@ export default function ListenBar({
         ? `intent://${window.location.host}${url.pathname}${url.search}#Intent;scheme=https;package=com.microsoft.emmx;end`
         : `microsoft-edge:${url.toString()}`;
     }
-    try {
-      const saved = parseFloat(localStorage.getItem(RATE_STORAGE_KEY) ?? "");
-      if ((RATE_OPTIONS as readonly number[]).includes(saved)) setRate(saved);
-    } catch {
-      // localStorage can throw in a locked-down context; the default holds.
-    }
+    setRate(readSpeed());
     if (new URLSearchParams(window.location.search).get("listen") === "1") {
       setArmed(true);
     }
@@ -371,20 +354,7 @@ export default function ListenBar({
             </select>
           </label>
         )}
-        <label className="ml-auto flex items-center gap-1.5 text-ink-subtle">
-          Rate
-          <select
-            value={rate}
-            onChange={(e) => changeRate(parseFloat(e.target.value))}
-            className="rounded-card border border-line-strong bg-surface-2 px-1.5 py-0.5 text-ink-muted"
-          >
-            {RATE_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {r}×
-              </option>
-            ))}
-          </select>
-        </label>
+        <SpeedSelect value={rate} onChange={setRate} className="ml-auto" />
       </div>
     </div>
   );

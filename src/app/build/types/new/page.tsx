@@ -27,7 +27,7 @@ export default async function NewType({
   const attached = cap ? { id: cap.id, label: cap.label } : null;
 
   // Live types feed a relation field's target-type dropdown (ADR-067).
-  const availableTypes = (await listTypes()).map((t) => ({
+  const availableTypes = (await listTypes({ ownerId: owner.id })).map((t) => ({
     key: t.key,
     label: t.label,
   }));

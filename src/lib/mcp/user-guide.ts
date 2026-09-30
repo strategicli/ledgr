@@ -107,7 +107,8 @@ a "topic") alongside tag whenever one grouping axis isn't enough.
 ## Three ways to reach anything
 
 - **Command palette:** **Ctrl/⌘+K** anywhere. Searches your items, pages, saved
-  views, types, Build sections and settings at once.
+  views, dashboards, types, Build sections and settings at once. Type a type's
+  exact name to jump to that type's home page.
 - **Quick capture:** press **q** anywhere, or the **+ New** button in the nav.
 - **The nav bar:** yours to arrange, at \`/build/navigation\`.
 
@@ -322,6 +323,10 @@ Select some text and press the comment button. Your note shows as a card in the
 margin, or as a tappable speech bubble on a narrow screen. Hovering either one
 lights up both.
 
+- **Margin or icons.** User Settings → Appearance → Comments picks where they
+  show. *As icons* puts a small speech bubble in the text at every width, so a
+  comment never narrows the page: hover it to read the note, click it to edit.
+  The comment popup has the same switch (*Show as icons* / *Show in margin*).
 - **Notes are Markdown** — bold, links, and \`@\` mentions all work inside one.
 - **A comment can span several paragraphs** and stays one comment.
 - **Comments never reach a reader.** Print, share and Word exports strip them.
@@ -371,9 +376,15 @@ list. Put a backslash in front to keep a token literal.
 ## Blocks and structure
 
 - **Toggle** — a collapsible block with a chevron. From the toolbar or \`/toggle\`.
-  It stays a real disclosure on print, share and export.
-- **Collapsible headings** — fold a heading to hide its section. View only;
-  nothing is written into the body.
+  It stays a real disclosure on print, share and export. Toggles can sit inside
+  other toggles, bullets and quotes. Whether a toggle is open or closed is saved
+  in the note, so it looks the same on every device.
+- **Collapsible headings** — fold a heading to hide its section.
+- **Collapsible bullets** — any bullet, numbered or checklist item with something
+  nested under it gets the same fold arrow; click the arrow (or the bullet) to
+  hide everything beneath it. Heading and bullet folds are remembered on this
+  device only and never written into the body. **Expand all** in the item's ⋯
+  menu opens every fold at once. Both switch on or off in User Settings.
 - **Table** — a real Markdown table, with drag-resizable columns.
 - **Canvas tabs** — split one body into named tabs. Everyone else reading the
   item sees the whole document as titled sections.
@@ -389,6 +400,11 @@ right where you're writing. Images upload and embed where they land; any other
 file type (a PDF, a Word doc, an HTML page) uploads and lands as a link on its
 filename. Clicking that link opens the file in a new tab — HTML pages and PDFs
 render in the browser, everything else downloads.
+
+Animated GIFs keep moving. A browser's "Copy image" on a GIF copies only a
+still frame, so when you paste one, Ledgr fetches the real GIF from the address
+it was copied from. If that site won't hand it over, you get the still frame;
+drag the saved GIF file in instead.
 
 ## Linking to one line
 
@@ -453,19 +469,21 @@ Build your own kinds of item at \`/build/types\`.
 - **Modules** at \`/build/modules\` hold every on/off switch you have, in two
   groups. **Item types** are Songs, Papers, Mindmap, Files and Claude Runs
   (scheduled Claude tasks file their reports and ping your phone only when
-  they decide you need to know): turning one off
-  hides its type from quick capture, "+ New" and an assistant's list of types.
+  they decide you need to know): turning one off removes its type from every
+  list and picker, quick capture, "+ New" and an assistant's list of types,
+  and no new items of it can be made.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
   transcripts, the Notification center (paused), Scripture passages (off for
   new installs, and left on for anyone who used Ledgr before that change: a
   Bible reference in a body becomes a link to that passage's page; switched
-  off, new references stop linking), **Todoist** (off by default:
+  off, new references stop linking and the editor's \`@/ref\` picker is gone), **Todoist** (off by default:
   syncs tasks both ways with a Todoist account, on a copy set up for it),
   Sharing (on by default: the Share link control and the assistant's share
   tools; switched off, the control is gone and every existing link stops
   opening until you turn it back on), **OneDrive export** (on by default: the
   nightly plain-file copy of everything in your OneDrive; switched off, the
-  nightly job stops and Save Offline still saves the document on your device),
+  nightly job stops and Save Offline skips its OneDrive step, still saving the
+  document on your device),
   **Snapshots** (on by default: hourly restore points on a computer running
   Ledgr locally; each computer still has its own switch on \`/build/backups\`),
   **Email capture** (on by default: messages you forward to the Ledgr Import
@@ -491,9 +509,11 @@ Build your own kinds of item at \`/build/types\`.
   and **Private access (Tailscale)** (off by default, and only on a Ledgr
   installed on your own computer: see "Private access with Tailscale" under
   the sync network).
-  A module that is off also drops
-  its Build page from the sidebar and the Navigation destination picker.
-  Nothing is deleted: existing
+  A module that is off is gone, as if it had never been built: its Build page
+  leaves the sidebar, the Navigation destination picker, the command palette
+  and an assistant's workspace overview; a nav button you pinned to it is
+  hidden; its settings rows and its type disappear; and its pages and tools
+  answer "not found". Nothing is deleted: existing
   items stay, and open on the plain document page until you turn the module
   back on. The In-app agent's switch is greyed out on a copy that cannot run it.
   A module with its own owner-facing options, like the In-app agent's model
@@ -816,9 +836,12 @@ Timeline chip opens the review timeline, and a key-link chip opens the link.
 
 ## Search
 
-- **Command palette (Ctrl/⌘+K)** — the fast one. Items, pages, views, types,
-  saved searches, Build sections and settings. A leading \`/type\` scopes it, as
-  in \`/task budget\`. It remembers your last query: close it and reopen, and
+- **Command palette (Ctrl/⌘+K)** — the fast one. Items, pages, views,
+  dashboards, types, saved searches, Build sections and each setting by name.
+  An exact name wins: typing \`Project\` opens the Project type's home page,
+  and in Build an \`Edit Project\` row opens its editor. Pages from a module
+  you've switched off on Build → Modules don't appear. A leading \`/type\`
+  scopes it, as in \`/task budget\`. It remembers your last query: close it and reopen, and
   your text and results are still there.
 - **Recent searches.** Both the palette (with the box empty) and \`/search\`
   (before you've searched) show your last searches as clickable rows or chips,
@@ -952,8 +975,8 @@ resizable, tabbed panels holding items, saved views and dashboards. Every panel
 is a live editor, so clicking between them is seamless. Save named workspaces;
 the arrangement survives closing the app.
 
-Send things there from any row menu or mention chip with "Open in Desk" or "Open
-beside".
+Send things there from any row menu or mention chip with "Send to Desk" or "Open
+beside", or from an open item's own ⋯ menu with "Send to Desk".
 
 Each panel's ⋯ menu shows the active item's Created and Updated dates and its
 word count at the top, and ends with **Open outside Desk**, which opens that
@@ -986,7 +1009,10 @@ is on, turn it on per type at \`/build/types\` (expand a type's row and flip the
 "Listen" switch). A type with it on gets a **Listen** entry in the item's ⋯
 menu, which reads the note aloud
 using your browser's own read-aloud voice. Choosing it opens a small strip
-with Play, pause, stop, and a reading-speed picker. It works best in Microsoft
+with Play, pause, stop, and a Speed picker (0.5× to 3×). The speed is
+remembered on that device and shared by everything that plays in Ledgr:
+Claude's read-aloud replies and a song's preview track use the same setting.
+It works best in Microsoft
 Edge, which has noticeably better free voices than most other browsers — an
 optional second setting next to Listen, "Open in Edge," sends the ⋯ menu's
 Listen straight to Edge instead of playing locally when you are not already
@@ -1039,14 +1065,123 @@ cloud copy within a few seconds (making or revoking a link checks in at once).
 
 A shared **song** opens as the two-column chord chart. If the song has a
 **Preview track** (the "Add audio file" control above the chart on the song
-itself), the share page plays it above the chart, so the person gets the chords
+itself, with a Speed picker beside the player), the share page plays it above the chart, so the person gets the chords
 and the recording together. Revoking the link stops the audio too.
+
+A shared **Website Page** opens as a designed web page instead of a
+document; see **Website pages** below.
 
 Over MCP, an assistant can do the same: \`share_item\` mints a link (with the
 same theme and icon options) and hands back the URL to paste into an email, a
 Teams message, or another item; \`list_share_links\` answers "is this shared,
 since when, how many links"; \`revoke_share_link\` kills one link or every live
 link on an item. Ledgr does not count how many times a link was opened.
+
+## Website pages
+
+A **Website Page** turns your notes into a small website. The page is the
+site's home; anything you **publish** to it gets its own page under the same
+link, inside the same header, menu and footer. Switch it on under Build →
+Modules (**Website Pages**; it needs Sharing).
+
+**Make one.** Create an item of type Website Page. Its options sit at the top,
+above the writing area:
+
+- **The link bar** is always there: **Make link** the first time, then **View
+  page**, **Copy link**, and the address itself. Anyone with the link can see
+  the site; nobody can see anything you haven't published.
+- **Design** (click to open or close): while the page is still empty, pick a
+  **starter** and the page fills with sample sections you type over:
+  **Personal site** (who you are, your work, writing, a Now list, kind words, a
+  way to say hello), **Journal** (a devotional or blog site: a featured piece,
+  the latest list, topics with counts, a series read in order), **Portfolio**
+  (a résumé with your work: summary, skills, a Work collection where each piece
+  gets its own page, an experience timeline), **Event** (when and where, RSVP
+  links, the schedule, who's leading, getting there, questions) or **Project**
+  (a finished project written up: outcome numbers, the problem and what you
+  built, pictures, milestones, the team, deliverables). Then pick the
+  look: a **Style** (Modern, Minimal, Bold, Warm or Editorial, each with a line on
+  what it suits), **Colors** (Slate, Navy, Forest, Dusk, Tide) and a **Font**.
+  The look is a setting, so changing it never touches your writing, and every
+  page of the site wears it. Pages follow the reader's light or dark setting.
+  **Icons** shows Ledgr's icon set; click one to copy its code.
+- **Pages on this site** (click to open or close) lists everything published
+  here in a row, each with **View** and **Unpublish**.
+
+**Write it like a note.** Type **/** for a section: Hero, Cards, Columns,
+Collection, Timeline, Stats, Quotes, Call to action, Callout, or Video or link.
+Each arrives with sample text showing its parts. **/icon** opens an icon picker
+right where you are: search, choose a size, click one, and its code lands at
+the cursor. In the page, each section shows a quiet label with a one-line
+summary ("Writing · 4 newest · list", "3 columns", "2 parts") and a thin line
+down its left side; the section you're in lights up in your highlight color,
+and a section inside another is numbered. **Hover a label** (or the **?** on
+the section you're in) for a help card: what it does, each setting with its
+choices, and **Insert an example**. A setting the section doesn't know turns
+amber with a suggested fix. Icon codes show as small chips; click one to reopen
+the icon picker and swap the icon or its size (or edit it as text), and
+click a label to edit the section's first line. You can also type the lines
+yourself: a section is a line \`::: name\` above its content and a line \`:::\`
+below it. A misspelled or unfinished section never breaks the page; its
+content just shows as plain text.
+
+- \`::: hero\`: the opening section. Its first picture becomes the art, a
+  short line above the heading becomes the small eyebrow, the heading is the
+  headline, and a line that is only links becomes buttons (the first solid).
+- \`::: cards\` and \`::: columns\`: each \`###\` heading starts one (add
+  another \`###\` for another column).
+- \`::: collection\`: a list of things you've published here, set up with
+  lines inside it: \`title:\`, \`label:\`, \`type:\`, \`tag:\`, \`show: 6 newest\`
+  (or \`3 oldest\`), and \`layout:\` grid, list, hero (a featured piece as the
+  page's opening) or series (a numbered row read in order).
+- \`::: topics\`: every tag on what you've published, with counts
+  (\`exclude: featured\` leaves tags out).
+- \`::: timeline\`: rows written \`- **2024** What happened. _a detail_\`.
+- \`::: stats\`: key facts, \`- **Started** March 2023\`.
+- \`::: quotes\`: kind words, each a \`>\` quote ending \`> — Who said it\`.
+- \`::: cta\`: a closing band with a heading, a line and link buttons.
+- \`::: callout\`: a tinted aside.
+- \`::: embed\`: a YouTube or Vimeo link plays on the page; any other link
+  shows as a card. The next line is the caption.
+- \`:::: row\` around two sections sets them side by side.
+- \`::: menu\` on the home page is the menu on every page: one line per entry,
+  a link, an @-mention of something published here, a \`#heading\` on the page,
+  or plain text. Without one, the menu is Home plus any Website Pages you
+  published (an About page, say).
+- \`::: footer\` on the home page is the footer of every page, exactly as you
+  write it; leave it out for none.
+
+A short line right above a section's \`##\` heading becomes its small label.
+\`![what goes here](placeholder)\` draws a striped stand-in picture until you
+add a real one. \`:home:\`, \`:heart:\` and the rest of Ledgr's icons draw
+that icon in the page's colors; at the start of a card or column heading it
+becomes the heading's badge. Icons work anywhere on a page, including the
+site name, the menu and the footer, and everyday names like \`:star:\`,
+\`:mail:\` or \`:music:\` work too. Add a size after the name: \`:home:large:\`
+(small, medium, large or xl, which scale with the page) or \`:home:48:\` for
+exact pixels. To align a section, add a word to its first line:
+\`::: columns center\`, \`::: columns split\` (first column left, middle
+centered, last right) or \`::: cards center\`.
+
+**Publish things to it.** In any item's **Export & sharing**, **Publish to**
+lists your Website Pages; click one to publish, click again to unpublish. The
+item then says **Public on: …** so you always know. Nothing reaches a site any
+other way: tagging a note never publishes it, and a collection only ever shows
+what you published. Each published item gets its own page with its date, a
+reading time, its first paragraph as a lede, Previous / Next, and **Keep
+reading** (other published items, those sharing a tag first). Unpublishing, or
+moving the item to Trash, takes its page down at once. On a public page, an
+@-mention links to a Link item's address, a published item's page, or another
+item's share link, and otherwise shows as plain text, so nothing points into
+your Ledgr.
+
+**Assistants and apps.** Over MCP, an assistant can list your sites, make one
+from a starter, change its look, and publish or unpublish items
+(\`list_website_pages\`, \`create_website_page\`, \`set_page_design\`,
+\`publish_to_page\`, \`unpublish_from_page\`, \`page_design_options\`), and
+reads the full reference at \`ledgr://guide/website-pages\`. Apps with an API
+credential use \`/api/machine/website-pages\` and
+\`/api/machine/items/<id>/publish\`; \`/build/api\` has the details.
 
 ## Presentation export
 
@@ -1089,6 +1224,12 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   few seconds.
 - **Show another item on a slide.** A slide holding nothing but one @-link shows
   that item: its own slides if it has any, otherwise its whole text.
+- **Play a video on a slide.** A slide holding nothing but one YouTube or Vimeo
+  link plays that video on the audience screen. Your presenter view shows a card
+  naming it instead, so the sound doesn't play twice. It needs internet: offline,
+  in a PDF, or in an image export, the slide shows the card with the link.
+  If the browser blocks autoplay, click play on the audience screen. The
+  PowerPoint export carries it as an online video.
 - **Save offline** downloads the whole show as one file, pictures included, that
   runs in any browser with no internet.
 - **Design** (in the presenter view) sets the look for this presentation: a
@@ -1464,12 +1605,18 @@ week of use.
 
 - **The sidebar** — **Ctrl/Cmd+J** or the round sparkle button. It knows the
   item you have open and any text you have highlighted (shown as chips at the
-  top; click ✕ to leave the item out of that chat). It can search, read, create,
+  top; click ✕ to leave the item out of that chat). On the Desk it follows the
+  panel you last clicked into. It can search, read, create,
   and edit your items, and an edit to the open note appears in place while you
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
-  as a note, or archives it. Under each reply, **▶ Listen** reads it aloud in the
-  voice and speed you picked on an item's Listen bar. A chat open on two devices
+  as a note, or archives it. Opening the sidebar in one browser tab leaves your
+  other tabs alone. Come back after half an hour or more and it starts a fresh
+  chat about what you are viewing (the earlier one is still under ☰). Anything
+  you have typed but not sent is kept as a draft for that chat, through a
+  refresh or a closed panel. Under each reply, **▶ Listen** reads it aloud in the
+  voice you picked on an item's Listen bar; while it reads, a Speed picker sits
+  beside Stop. A chat open on two devices
   stays in step: what you send from your phone appears on your computer within
   a few seconds, reply and all.
 - **Inline edit** — highlight text in a note and press **Ctrl/Cmd+Shift+E** (or
@@ -1550,9 +1697,9 @@ palette jumps straight to a named setting.
 | Group | What you can change |
 |---|---|
 | Account | Display name, timezone, sign-in (password and recovery codes) |
-| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style |
+| Appearance | Theme (Dark, Light, Gray, Sepia), accent colour, text size, interface density (desktop and mobile separately), section style, page width (Standard, Wide, Full: how much of a big monitor an item page and each Desk panel use), comments (in the margin or as icons) |
 | Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
-| Editing | Which toolbar buttons show; collapsible headings; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
+| Editing | Which toolbar buttons show; collapsible headings; collapsible bullets; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
 | Search | Your own synonym dictionary |
 | Notifications | Which events notify you (only while the notification center is on) |
 | AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |
@@ -2018,5 +2165,4 @@ Listed so you do not go looking.
   it is the one surface that keeps \`[^id]\` markers and their \`[^id]:\` definitions
   intact through a save, because the .docx export reads them. Typed anywhere
   else, that syntax is just literal text.
-- **Nested toggles** are a known limitation.
 `;

@@ -19,7 +19,7 @@ import {
 } from "./design";
 import type { DeckSlide } from "./deck";
 import { inlineDesignImages } from "./inline-images";
-import { slideToBlocks, isImageOnlySlide, type SlideBlock } from "./slide-blocks";
+import { slideToBlocks, isImageOnlySlide, videoOnlySlide, type SlideBlock } from "./slide-blocks";
 
 export type PptxDeckSource = { title: string; design: PresentationDesign; slides: DeckSlide[] };
 
@@ -119,7 +119,13 @@ export async function buildPptx(ownerId: string, source: PptxDeckSource): Promis
     }
 
     const blocks = slideToBlocks(raw.md);
-    if (isImageOnlySlide(blocks)) {
+    const video = videoOnlySlide(raw.md);
+    if (video) {
+      // An online video: PowerPoint plays it from the web, like Insert > Online
+      // Video, which expects YouTube's own embed address, not the nocookie one.
+      const link = video.src.replace("www.youtube-nocookie.com", "www.youtube.com");
+      slide.addMedia({ type: "online", link, x: 0.5, y: 0.5, w: SLIDE_W_IN - 1, h: SLIDE_H_IN - 1 });
+    } else if (isImageOnlySlide(blocks)) {
       const img = blocks[0] as Extract<SlideBlock, { kind: "image" }>;
       const data = await dataUriFor(ownerId, img.src);
       if (data) {

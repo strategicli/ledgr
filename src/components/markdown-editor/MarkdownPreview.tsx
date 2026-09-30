@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from "react";
 import { inlineRefMenuAvailable, openInlineRefMenu } from "@/lib/inline-ref-menu";
-import CommentPopover from "./CommentPopover";
+import CommentPopover, { commentsAsIcons } from "./CommentPopover";
 import { litComment } from "./comment-hover";
 import { useMediaQuery } from "./useIsDesktop";
 
@@ -118,15 +118,15 @@ export default function MarkdownPreview({
       <>
       <div
         className="ledgr-prose ledgr-preview"
-        // Tap a comment's speech-bubble icon to read its note (ADR-170). Narrow
-        // viewports only: that's where the CSS collapses the margin card into the
-        // icon, and on a wide one the card is already fully visible so a popup
-        // would only cover it. Delegated (one listener for the whole body) and it
+        // Tap a comment's speech-bubble icon to read its note (ADR-170). Only
+        // where the CSS collapses the card into the icon (a narrow viewport, or
+        // the owner's "Icons" comment display): a visible margin card needs no
+        // popup covering it. Delegated (one listener for the whole body) and it
         // reads the note's own rendered HTML, so comments need no ids and no
         // per-comment wiring. The anchored TEXT is not a target — see
         // comment-mark.ts on why a click there stays an ordinary click.
         onClick={(e) => {
-          if (!narrow) return;
+          if (!narrow && !commentsAsIcons()) return;
           const note = (e.target as Element).closest?.(".cmt-note");
           if (!note) return;
           setNotePop({ html: note.innerHTML });

@@ -6,7 +6,7 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
-## 🟡 NEXT — Claude Runs: switch it on and repoint the scheduled tasks (ADR-284, built 2026-09-30 on branch `claude-runs`)
+## 🟡 NEXT — Claude Runs: switch it on and repoint the scheduled tasks (ADR-286, built 2026-09-30 on branch `claude-runs`)
 
 Built and verified on the dev database, not yet merged. After it ships to the hub:
 1. **Restart the supervisor once** (Build → Updates → Restart, or `npm run local:restart`). This release adds a nightly job and makes the hub's push keys, and both happen only when the supervisor starts (see the KNOWN STEP below).
@@ -159,6 +159,20 @@ is §6 of `explorations/core-and-modules.md`; each step is its own PR.
    Person when People is off. Test on a data copy first. Later: Songs/Papers/Mindmap
    code move, builder tools, web clipper, push into Notification center, digest +
    Overview. Skipped: custom layouts. Parked: Google.
+9. **Machine share route** (branch `feat/machine-share-route`): `POST /api/machine/items/<id>/share` lets a Flow Launcher plugin mint a share link with an API credential. Additive API surface, not core (ADR-183); listed in the Sharing manifest, 404 when Sharing is off. Not yet tried against a live credential.
+10. **🅿️ PARKED, explore later (Brandon, 2026-09-29): make "off" structural, not remembered.**
+    ADR-285 fixed the module-off leaks, but half of them by teaching each spot to check its
+    switch (the agent health route, notification/push APIs, Save Offline's OneDrive leg, the
+    `/ref` picker, the Today push toggle, the settings agent block, pinned nav slots). That
+    works only as long as every future door remembers. Three ideas to explore:
+    (a) one wrapper every module route/page is defined through, plus a CI check that any
+    `src/app` file importing `@/modules/*` uses it (today `verify-module-registry` checks a
+    few named pages by hand); (b) empty sockets in core screens (editor picker, Save Offline
+    legs, Today, Settings) that only switched-on modules fill, so core stops naming modules;
+    (c) finish step 4 for the Notification center (no `src/modules` folder yet; code is in
+    `src/lib/notifications*` and `src/lib/push`) and move the passage picker into Passages.
+    Also open: should items of a switched-off type be hidden from search and All items, and
+    should a module offer "delete this module's data"?
 
 ## 🟡 FOLLOW-UPS — Claude in Ledgr (ADR-271, shipped 2026-09-24)
 
@@ -465,6 +479,23 @@ Original write-up (kept for the decisions and caveats):
 **Savor caution (Tyler's own case).** Importing Savor's data into Ledgr for safekeeping is right regardless. A simple "devotional" template over that data is a fine prototype. But Savor-the-daily-habit-app (phone-first, streaks, notifications) is a promotion candidate — likely the discipleship module's seat — not an iframe app; rebuilding it as a template is the bridge-bloat trap.
 
 **Steps if it goes ahead:** (1) `explorations/app-type.md` capturing the above; (2) the Brandon conversation — a shipped pre-built type lands on his instance (precedent: `file` ADR-236, `passage` ADR-060), a non-markdown-family `format` value touches the body contract, and the bridge is new API surface, so this wants an ADR even though much is additive; (3) slice 1 = the type + render-body-as-HTML-in-sandbox, nothing else; (4) `saveState`/`loadState`; (5) `getRelated` with related-items-only scoping; (6) first two templates; (7) revisit `explorations/flexible-surfaces.md` and `dashboard-widgets.md`, which circle the same instinct.
+
+## 🟢 SHIPPED, follow-ups queued — Website Pages (Tyler, 2026-09-28/29)
+
+Live on `main` and `prod-brandon` (module **off by default**; Tyler turns it on at Build → Modules). Shipped in #469 (the feature), #470 (block-helper redesign from Claude Design), #476 / #477 / #479 (headings and quotes stay on a block's rail, clickable icon chips, picker anchored to the chip). **Full design, decisions and reference: `explorations/website-pages.md`; ops: runbook §1v; assistants: `ledgr://guide/website-pages`.** Claude Design project with the visual system and starter boards: "Ledgr Design System" (`387b329e-ce58-4c79-be5b-9d5d2241b397`, via the `claude_design` MCP).
+
+Next, in Tyler's order of interest:
+1. **Module-off safeguard.** A Website Page opened while the module is off shows the plain note canvas (Tyler hit this). Show "Website Pages is off. Turn it on in Build → Modules" on the page instead, and find where he could create one with the module off (the type should be hidden from creation then; ask which button he used).
+2. **Instance defaults (ADR-272 step 6)**, offered to Tyler: his copy starts with his own modules on, Brandon's with them off.
+3. ~~**Starters: Portfolio, Event, Project.**~~ Built 2026-09-29 from existing blocks. Optional polish where the boards ask for more than the blocks do: a `gallery` mosaic, skill chips, round avatars on cards, a big-number stats variant (details in `explorations/website-pages.md`).
+4. **Collection "See all" pages** (`/share/<token>/<collection>`), so "3 newest" can link to the full list.
+5. **Live checks Tyler owns:** a look change reaching a shared link within ~1 min (edge cache), the help card's hover feel, rails beside pictures.
+
+Housekeeping: the shared dev database still holds test sites from the build (Jonah Reyes, Still Water, "New Test Site") and their sample notes; clear when Tyler says. The repo root has two untracked files that predate this work (`pnpm-lock.yaml`, `pnpm-workspace.yaml`); `release:prod` needs a clean tree, so they were stashed around each release and restored. Ask Tyler whether they belong.
+
+## 💡 IDEA — a Form type: surveys and sign-ups that write back into Ledgr (Tyler, 2026-09-28) — **separate from Website Pages, not started**
+
+Came out of the Website Pages review ("surveys would be fun"). Kept apart on purpose: every public path today is **read-only**, and the share token is a read credential. A form is the first time a stranger could *write* into an owner's Ledgr, which is an access-model change and wants its own ADR. Open questions: spam and rate limiting on a public POST, response size caps, where responses land (likely one item per response, related to the form item), notifications, and whether a response can ever carry a file (ADR-231 territory). Once it exists, a Website Page can embed a form as a block.
 
 ## 🔐 DECISION NEEDED — final auth posture: Clerk dev instance vs. domain + Clerk prod vs. Auth.js + Entra (Brandon's session, 2026-08-30; queued by Tyler 2026-08-31)
 

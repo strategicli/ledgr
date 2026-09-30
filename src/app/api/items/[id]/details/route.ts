@@ -36,7 +36,7 @@ export async function GET(_request: Request, context: Context) {
         relationProps.map((p) => p.key)
       ),
       listRelatedItems(owner.id, id),
-      listTypes(),
+      listTypes({ ownerId: null }),
     ]);
     const typeLabels = new Map(allTypes.map((t) => [t.key, t.label]));
 

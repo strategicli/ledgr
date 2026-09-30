@@ -1,4 +1,4 @@
-// The ping text for a Claude Run (ADR-284): the body's first non-empty line,
+// The ping text for a Claude Run (ADR-286): the body's first non-empty line,
 // markdown marks stripped, capped for a phone notification. Pure, so the CI
 // check can prove it without a database.
 export function summaryLine(body: unknown): string {

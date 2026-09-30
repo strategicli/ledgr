@@ -6,7 +6,7 @@ import { standDownDetail } from "@/lib/job-owners";
 import { moduleIsOn } from "@/lib/modules/gate";
 import { trashOldRuns } from "@/modules/claude-runs/lib/runs";
 
-// Nightly Claude Runs cleanup (ADR-284): runs older than 60 days go to Trash.
+// Nightly Claude Runs cleanup (ADR-286): runs older than 60 days go to Trash.
 // A shared job, so the route checks the module itself and stands down with a
 // 200 while it is off.
 export const dynamic = "force-dynamic";

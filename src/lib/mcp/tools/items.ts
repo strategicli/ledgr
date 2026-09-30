@@ -472,7 +472,7 @@ export const itemTools: McpTool[] = [
       }
       if (surfaceId !== undefined && surfaceContent !== undefined) {
         const type = reqString(args, "type");
-        const defs = await listTypes({ includeHidden: true });
+        const defs = await listTypes({ includeHidden: true, ownerId: null });
         const capability = defs.find((t) => t.key === type)?.capability ?? null;
         const target = resolveSurfaceTarget(type, surfaceId, capability);
         if (!target.ok) {
@@ -586,7 +586,7 @@ export const itemTools: McpTool[] = [
       }
       if (surfaceId !== undefined && surfaceContent !== undefined) {
         const { type } = await getItemType(ownerId, id);
-        const defs = await listTypes({ includeHidden: true });
+        const defs = await listTypes({ includeHidden: true, ownerId: null });
         const capability = defs.find((t) => t.key === type)?.capability ?? null;
         const target = resolveSurfaceTarget(type, surfaceId, capability);
         if (!target.ok) {

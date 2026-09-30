@@ -28,6 +28,7 @@ import PresentationExport from "@/components/canvas/PresentationExport";
 import HistoryPanel from "@/components/canvas/HistoryPanel";
 import ItemFilesSection from "@/components/attachments/ItemFilesSection";
 import { listItemFilesWithRefs } from "@/lib/attachments";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import { resolveOwner } from "@/lib/owner";
 
 export default async function ItemUtilitiesFooter({
@@ -59,8 +60,9 @@ export default async function ItemUtilitiesFooter({
   // task canvas renders this inside its two-pane main column).
   bare?: boolean;
 }) {
-  const owner = filesSection ? await resolveOwner() : null;
-  const files = owner
+  const owner = filesSection || exportSharing ? await resolveOwner() : null;
+  const oneDrive = exportSharing && owner ? await moduleOnFor(owner.id, "onedrive-export") : false;
+  const files = filesSection && owner
     ? await listItemFilesWithRefs(owner.id, itemId).catch(() => [])
     : [];
   return (
@@ -85,9 +87,11 @@ export default async function ItemUtilitiesFooter({
               Export &amp; sharing
             </summary>
             <div className="mt-2 flex flex-col gap-2">
-              <SaveOffline itemId={itemId} bare />
+              <SaveOffline itemId={itemId} oneDrive={oneDrive} bare />
               {/* The sharing module's control; renders nothing while it is off. */}
               <ModuleItemPanel id="share" itemId={itemId} bare />
+              {/* Website Pages: publish this item to a site, or on a page, what it exposes. */}
+              <ModuleItemPanel id="publish" itemId={itemId} />
               <PresentationExport itemId={itemId} bare />
               <ModuleItemPanel id="present" itemId={itemId} />
             </div>

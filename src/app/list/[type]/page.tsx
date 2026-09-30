@@ -36,6 +36,7 @@ import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { relatedSummaryFor } from "@/lib/relations";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
+import { disabledModuleTypeKeys } from "@/lib/modules/enabled";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { getType } from "@/lib/types";
@@ -69,6 +70,8 @@ export default async function TypeList({
   if (!owner) redirect("/sign-in");
 
   const { type } = await params;
+  // A switched-off module's type is gone, as if never built (ADR-272).
+  if ((await disabledModuleTypeKeys(owner.id)).has(type)) notFound();
   const typeDef = await getType(type).catch((err) => {
     if (err instanceof ItemError && err.code === "not_found") notFound();
     throw err;

@@ -4,7 +4,8 @@
 // Build REST routes use.
 import { listDashboards } from "@/lib/dashboards";
 import { getItem, ItemError } from "@/lib/items";
-import { BUILD_NAV } from "@/lib/build-nav";
+import { buildNavFor } from "@/lib/build-nav";
+import { offModuleIds } from "@/lib/modules/enabled";
 import { INBOX_SOURCES, routeFor } from "@/lib/inbox-sources";
 import {
   NAV_DENSITIES,
@@ -93,7 +94,8 @@ export const workspaceTools: McpTool[] = [
         ),
         // The hardcoded Build sidebar (build-nav.ts) — the destinations a Work
         // nav slot can point at (a "Clean" button → Data Hygiene, etc.).
-        buildTools: BUILD_NAV.flatMap((g) =>
+        // Minus a switched-off module's pages (ADR-272), as the sidebar shows.
+        buildTools: buildNavFor(offModuleIds(settings)).flatMap((g) =>
           g.entries.map((e) => ({ group: g.label, label: e.label, href: e.href }))
         ),
       };

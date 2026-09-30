@@ -11,6 +11,8 @@ import ExploreView from "@/modules/relatedness/components/ExploreView";
 import LiveContextPanel from "@/modules/live-context/components/LiveContextPanel";
 import MeetingTranscripts from "@/modules/meeting-transcripts/components/MeetingTranscripts";
 import PresentPanel from "@/modules/presentations/components/PresentPanel";
+import PublishPanel from "@/modules/website-pages/components/PublishPanel";
+import PageHeaderPanel from "@/modules/website-pages/components/PageHeaderPanel";
 
 type PanelProps = { itemId: string; title?: string; bare?: boolean; collapsed?: boolean };
 
@@ -20,6 +22,8 @@ const ITEM_PANELS: Record<string, (props: PanelProps) => ReactNode | Promise<Rea
   "live-context": LiveContextPanel,
   "meeting-transcripts": MeetingTranscripts,
   present: PresentPanel,
+  publish: PublishPanel,
+  "page-header": PageHeaderPanel,
 };
 
 export function ModuleItemPanel({ id, ...props }: PanelProps & { id: string }) {

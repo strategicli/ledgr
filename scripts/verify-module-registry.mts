@@ -177,7 +177,8 @@ const FEATURE_IDS = ["ai-memory", "live-context", "agent", "youtube-transcripts"
 for (const id of FEATURE_IDS) {
   const m = allModules().find((x) => x.id === id);
   check(`${id} is a registered module`, !!m);
-  check(`${id} adds no item types`, m?.types.length === 0);
+  // ai-memory claims its `memory` type so the type is gone while it is off.
+  check(`${id} adds no item types`, id === "ai-memory" || m?.types.length === 0);
   check(`${id} is off by default, as its old key was`, m?.enabledByDefault === false);
   check(`${id} has a description for the Modules page`, !!m?.description);
   check(`${id} is off for an owner who never touched it`, moduleOn({ modules: {} }, id) === false);
@@ -467,7 +468,7 @@ check(
   JSON.stringify(sharing?.mcpTools?.tools?.map((x) => x.name)) === JSON.stringify(sharing?.mcpTools?.names)
 );
 const sharingRoutes = sharing?.routes ?? [];
-check("sharing lists its route files", sharingRoutes.length === 2);
+check("sharing lists its route files", sharingRoutes.length === 3);
 for (const r of sharingRoutes) {
   check(`route file exists: ${r}`, existsSync(new URL(`../${r}`, import.meta.url)));
 }
@@ -684,7 +685,11 @@ for (const r of sharingRoutes) {
     check(`register.ts imports ${m.id} from its module folder`, registerSrc.includes(`from "@/modules/${m.id}/manifest"`));
     check(`${m.id} left features.ts`, !FEATURE_MODULES.some((x) => x.id === m.id));
     check(`${m.id} is off by default`, m.enabledByDefault === false && moduleOn({ modules: {} }, m.id) === false);
-    check(`${m.id} has a description and adds no types`, !!m.description && m.types.length === 0);
+    check(`${m.id} has a description`, !!m.description);
+    check(
+      `${m.id}'s types are exactly what it owns`,
+      JSON.stringify(m.types.map((t) => t.key)) === JSON.stringify(m.id === "ai-memory" ? ["memory"] : [])
+    );
     check(`server-slots imports ${m.id}'s server.ts`, serverSlotsSrc.includes(`import "@/modules/${m.id}/server"`));
     check(
       `${m.id}'s server.ts attaches exactly the tools its manifest names`,
@@ -711,6 +716,10 @@ for (const r of sharingRoutes) {
   check("the memory protocol is the ai-memory module's resource", onRes.length === 1 && onRes[0].uri === "ledgr://guide/memory-protocol");
   check("…and reads as the protocol text", onRes[0]?.read().startsWith("# Working with the owner's memory") === true);
   check("…and is gone while ai-memory is off", moduleResources(() => false).length === 0);
+  // An off module is gone, as if never built (ADR-272): its type too.
+  const { typeKeysOfDisabledModules } = await import("../src/lib/modules");
+  check("the memory type drops out while ai-memory is off", typeKeysOfDisabledModules({ "ai-memory": false }).includes("memory"));
+  check("…and is back while it is on", !typeKeysOfDisabledModules({ "ai-memory": true }).includes("memory"));
   const mcpServer = read("src/lib/mcp/server.ts");
   check("mcp/server.ts no longer names the memory protocol", !/MEMORY_PROTOCOL|"ai-memory"/.test(mcpServer));
   check("mcp/server.ts collects module resources", mcpServer.includes("moduleResources("));

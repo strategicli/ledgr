@@ -1476,7 +1476,7 @@ check(
       "on": true,
       "why": "In-app agent chats are hub-local tables outside the synced set, so each machine clears its own expired side chats and old records. A peer without the agent has nothing to delete, which is a no-op."
     },
-    // Added with ADR-284, after the move to jobs.json.
+    // Added with ADR-286, after the move to jobs.json.
     "claude-run-cleanup": {
       "path": "/api/machine/claude-run-cleanup",
       "label": "Claude Runs cleanup",
