@@ -656,6 +656,9 @@ p{margin:0}
 .lb-hero-art img,.lb-hero-art .lb-ph{width:100%;height:100%;object-fit:cover}
 .lb-ph{display:flex;align-items:flex-end;min-height:100%;padding:10px 12px;background:repeating-linear-gradient(135deg,var(--ph-a) 0 1px,transparent 1px 11px) var(--ph-b);font:500 11px/1.3 ui-monospace,Menlo,monospace;color:var(--muted)}
 .lb-item-art .lb-ph{aspect-ratio:16/9;border-radius:var(--img-r)}
+.lb-card .lb-ph,.lb-prose .lb-ph{aspect-ratio:3/2;border-radius:var(--img-r)}
+.lb-prose .lb-ph{aspect-ratio:16/10}
+.lb-card img{border-radius:var(--img-r)}
 .lb-lede{font-size:var(--lede-size);font-style:var(--lede-style);line-height:1.5;color:var(--muted);text-wrap:pretty}
 .lb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:clamp(16px,2.4cqi,28px);align-items:start}
 .lb-card{display:flex;flex-direction:column;gap:10px;background:var(--card-bg);border:var(--card-bd);border-top:var(--card-bt);border-radius:var(--r);padding:var(--card-p);box-shadow:var(--card-sh);min-width:0}

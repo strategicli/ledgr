@@ -1091,8 +1091,13 @@ above the writing area:
 - **Design** (click to open or close): while the page is still empty, pick a
   **starter** and the page fills with sample sections you type over:
   **Personal site** (who you are, your work, writing, a Now list, kind words, a
-  way to say hello) or **Journal** (a devotional or blog site: a featured piece,
-  the latest list, topics with counts, a series read in order). Then pick the
+  way to say hello), **Journal** (a devotional or blog site: a featured piece,
+  the latest list, topics with counts, a series read in order), **Portfolio**
+  (a résumé with your work: summary, skills, a Work collection where each piece
+  gets its own page, an experience timeline), **Event** (when and where, RSVP
+  links, the schedule, who's leading, getting there, questions) or **Project**
+  (a finished project written up: outcome numbers, the problem and what you
+  built, pictures, milestones, the team, deliverables). Then pick the
   look: a **Style** (Modern, Minimal, Bold, Warm or Editorial, each with a line on
   what it suits), **Colors** (Slate, Navy, Forest, Dusk, Tide) and a **Font**.
   The look is a setting, so changing it never touches your writing, and every

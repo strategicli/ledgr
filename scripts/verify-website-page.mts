@@ -264,5 +264,18 @@ const { STARTERS } = await import("../src/modules/website-pages/lib/starters");
   check("starter: no fence or settings text leaks", !html.includes(":::") && !html.includes("show: 6 newest"));
 }
 
+{
+  // Every starter renders clean, and each menu #anchor lands on a heading on the page.
+  for (const s of STARTERS) {
+    const html = renderWebPage(s.name, s.body, { site: { name: s.name, homeHref: "/share/tok", homeMarkdown: s.body, items: [] }, design: s.design });
+    check(`starter ${s.id}: no fence or settings text leaks`, !html.includes(":::") && !/\b(show|layout|tag): /.test(html), html);
+    const anchors = [...(/::: menu\n([\s\S]*?)\n:::/.exec(s.body)?.[1] ?? "").matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]);
+    const missing = anchors.filter((a) => !html.includes(`id="${a}"`));
+    check(`starter ${s.id}: every menu anchor has its section`, missing.length === 0, missing.join(", "));
+  }
+  const ids = STARTERS.map((s) => s.id);
+  check("starters: Portfolio, Event and Project are offered", ["portfolio", "event", "project"].every((id) => ids.includes(id)), ids.join(", "));
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nall passed");
 process.exit(failures ? 1 : 0);
