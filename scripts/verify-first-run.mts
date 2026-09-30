@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { chooseAuthProvider, noLoginListenOk } from "../src/lib/auth/local";
 import { setupChecklist, setupView, type SetupFacts } from "../src/lib/setup-checklist";
+import { signVapidJwt } from "../src/lib/push/vapid";
 import {
   appCommand,
   appListenHost,
@@ -22,6 +23,7 @@ import {
   nextStartArgs,
   normalizeConfig,
   planInstallSecrets,
+  makeVapidKeys,
 } from "../supervisor/lib.mjs";
 
 let failures = 0;
@@ -91,6 +93,19 @@ const gen = () => `generated-${++n}`.padEnd(64, "x");
   check("an unreadable file is treated as empty", !!p.write && !!p.apply.LEDGR_OAUTH_SECRET);
 }
 check("only the connector secret is generated (API tokens are minted in the app)", JSON.stringify(INSTALL_SECRET_KEYS) === '["LEDGR_OAUTH_SECRET"]');
+// The Web Push keypair (ADR-286): made once as a pair, reused, and never made
+// when the owner set their own private key.
+{
+  const makeVapid = () => makeVapidKeys("a@b.c");
+  const p = planInstallSecrets({ stored: {}, extraEnv: {}, processEnv: {}, generate: gen, makeVapid });
+  const { jwt } = signVapidJwt("https://fcm.googleapis.com", { publicKey: p.apply.VAPID_PUBLIC_KEY, privateKey: p.apply.VAPID_PRIVATE_KEY, subject: p.apply.VAPID_SUBJECT });
+  check("push keys are made as a pair, written, and applied", !!p.write?.VAPID_PRIVATE_KEY && p.apply.VAPID_PUBLIC_KEY === p.write.VAPID_PUBLIC_KEY && p.apply.VAPID_SUBJECT === "mailto:a@b.c");
+  check("the generated pair signs a push JWT", typeof jwt === "string" && jwt.split(".").length === 3);
+  const again = planInstallSecrets({ stored: p.write, extraEnv: {}, processEnv: {}, generate: gen, makeVapid });
+  check("a stored pair is reused, never rotated (rotating would drop every phone)", again.write === null && again.apply.VAPID_PRIVATE_KEY === p.apply.VAPID_PRIVATE_KEY);
+  const owned = planInstallSecrets({ stored: {}, extraEnv: { LEDGR_OAUTH_SECRET: "mine", VAPID_PRIVATE_KEY: "set" }, processEnv: {}, generate: gen, makeVapid });
+  check("an owner-set private key means nothing is made or applied", owned.write === null && !("VAPID_PUBLIC_KEY" in owned.apply));
+}
 {
   const cfg = normalizeConfig({ dataDir: "/d", ownerEmail: "a@b.c", extraEnv: { LEDGR_OAUTH_SECRET: "mine" } }, "/x");
   const env = assembleAppEnv(cfg, "sha", { installSecrets: { LEDGR_OAUTH_SECRET: "generated" }, listenHost: null }) as Record<string, string>;

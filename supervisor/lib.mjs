@@ -3,7 +3,7 @@
 // scripts/verify-supervisor.mts; the process/spawn shell lives in
 // ledgr-supervisor.mjs and stays thin. Node builtins only.
 import { join, resolve, isAbsolute } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -374,10 +374,10 @@ export function installSecretsPath(dataDir) {
  * file ({} when missing); `generate` makes one fresh secret.
  */
 /**
- * @param {{ stored: unknown, extraEnv: Record<string, string>, processEnv: Record<string, string | undefined>, generate: () => string }} o
+ * @param {{ stored: unknown, extraEnv: Record<string, string>, processEnv: Record<string, string | undefined>, generate: () => string, makeVapid?: () => Record<string, string> }} o
  * @returns {{ apply: Record<string, string>, write: Record<string, string> | null }}
  */
-export function planInstallSecrets({ stored, extraEnv, processEnv, generate }) {
+export function planInstallSecrets({ stored, extraEnv, processEnv, generate, makeVapid }) {
   /** @type {Record<string, string>} */
   const next = { ...(stored && typeof stored === "object" ? stored : {}) };
   /** @type {Record<string, string>} */
@@ -391,7 +391,35 @@ export function planInstallSecrets({ stored, extraEnv, processEnv, generate }) {
     }
     apply[k] = next[k];
   }
+  // The Web Push keypair (ADR-286), so phone notifications work on a local
+  // install with no key pasted anywhere. Made as a PAIR: a public key without
+  // its private half is useless, so a private key set by the owner means none
+  // of the three is generated or applied.
+  if (makeVapid && !(extraEnv.VAPID_PRIVATE_KEY || processEnv.VAPID_PRIVATE_KEY)) {
+    if (typeof next.VAPID_PUBLIC_KEY !== "string" || typeof next.VAPID_PRIVATE_KEY !== "string") {
+      Object.assign(next, makeVapid());
+      changed = true;
+    }
+    for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"]) {
+      if (typeof next[k] === "string") apply[k] = next[k];
+    }
+  }
   return { apply, write: changed ? next : null };
+}
+
+// A VAPID keypair in the shapes src/lib/push/vapid.ts reads (the same output as
+// scripts/make-vapid-keys.mjs): the public key is the uncompressed P-256 point,
+// the private key the raw scalar, both base64url.
+export function makeVapidKeys(ownerEmail) {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const pub = publicKey.export({ format: "jwk" });
+  const priv = privateKey.export({ format: "jwk" });
+  const point = Buffer.concat([Buffer.from([4]), Buffer.from(String(pub.x), "base64url"), Buffer.from(String(pub.y), "base64url")]);
+  return {
+    VAPID_PUBLIC_KEY: point.toString("base64url"),
+    VAPID_PRIVATE_KEY: String(priv.d),
+    VAPID_SUBJECT: `mailto:${ownerEmail || "owner@localhost"}`,
+  };
 }
 
 // ── "Start when Windows starts" (ADR-211) ────────────────────────────────────

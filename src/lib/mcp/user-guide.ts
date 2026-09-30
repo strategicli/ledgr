@@ -467,9 +467,11 @@ Build your own kinds of item at \`/build/types\`.
   chart, paper workspace, tabs, longform document, widget homepage — to a type
   you name yourself.
 - **Modules** at \`/build/modules\` hold every on/off switch you have, in two
-  groups. **Item types** are Songs, Papers, Mindmap and Files: turning one off
-  removes its type from every list and picker, quick capture, "+ New" and an
-  assistant's list of types, and no new items of it can be made.
+  groups. **Item types** are Songs, Papers, Mindmap, Files and Claude Runs
+  (scheduled Claude tasks file their reports and ping your phone only when
+  they decide you need to know): turning one off removes its type from every
+  list and picker, quick capture, "+ New" and an assistant's list of types,
+  and no new items of it can be made.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
   transcripts, the Notification center (paused), Scripture passages (off for
   new installs, and left on for anyone who used Ledgr before that change: a
@@ -1646,9 +1648,10 @@ when it is off screen. If you had unsaved typing, it is merged in; if you and th
 other edit touched the same paragraph, your text is kept and a **Review** window
 offers **Keep mine** or **Use theirs**.
 
-## Two features that are off until you turn them on
+## Three features that are off until you turn them on
 
-Both are switched on at \`/build/modules\` → **Features**.
+Each is switched on at \`/build/modules\`: the first two under **Features**,
+Claude Runs under **Item types**.
 
 - **AI Memory** lets an assistant keep durable facts about you in Ledgr, linked
   into your relation graph, instead of forgetting between sessions. It adds
@@ -1663,6 +1666,16 @@ Both are switched on at \`/build/modules\` → **Features**.
 - **Live editing context** lets an assistant see which note you have open and
   what you have highlighted, so "rework this sentence" works. Nothing is tracked
   while it is off.
+- **Claude Runs** gives scheduled Claude tasks a place to report. At the end
+  of a run worth keeping, the task files a **Claude Run** record with the full
+  report as its body, listed at \`/list/claude_run\`. If the task decides you
+  need to know, it ticks **Notify me**, and your phone gets one notification
+  showing the title and the report's first line; tapping it opens the record.
+  Most runs stay quiet. A run pings once at most, and runs move to Trash after
+  60 days. For the ping to reach your phone, open Ledgr's home page on the
+  phone's installed app and tap **Enable notifications** once. Then turn off
+  the Claude app's own notifications in your phone's settings if you no longer
+  want them.
 
 ## Guides an assistant can read
 
