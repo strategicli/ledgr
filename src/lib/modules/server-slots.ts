@@ -26,3 +26,4 @@ import "@/modules/agent/server";
 import "@/modules/ai-memory/server";
 import "@/modules/live-context/server";
 import "@/modules/meeting-transcripts/server";
+import "@/modules/claude-runs/server";

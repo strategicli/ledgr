@@ -34,6 +34,7 @@ import { triageModule } from "@/modules/triage/manifest";
 import { listenModule } from "@/modules/listen/manifest";
 import { tailscaleModule } from "@/modules/tailscale/manifest";
 import { presentationsModule } from "@/modules/presentations/manifest";
+import { claudeRunsModule } from "@/modules/claude-runs/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -63,6 +64,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   listenModule,
   tailscaleModule,
   presentationsModule,
+  claudeRunsModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {

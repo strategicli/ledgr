@@ -208,6 +208,18 @@ await sql`
   ON CONFLICT (key) DO NOTHING
 `;
 
+// The `claude_run` type (ADR-284): scheduled Claude runs file their report here
+// and tick "Notify me" when the owner should get a phone ping. Mirrors
+// drizzle/0068_claude_run_type.sql for fresh databases.
+await sql`
+  INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, property_schema)
+  VALUES (
+    'claude_run', 'Claude Run', 'robot', false, false, false,
+    '[{"key":"notifyMe","label":"Notify me","kind":"checkbox"}]'::jsonb
+  )
+  ON CONFLICT (key) DO NOTHING
+`;
+
 // The owner row. This used to hardcode Brandon's address, which made seeding ANY
 // other instance quietly wrong: it created an owner nobody signs in as, and then
 // `resolveOwner()` found no row for the real identity and every page rendered its

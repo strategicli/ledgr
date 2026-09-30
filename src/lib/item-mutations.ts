@@ -784,6 +784,11 @@ export async function updateItem(
       await advanceNextActionIfPinned(ownerId, parent.id, updated.id).catch(() => {});
     }
   }
+  // Modules' onUpdate hooks (ADR-284), only when properties were written, so an
+  // ordinary title or body save costs nothing more. Fire and forget, as onCreate.
+  if (patch.properties !== undefined || patch.propertyPatch !== undefined) {
+    void runHooks("onUpdate", { ownerId, itemId: id, type: updated.type });
+  }
   // Additive (ADR-183 carve-out): callers that ignore the key are unaffected; the
   // item PATCH route passes it through so the client can raise "Moved N subtasks ·
   // Undo" instead of moving the owner's dates silently.

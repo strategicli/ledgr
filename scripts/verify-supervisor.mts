@@ -887,6 +887,7 @@ check(
       JSON.stringify([
         "agent-purge",
         "calendar-sync",
+        "claude-run-cleanup",
         "email-import",
         "export",
         "purge",
@@ -946,6 +947,7 @@ check(
   normalizeCrons({
     purge: false,
     "agent-purge": false,
+    "claude-run-cleanup": false,
     snapshot: false,
     export: false,
     "calendar-sync": false,
@@ -1085,6 +1087,7 @@ check(
   // the expectations below.
   const jobs = normalizeCrons({
     "agent-purge": false,
+    "claude-run-cleanup": false,
     snapshot: false,
     export: false,
     "calendar-sync": false,
@@ -1472,6 +1475,15 @@ check(
       "shared": true,
       "on": true,
       "why": "In-app agent chats are hub-local tables outside the synced set, so each machine clears its own expired side chats and old records. A peer without the agent has nothing to delete, which is a no-op."
+    },
+    // Added with ADR-284, after the move to jobs.json.
+    "claude-run-cleanup": {
+      "path": "/api/machine/claude-run-cleanup",
+      "label": "Claude Runs cleanup",
+      "at": "03:55",
+      "shared": true,
+      "on": true,
+      "why": "Moves Claude Run records older than 60 days to Trash. Every peer may run it: the rule is the same on every copy, a run another copy already trashed arrives here trashed, and trashing it twice lands the same row in the same place."
     },
     "snapshot": {
       "path": "/api/machine/snapshot",

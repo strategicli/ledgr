@@ -6,6 +6,15 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
+## 🟡 NEXT — Claude Runs: switch it on and repoint the scheduled tasks (ADR-284, built 2026-09-30 on branch `claude-runs`)
+
+Built and verified on the dev database, not yet merged. After it ships to the hub:
+1. **Restart the supervisor once** (Build → Updates → Restart, or `npm run local:restart`). This release adds a nightly job and makes the hub's push keys, and both happen only when the supervisor starts (see the KNOWN STEP below).
+2. **Turn on Claude Runs** at Build → Modules → Features.
+3. **On the phone,** open the installed Ledgr app at the hub address, go to the home page, tap **Enable notifications**. The old subscription belonged to the Vercel copy and does not carry over.
+4. **Repoint each scheduled Claude task** to end with: file a Claude Run with the report, tick Notify me only if Brandon needs to know. Then turn off the Claude app's notifications on the phone.
+5. **First real ping is the proof.** If none arrives, Build → Errors will have a `claude-runs` row saying why.
+
 ## 🟡 NEXT — Presentations module: first real use (explorations/presentations.md)
 
 Built 2026-09-26, off by default (Build → Modules → Presentations). Left for Brandon:

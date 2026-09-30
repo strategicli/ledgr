@@ -109,6 +109,7 @@ import {
   effectiveEnv,
   installSecretsPath,
   planInstallSecrets,
+  makeVapidKeys,
   appCommand,
   extractCommand,
   nodeFor,
@@ -630,6 +631,7 @@ const INSTALL_SECRETS = (() => {
     extraEnv: cfg.extraEnv,
     processEnv: process.env,
     generate: () => randomBytes(32).toString("hex"),
+    makeVapid: () => makeVapidKeys(cfg.ownerEmail),
   });
   if (plan.write) {
     writeFileSync(p, JSON.stringify(plan.write, null, 2), { encoding: "utf8", mode: 0o600 });

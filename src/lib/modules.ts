@@ -667,6 +667,10 @@ export type ModuleHooks = {
   onBodySave?: HookFn;
   // After an item is created. Fire and forget: the caller's reply never waits.
   onCreate?: HookFn;
+  // After an update that wrote the item's properties (ADR-284). Fire and
+  // forget, like onCreate, and never on the sync apply path, so only the copy
+  // that took the write reacts to it.
+  onUpdate?: HookFn;
 };
 
 export type HookName = keyof ModuleHooks;
