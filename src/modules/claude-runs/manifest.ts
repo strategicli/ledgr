@@ -13,7 +13,7 @@ const RUN_INSTRUCTIONS = [
   "CLAUDE RUNS is on. When a scheduled or unattended task finishes and has",
   "something worth keeping, file ONE item of type \"claude_run\" at the END of",
   "the run (never at the start): a clear title, and the full report as the body",
-  "with a one-line summary as its first line. Set properties.notifyMe = true",
+  "with a one-line summary as its first line. Set properties.notifyme = true",
   "(on create_item, or update_item propertyPatch if the run already exists)",
   "ONLY when the owner genuinely needs to know or act; that sends one phone",
   "notification showing the title and the summary line. Most runs should not",

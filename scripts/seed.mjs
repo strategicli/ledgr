@@ -215,7 +215,7 @@ await sql`
   INSERT INTO types (key, label, icon, is_system, show_in_quick_capture, hidden, property_schema)
   VALUES (
     'claude_run', 'Claude Run', 'robot', false, false, false,
-    '[{"key":"notifyMe","label":"Notify me","kind":"checkbox"}]'::jsonb
+    '[{"key":"notifyme","label":"Notify me","kind":"checkbox"}]'::jsonb
   )
   ON CONFLICT (key) DO NOTHING
 `;
