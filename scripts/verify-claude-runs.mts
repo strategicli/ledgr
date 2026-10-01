@@ -38,7 +38,7 @@ const job = jobs["claude-run-cleanup"];
 check("nightly cleanup job, gated on the module", job?.path === "/api/machine/claude-run-cleanup" && job?.module === "claude-runs" && typeof job?.at === "string");
 
 const mig = readFileSync("drizzle/0069_claude_run_type.sql", "utf8");
-check("migration inserts the type with a Notify me checkbox", /'claude_run', 'Claude Run'/.test(mig) && /"key":"notifyMe"/.test(mig));
+check("migration inserts the type with a Notify me checkbox", /'claude_run', 'Claude Run'/.test(mig) && /"key":"notifyme"/i.test(mig));
 check("migration is additive only", !/\b(DROP|DELETE FROM|TRUNCATE|ALTER TABLE|UPDATE)\b/i.test(mig.replace(/--.*$/gm, "")));
 check("seed mirrors it", readFileSync("scripts/seed.mjs", "utf8").includes("'claude_run', 'Claude Run'"));
 

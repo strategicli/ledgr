@@ -13,8 +13,10 @@ import { summaryLine } from "./summary";
 export const RUN_TYPE = "claude_run";
 export const RETENTION_DAYS = 60;
 
-// "Notify me" ticked and not yet pinged.
-const pending = sql`${items.properties}->>'notifyMe' = 'true' and not (${items.properties} ? 'notifiedAt')`;
+// "Notify me" ticked and not yet pinged. Ledgr lowercases property keys, so the
+// checkbox is `notifyme`; the camel-case spelling the first release told Claude
+// to use is still honored so a run written that way pings too.
+const pending = sql`(${items.properties}->>'notifyme' = 'true' or ${items.properties}->>'notifyMe' = 'true') and not (${items.properties} ? 'notifiedAt')`;
 
 // Ping the owner's phones once, the first time a run has "Notify me" ticked.
 // The claim (stamping notifiedAt only where it is absent) happens before the

@@ -75,23 +75,32 @@ try {
     type: "claude_run",
     title: "Needs you",
     body: body("# 3 invoices need approval\ndetails"),
-    properties: { notifyMe: true },
+    properties: { notifyme: true },
   });
   check("a run created with Notify me pings once", (await hitsAfter(1)) === 1, hits);
   check("and is stamped notifiedAt", typeof (await props(loud.id)).notifiedAt === "string");
 
-  await updateItem(ownerId, loud.id, { properties: { ...(await props(loud.id)), notifyMe: true } });
+  await updateItem(ownerId, loud.id, { properties: { ...(await props(loud.id)), notifyme: true } });
   check("saving it again does not ping twice", (await hitsAfter(2)) === 1, hits);
 
-  await updateItem(ownerId, quiet.id, { propertyPatch: { notifyMe: true } });
+  await updateItem(ownerId, quiet.id, { propertyPatch: { notifyme: true } });
   check("ticking Notify me later with a one-key patch (what MCP uses) pings", (await hitsAfter(2)) === 2, hits);
 
-  const note = await createItem(ownerId, { type: "note", title: "not a run", properties: { notifyMe: true } });
-  check("another type with the same property sends nothing", (await hitsAfter(3)) === 2, hits);
+  // The bug this guards: Ledgr lowercases property keys, so the checkbox the
+  // screen writes is `notifyme`, and the code must read that key.
+  const { getType } = await import("../src/lib/types");
+  const t = await getType("claude_run");
+  check("the type's checkbox key is the one the code reads", t?.propertySchema.some((d) => d.key === "notifyme") === true, t?.propertySchema);
+
+  const legacy = await createItem(ownerId, { type: "claude_run", title: "Camel key", properties: { notifyMe: true } });
+  check("the camel-case spelling from the first release still pings", (await hitsAfter(3)) === 3, hits);
+
+  const note = await createItem(ownerId, { type: "note", title: "not a run", properties: { notifyme: true } });
+  check("another type with the same property sends nothing", (await hitsAfter(4)) === 3, hits);
 
   delete process.env.VAPID_PRIVATE_KEY;
-  const unset = await createItem(ownerId, { type: "claude_run", title: "No keys", properties: { notifyMe: true } });
-  check("with push unset nothing is sent", (await hitsAfter(3)) === 2, hits);
+  const unset = await createItem(ownerId, { type: "claude_run", title: "No keys", properties: { notifyme: true } });
+  check("with push unset nothing is sent", (await hitsAfter(4)) === 3, hits);
   check("and the run stays unclaimed", !("notifiedAt" in (await props(unset.id))));
 
   await db.execute(sql`update items set created_at = now() - interval '61 days' where id = ${quiet.id}`);
