@@ -11,6 +11,9 @@ export type StarterWidget = {
   label: string;
   description: string;
   view: ViewInput;
+  // "faithful" adds the widget rendering its view as the view page does (a
+  // map, a calendar) instead of the compact list; absent = compact.
+  renderStyle?: "faithful";
 };
 
 const list = (

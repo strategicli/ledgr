@@ -21,10 +21,20 @@ import {
   TREE_PARENT_DEFAULT,
 } from "@/lib/dashboard-tree";
 import { getItem, ItemError, type ItemListRow } from "@/lib/items";
+import { moduleCalendarModeData } from "@/lib/module-calendar-modes";
 import { relatedSummaryFor } from "@/lib/relations";
+import { appTodayYmd } from "@/lib/recurrence-service";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
+import { getAppTimezone } from "@/lib/today";
 import { getType } from "@/lib/types";
-import { countViewItems, getView, queryViewItems, type ViewDefinition } from "@/lib/views";
+import {
+  countViewItems,
+  getView,
+  isCoreCalendarMode,
+  queryViewItems,
+  VIEW_MAX,
+  type ViewDefinition,
+} from "@/lib/views";
 
 const PREVIEW = 8;
 
@@ -161,16 +171,23 @@ export async function resolveWidget(
     }
 
     // view kind
-    const limit =
-      "itemLimit" in widget.settings && widget.settings.itemLimit
+    const faithful =
+      "renderStyle" in widget.settings && widget.settings.renderStyle === "faithful";
+    // A module calendar mode (the Year Map) draws the whole row set, not a
+    // preview of it, so it ignores the widget's row limit.
+    // ponytail: capped at VIEW_MAX rows in the view's sort, not a date window; add
+    // a date-range filter if a map's rows ever exceed it.
+    const modeId = view.layout === "calendar" ? view.display?.mode : undefined;
+    const moduleModeWanted = faithful && modeId != null && !isCoreCalendarMode(modeId);
+    const limit = moduleModeWanted
+      ? VIEW_MAX
+      : "itemLimit" in widget.settings && widget.settings.itemLimit
         ? widget.settings.itemLimit
         : PREVIEW;
     const sort =
       "sortOverride" in widget.settings && widget.settings.sortOverride
         ? widget.settings.sortOverride
         : view.sort;
-    const faithful =
-      "renderStyle" in widget.settings && widget.settings.renderStyle === "faithful";
     const [rows, count, grouping] = await Promise.all([
       queryViewItems(ownerId, filter, sort, limit),
       countViewItems(ownerId, filter),
@@ -184,11 +201,26 @@ export async function resolveWidget(
       );
       related = Object.fromEntries(summary);
     }
+    let moduleMode: WidgetData["moduleMode"];
+    if (moduleModeWanted) {
+      const tz = await getAppTimezone(ownerId);
+      const items = rows.map(toViewItem);
+      moduleMode =
+        (await moduleCalendarModeData({
+          ownerId,
+          view,
+          items,
+          statuses: grouping?.statuses,
+          today: appTodayYmd(new Date(), tz),
+          tz,
+        })) ?? undefined;
+    }
     return {
       widget,
       view,
       items: rows.map(toViewItem),
       count,
+      moduleMode,
       groupOrder: grouping?.groupOrder,
       propertyLabels: grouping?.propertyLabels,
       propertyKinds: grouping?.propertyKinds,

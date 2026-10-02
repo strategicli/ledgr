@@ -114,6 +114,13 @@
 .ym-new .m { color: var(--ym-muted); }
 .ym-new input { font: inherit; color: var(--ym-fg); background: var(--ym-cell); border: 1px solid var(--ym-line); border-radius: 4px; padding: 3px 6px; }
 
+/* Outlook events (slice 3): read-only, tinted like the planner overlay. */
+.ym-bar.ym-ev {
+  background: color-mix(in srgb, #38bdf8 18%, var(--ym-cell)); border-left: 2px solid #38bdf8;
+  color: var(--ym-fg); cursor: default;
+}
+.ym-dots .ym-bar.ym-ev.one { background: #38bdf8; border-left: 0; }
+
 @media print {
   /* Print only the map: hide everything that is neither the map nor one of its
      ancestors, then lay the grid out to the page width in light colors. */

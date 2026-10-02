@@ -1003,6 +1003,15 @@ the year at a glance and print it. It is a module and starts off.
   Click a swatch to pick its color.
 - **More** holds Fade past items, Shade weekends, the dots switch, and
   **Paper** (Letter by default, then Legal, Tabloid, A4 or A3, all landscape).
+- **Outlook events.** When calendar sync is on, **More** also has **Show
+  Outlook all-day and multi-day events**. It adds your Outlook all-day events and
+  anything that runs past midnight as pale blue bars. A timed meeting inside one
+  day is left out. These bars are read-only, so you can't drag them, and the
+  legend doesn't hide them. Hover one for its title, place and dates.
+- **On a dashboard.** In a dashboard's edit mode, choose **Add widget**, then
+  **Prebuilt**, then **Add** beside **Next 3 Months (Year Map)**. It adds a
+  small map of your dated items, three months from now, that you can drag
+  items on. It only appears while the Year Map module is on.
 - **Print.** Choose **More**, then **Paper**, then **Print / Save as PDF**.
   The browser's print dialog opens, set to landscape on the paper you chose.
   Save as PDF there if you want a file.

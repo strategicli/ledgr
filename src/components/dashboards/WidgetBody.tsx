@@ -322,6 +322,8 @@ export default function WidgetBody({
             statuses={data.statuses}
             today={today}
             tz={tz}
+            moduleMode={data.moduleMode}
+            compactModuleMode
           />
         </div>
         {inlineAdd}

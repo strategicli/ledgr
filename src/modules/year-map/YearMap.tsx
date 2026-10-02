@@ -1,8 +1,12 @@
-// The Year Map's server half (ADR-287). ViewRenderer hands it the view's rows
-// (owner-scoped, body-free); this resolves each row to a day span and the
-// values it can be colored or styled by, then passes plain data to the client
-// grid. Two batched reads: the rows' tags, and the type registry (labels,
-// statuses, select fields).
+// The Year Map's server half (ADR-287). The view page or a dashboard widget hands
+// it the view's rows (owner-scoped, body-free); this resolves each row to a day
+// span and the values it can be colored or styled by, and returns the plain
+// props the client grid takes (YearMapClient, wired in
+// module-calendar-modes-client.tsx). Batched reads: the rows' tags, the type
+// registry (labels, statuses, select fields), and, when switched on, the
+// Outlook cache.
+import { listCalendarEventsForRange } from "@/lib/calendar/feed";
+import { moduleOnFor } from "@/lib/modules/enabled";
 import { deriveSpec, endPropKey, resolvePlacement, type PlacementSpec } from "@/lib/placement";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { appTodayYmd } from "@/lib/recurrence-service";
@@ -10,10 +14,10 @@ import { resolveStatusSchema } from "@/lib/status";
 import { TAGS_ROLE } from "@/lib/tags";
 import { listTypes } from "@/lib/types";
 import type { CalendarModeProps } from "@/lib/module-calendar-modes";
-import YearMapClient, { type YearEntry, type YearField } from "./YearMapClient";
-import { YEAR_MODE } from "./lib";
+import type { YearEntry, YearField, YearMapProps } from "./YearMapClient";
+import { YEAR_MODE, addMonths, outlookSpans, parseYearSettings, type Ym } from "./lib";
 
-export default async function YearMap({ ownerId, view, items, today, tz, month, navHref }: CalendarModeProps) {
+export async function prepareYearMap({ ownerId, view, items, today, tz, month, navHref }: CalendarModeProps): Promise<YearMapProps> {
   const [tagsBy, types] = await Promise.all([
     outgoingRelationsBySource(ownerId, items.map((i) => i.id), TAGS_ROLE),
     listTypes({ ownerId: null }),
@@ -102,18 +106,33 @@ export default async function YearMap({ ownerId, view, items, today, tz, month, 
     }
   }
 
-  return (
-    <YearMapClient
-      view={view}
-      settingsRaw={view.display?.modes?.[YEAR_MODE]}
-      entries={entries}
-      fields={fields}
-      today={today ?? appTodayYmd(new Date(), tz)}
-      tz={tz}
-      specs={specs}
-      createType={view.filter.type ?? "task"}
-      month={month}
-      navHref={navHref}
-    />
-  );
+  const settingsRaw = view.display?.modes?.[YEAR_MODE];
+  const todayYmd = today ?? appTodayYmd(new Date(), tz);
+  // Outlook all-day and multi-day events, only when the owner turned them on and
+  // calendar sync is running (the cache is empty otherwise).
+  const calendarAvailable = await moduleOnFor(ownerId, "calendar-sync");
+  let events: YearMapProps["events"] = [];
+  if (calendarAvailable && parseYearSettings(settingsRaw).showCalendar) {
+    const a = month ? { y: Number(month.slice(0, 4)), m: Number(month.slice(5, 7)) } : { y: Number(todayYmd.slice(0, 4)), m: Number(todayYmd.slice(5, 7)) };
+    // ponytail: one wide fetch (12 months back, 24 ahead of the anchor) so the
+    // window control works without a refetch; a longer window or a far-off
+    // ?month= shows no events past that band.
+    const at = (ym: Ym) => new Date(Date.UTC(ym.y, ym.m - 1, 1));
+    events = outlookSpans(await listCalendarEventsForRange(ownerId, at(addMonths(a, -12)), at(addMonths(a, 24))));
+  }
+
+  return {
+    view,
+    settingsRaw,
+    entries,
+    fields,
+    today: todayYmd,
+    tz,
+    specs,
+    createType: view.filter.type ?? "task",
+    month,
+    navHref,
+    events,
+    calendarAvailable,
+  };
 }

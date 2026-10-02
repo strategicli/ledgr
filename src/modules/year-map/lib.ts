@@ -43,6 +43,7 @@ export type YearSettings = {
   weekends: boolean;
   dots: boolean;
   paper: Paper;
+  showCalendar: boolean; // Outlook all-day and multi-day events (needs calendar sync)
 };
 
 export const YEAR_DEFAULTS: YearSettings = {
@@ -61,6 +62,7 @@ export const YEAR_DEFAULTS: YearSettings = {
   weekends: true,
   dots: true,
   paper: "letter",
+  showCalendar: false,
 };
 
 const FIELD = /^(tag|type|status|prop:[A-Za-z0-9_-]{1,64})$/;
@@ -109,6 +111,7 @@ export function parseYearSettings(raw: unknown): YearSettings {
     weekends: typeof r.weekends === "boolean" ? r.weekends : D.weekends,
     dots: typeof r.dots === "boolean" ? r.dots : D.dots,
     paper: pick(r.paper, Object.keys(PAPERS) as Paper[], D.paper),
+    showCalendar: typeof r.showCalendar === "boolean" ? r.showCalendar : D.showCalendar,
   };
 }
 
@@ -177,6 +180,30 @@ export function colorFor(s: YearSettings, field: string, value: string, values: 
 }
 export function styleFor(value: string, values: string[]): BarStyle {
   return BAR_STYLES[Math.max(0, values.indexOf(value)) % BAR_STYLES.length];
+}
+
+// --- Outlook events (slice 3) ------------------------------------------------
+
+export type OutlookSpan = { id: string; title: string; start: string; end: string; location: string | null; allDay: boolean };
+
+// The cached Outlook events worth a bar on a month row: all-day events, and
+// timed events that run past midnight. A timed 2-hour meeting is a dot of
+// noise on a year map, so it is dropped. All-day events carry whole days
+// (1440 minutes each); a timed end of exactly midnight stays on its own day.
+export function outlookSpans(
+  events: { id: string; title: string; ymd: string; start: string | null; durationMinutes: number; location: string | null }[]
+): OutlookSpan[] {
+  const out: OutlookSpan[] = [];
+  for (const e of events) {
+    const allDay = e.start === null;
+    const startMin = allDay ? 0 : Number(e.start!.slice(0, 2)) * 60 + Number(e.start!.slice(3, 5));
+    const days = allDay
+      ? Math.max(1, Math.round(e.durationMinutes / 1440)) - 1
+      : Math.floor((startMin + Math.max(0, e.durationMinutes) - 1) / 1440);
+    if (!allDay && days < 1) continue;
+    out.push({ id: e.id, title: e.title, start: e.ymd, end: addDays(e.ymd, days), location: e.location, allDay });
+  }
+  return out;
 }
 
 // --- dragging (slice 2) ----------------------------------------------------

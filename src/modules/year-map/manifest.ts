@@ -12,4 +12,29 @@ export const yearMapModule: ModuleManifest = {
   types: [],
   exporters: [],
   calendarModes: [{ id: "year", label: "Year Map", wide: true }],
+  // Add widget → Prebuilt: the next few months as a dashboard map. Adding it
+  // creates a saved view carrying these year settings; the widget renders it
+  // faithfully, so the settings live on that view like any other Year Map.
+  starterWidgets: [
+    {
+      id: "year-map-3-months",
+      label: "Next 3 Months (Year Map)",
+      description: "Your dated items as month rows, three months from now",
+      renderStyle: "faithful",
+      view: {
+        name: "Next 3 Months (Year Map)",
+        filter: {},
+        // Newest first, so the 2,000-row cap keeps the coming months.
+        sort: { field: "plan", dir: "desc" },
+        grouping: null,
+        columns: null,
+        layout: "calendar",
+        dateProperty: "plan",
+        display: {
+          mode: "year",
+          modes: { year: { window: "rolling", months: 3, colorBy: "tag", layout: "fit" } },
+        },
+      },
+    },
+  ],
 };

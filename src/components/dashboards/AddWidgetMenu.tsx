@@ -45,6 +45,7 @@ function matchesStarter(v: ViewDefinition, s: StarterWidget) {
 export default function AddWidgetMenu({
   onAdd,
   onAddStarter,
+  moduleStarters = [],
   onAddText,
   onAddAction,
   onAddEmbed,
@@ -52,8 +53,10 @@ export default function AddWidgetMenu({
   onAddContainer,
   onAddImage,
 }: {
-  onAdd: (view: ViewDefinition, kind: ViewWidgetKind) => void;
+  onAdd: (view: ViewDefinition, kind: ViewWidgetKind, renderStyle?: "compact" | "faithful") => void;
   onAddStarter: (starter: StarterWidget, kind: ViewWidgetKind) => void;
+  // Module presets, appended to Prebuilt (the container's child menu omits them).
+  moduleStarters?: StarterWidget[];
   onAddText: () => void;
   onAddAction: (action: ActionKind) => void;
   // Only the top-level menu passes these; the container child menu omits them.
@@ -81,7 +84,7 @@ export default function AddWidgetMenu({
   // is the guard for a pick made while the views are still loading.
   function pickStarter(s: StarterWidget, kind: ViewWidgetKind) {
     const existing = views?.find((v) => matchesStarter(v, s));
-    if (existing) onAdd(existing, kind);
+    if (existing) onAdd(existing, kind, s.renderStyle);
     else onAddStarter(s, kind);
     setOpen(false);
   }
@@ -91,8 +94,10 @@ export default function AddWidgetMenu({
     !needle || text.some((t) => t.toLowerCase().includes(needle));
   // A prebuilt already saved as a view is dropped: it appears under From Views
   // with the same three buttons, so listing it twice was pure duplication.
-  const starters = STARTER_WIDGETS.filter(
-    (s) => !views?.some((v) => matchesStarter(v, s)) && hit(s.label, s.description)
+  // A faithful preset stays listed even once its view exists: From Views would
+  // add that view as a plain list, losing the map.
+  const starters = [...STARTER_WIDGETS, ...moduleStarters].filter(
+    (s) => (s.renderStyle || !views?.some((v) => matchesStarter(v, s))) && hit(s.label, s.description)
   );
   const shownViews = views?.filter((v) => hit(v.name)) ?? null;
 
@@ -211,7 +216,18 @@ export default function AddWidgetMenu({
                     <span className="block text-sm text-ink">{s.label}</span>
                     <span className="block text-xs text-ink-faint">{s.description}</span>
                   </span>
-                  <KindButtons onPick={(k) => pickStarter(s, k)} />
+                  {/* A faithful preset (e.g. a Year Map) only makes sense drawn as itself. */}
+                  {s.renderStyle === "faithful" ? (
+                    <button
+                      onClick={() => pickStarter(s, "view")}
+                      className="shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-xs text-neutral-400 hover:text-neutral-200"
+                      title="Add this widget"
+                    >
+                      Add
+                    </button>
+                  ) : (
+                    <KindButtons onPick={(k) => pickStarter(s, k)} />
+                  )}
                 </div>
               ))}
             </>

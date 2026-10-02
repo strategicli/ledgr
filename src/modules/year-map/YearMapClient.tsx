@@ -5,6 +5,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import type { PlacementSpec } from "@/lib/placement";
 import type { ViewDefinition } from "@/lib/views";
 import { useYearEdit, type YearEdit } from "./useYearEdit";
@@ -23,6 +24,7 @@ import {
   windowStart,
   ymKey,
   YEAR_MODE,
+  type OutlookSpan,
   type Paper,
   type YearSettings,
   type Ym,
@@ -53,6 +55,24 @@ const PAGE_SIZE: Record<Paper, string> = {
 
 const first = (e: YearEntry, field: string) => e.vals[field]?.[0] ?? NONE;
 
+// Everything the client grid takes: what prepareYearMap (YearMap.tsx) returns,
+// plus `compact` from the mount (a dashboard widget).
+export type YearMapProps = {
+  view: ViewDefinition;
+  settingsRaw: unknown;
+  entries: YearEntry[];
+  fields: YearField[];
+  today: string;
+  tz: string;
+  specs: PlacementSpec[];
+  createType: string; // the type a click-drag creates
+  month?: string;
+  navHref?: string;
+  events?: OutlookSpan[]; // cached Outlook all-day and multi-day events, read-only
+  calendarAvailable?: boolean; // calendar sync is on, so the Outlook toggle shows
+  compact?: boolean; // widget scale: no controls, legend or note; always Fit
+};
+
 export default function YearMapClient({
   view,
   settingsRaw,
@@ -64,22 +84,16 @@ export default function YearMapClient({
   createType,
   month,
   navHref,
-}: {
-  view: ViewDefinition;
-  settingsRaw: unknown;
-  entries: YearEntry[];
-  fields: YearField[];
-  today: string;
-  tz: string;
-  specs: PlacementSpec[];
-  createType: string; // the type a click-drag creates
-  month?: string;
-  navHref?: string;
-}) {
+  events = [],
+  calendarAvailable = false,
+  compact = false,
+}: YearMapProps) {
+  const router = useRouter();
   const [s, setS] = useState<YearSettings>(() => parseYearSettings(settingsRaw));
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pop, setPop] = useState<{ id: string; top: number } | null>(null);
   const [fitDayW, setFitDayW] = useState(99);
+  const layout = compact ? "fit" : s.layout;
   const wrapRef = useRef<HTMLDivElement>(null);
   const ed = useYearEdit({ tz, specs, createType });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,7 +110,7 @@ export default function YearMapClient({
       return next;
     });
   }
-  async function save(next: YearSettings) {
+  async function save(next: YearSettings): Promise<boolean> {
     const display = { ...view.display, modes: { ...view.display?.modes, [YEAR_MODE]: next } };
     try {
       const res = await fetch(`/api/views/${view.id}`, {
@@ -114,9 +128,19 @@ export default function YearMapClient({
         }),
       });
       setSaveError(res.ok ? null : `Couldn't save these settings (${res.status}).`);
+      return res.ok;
     } catch {
       setSaveError("Couldn't save these settings (offline?).");
+      return false;
     }
+  }
+  // The Outlook toggle saves at once, then refreshes so the server (which reads
+  // the saved setting) fetches the events.
+  async function toggleCalendar(on: boolean) {
+    const next = { ...s, showCalendar: on };
+    setS(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (await save(next)) router.refresh();
   }
 
   // The window: which months, starting where.
@@ -143,8 +167,12 @@ export default function YearMapClient({
   const shown = entries
     .filter((e) => !off.has(first(e, s.colorBy)))
     .map((e) => (ed.override[e.id] ? { ...e, ...ed.override[e.id] } : e));
+  // Outlook bars ride the same lanes as items, ids prefixed so they can't collide.
+  const evById = useMemo(() => new Map(events.map((e) => [`ev:${e.id}`, e])), [events]);
+  const evSpans = s.showCalendar && calendarAvailable ? [...evById].map(([id, e]) => ({ id, start: e.start, end: e.end })) : [];
   // The hover card reads the live entry, so it shows a drag's new dates.
   const popEntry = pop ? shown.find((x) => x.id === pop.id) : undefined;
+  const popEv = pop ? evById.get(pop.id) : undefined;
   const inDraft = (ymd: string) => !!ed.draft && ymd >= ed.draft.start && ymd <= ed.draft.end;
   const byId = new Map(shown.map((e) => [e.id, e]));
 
@@ -152,13 +180,13 @@ export default function YearMapClient({
   // the real column width; Scroll knows it from the setting.
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || s.layout !== "fit") return;
+    if (!el || layout !== "fit") return;
     const cols = s.align === "weekday" ? 37 : 31;
     const ro = new ResizeObserver(() => setFitDayW((el.clientWidth - 56) / cols));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [s.layout, s.align]);
-  const dayW = s.layout === "fit" ? fitDayW : s.dayPx;
+  }, [layout, s.align]);
+  const dayW = layout === "fit" ? fitDayW : s.dayPx;
   const narrow = s.dots && dayW < Math.max(22, s.textPx * 2.4);
 
   useEffect(() => () => {
@@ -188,9 +216,9 @@ export default function YearMapClient({
   }
 
   return (
-    <div className={`ym-root ${s.layout === "fit" ? "ym-fit" : ""}`} style={rootStyle}>
+    <div className={`ym-root ${layout === "fit" ? "ym-fit" : ""}`} style={rootStyle}>
       <style>{`@page{size:${PAGE_SIZE[s.paper]};margin:8mm}`}</style>
-      <div className="ym-controls">
+      {!compact && <div className="ym-controls">
         <span className="ym-nav">
           {navHref && <a href={navTo(addMonths(start, -n))} aria-label="Previous">‹</a>}
           <span>{title}</span>
@@ -252,6 +280,11 @@ export default function YearMapClient({
           <div>
             <label><input type="checkbox" checked={s.fadePast} onChange={(e) => update({ fadePast: e.target.checked })} /> Fade past items</label>
             <label><input type="checkbox" checked={s.weekends} onChange={(e) => update({ weekends: e.target.checked })} /> Shade weekends</label>
+            {calendarAvailable && !view.isSystem && (
+              <label>
+                <input type="checkbox" checked={s.showCalendar} onChange={(e) => void toggleCalendar(e.target.checked)} /> Show Outlook all-day and multi-day events
+              </label>
+            )}
             <label><input type="checkbox" checked={s.dots} onChange={(e) => update({ dots: e.target.checked })} /> Show one-day items as dots when days are narrow</label>
             <label>
               Paper
@@ -262,9 +295,9 @@ export default function YearMapClient({
             <button type="button" className="ym-btn" onClick={() => window.print()}>Print / Save as PDF</button>
           </div>
         </details>
-      </div>
+      </div>}
 
-      <div className="ym-legend">
+      {!compact && <div className="ym-legend">
         <span className="k">Color: {fieldLabel(s.colorBy)}</span>
         {colorValues.map((v) => {
           const c = colorFor(s, s.colorBy, v, colorValues);
@@ -293,7 +326,7 @@ export default function YearMapClient({
             ))}
           </>
         )}
-      </div>
+      </div>}
 
       <div className="ym-wrap" ref={wrapRef} onScroll={() => setPop(null)}>
         <div className={`ym-grid ${narrow ? "ym-dots" : ""}`} onPointerDown={ed.beginCreate} onDoubleClick={ed.createOnDay}>
@@ -310,7 +343,7 @@ export default function YearMapClient({
           {months.map((ym) => {
             const { offset } = monthColumns(s, ym);
             const nd = daysIn(ym);
-            const { segs, lanes } = monthSegments(shown, ym);
+            const { segs, lanes } = monthSegments([...shown, ...evSpans], ym);
             return (
               <div key={ymKey(ym)} className="ym-month"
                 style={{ gridTemplateRows: `13px repeat(${Math.max(lanes, 1)}, var(--lane-h))` }}>
@@ -332,6 +365,19 @@ export default function YearMapClient({
                   );
                 })}
                 {segs.map((sg) => {
+                  const ev = evById.get(sg.id);
+                  if (ev) {
+                    // A read-only Outlook bar: no link, drag or handles, and the
+                    // legend and fade-past don't touch it.
+                    return (
+                      <div key={sg.id} className={`ym-bar ym-ev ${sg.single ? "one" : ""}`}
+                        style={{ gridColumn: `${sg.from + offset + 1} / ${sg.to + offset + 2}`, gridRow: sg.lane + 2 } as CSSProperties}
+                        onMouseEnter={(m) => setPop({ id: sg.id, top: m.currentTarget.getBoundingClientRect().bottom + 6 })}
+                        onMouseLeave={() => setPop(null)}>
+                        <span className="t">{ev.title}</span>
+                      </div>
+                    );
+                  }
                   const e = byId.get(sg.id)!;
                   const cls = [
                     "ym-bar",
@@ -375,6 +421,17 @@ export default function YearMapClient({
         </div>
       </div>
 
+      {popEv && pop && (
+        <div className="ym-pop" style={{ top: pop.top }} role="tooltip">
+          <b>{popEv.title}</b>
+          <span className="m">{["Outlook event", popEv.location].filter(Boolean).join(" · ")}</span>
+          <br />
+          <span className="m">
+            {fmtDay(popEv.start)}
+            {popEv.end !== popEv.start ? ` → ${fmtDay(popEv.end)}` : ""}
+          </span>
+        </div>
+      )}
       {popEntry && pop && (
         <div className="ym-pop" style={{ top: pop.top }} role="tooltip">
           <b>{popEntry.title}</b>
@@ -403,10 +460,10 @@ export default function YearMapClient({
         </form>
       )}
       {saveError && <p className="ym-note" role="alert">{saveError}</p>}
-      <p className="ym-note">
+      {!compact && <p className="ym-note">
         Click a legend label to hide or show that group; click its swatch to recolor it. Drag a bar to move it, or its ends to
         change its dates. Drag across empty days, or double-click one, to add an item. Settings save to this view.
-      </p>
+      </p>}
     </div>
   );
 }

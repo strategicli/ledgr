@@ -89,7 +89,7 @@ export default function ContainerWidget({
           });
           if (!res.ok) return;
           const { view } = (await res.json()) as { view: ViewDefinition };
-          addChild(buildViewWidget(view, kind));
+          addChild(buildViewWidget(view, kind, starter.renderStyle));
         } catch {
           /* swallow — user can retry */
         }

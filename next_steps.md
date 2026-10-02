@@ -15,12 +15,11 @@ Built and verified on the dev database, not yet merged. After it ships to the hu
 4. **Repoint each scheduled Claude task** to end with: file a Claude Run with the report, tick Notify me only if Brandon needs to know. Then turn off the Claude app's notifications on the phone.
 5. **First real ping is the proof.** If none arrives, Build → Errors will have a `claude-runs` row saying why.
 
-## 🟡 NEXT: Year Map: slice 3 (ADR-287, slices 1 and 2 built 2026-10-02 on branch `feat/year-map`)
+## 🟡 NEXT: Year Map: remaining queue (ADR-287, slices 1 to 3 built 2026-10-02 on branch `feat/year-map`)
 
-Slice 1 is a default-off module (Build → Modules → Year Map) with a "Year Map" saved view, per-view settings, a legend, and print. Slice 2 adds drag to move, edge drag to resize, and drag or double-click to create, with undo. Record and ceilings: `explorations/year-map.md`. Queue:
-1. **S3: Outlook overlay and dashboard widget.** Outlook events as a read-only layer, all-day and multi-day events only. A dashboard widget preset with a rolling 3-month window.
-2. **Touch editing:** a long-press drag on phones (slice 2 is mouse and pen only, so the map still scrolls on touch).
-3. **When it bites:** pass the window's dates into the view query, since slice 1 reads at most 2,000 rows in the view's sort.
+Slice 1 is a default-off module (Build → Modules → Year Map) with a "Year Map" saved view, per-view settings, a legend, and print. Slice 2 adds drag to move, edge drag to resize, and drag or double-click to create, with undo. Slice 3 adds an Outlook all-day and multi-day layer (More, needs calendar sync) and the "Next 3 Months (Year Map)" dashboard preset (Add widget, Prebuilt). Record and ceilings: `explorations/year-map.md`. Queue:
+1. **Touch editing:** a long-press drag on phones (slice 2 is mouse and pen only, so the map still scrolls on touch).
+2. **The date-window query:** pass the window's dates into the view query, since the map and its widget read at most 2,000 rows in the view's sort.
 
 ## 🟡 NEXT — Presentations module: first real use (explorations/presentations.md)
 

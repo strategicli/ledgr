@@ -19,7 +19,7 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems, VIEW_MAX } from "@/lib/views";
-import { calendarModeWide, moduleCalendarMode } from "@/lib/module-calendar-modes";
+import { calendarModeWide, moduleCalendarModeData } from "@/lib/module-calendar-modes";
 import { projectCardsForView } from "@/lib/project-cards";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { childRollups } from "@/lib/subtasks";
@@ -141,7 +141,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
       : undefined;
 
   const moduleMode = wide
-    ? await moduleCalendarMode({
+    ? await moduleCalendarModeData({
         ownerId: owner.id,
         view,
         items,
@@ -219,7 +219,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
               today={appTodayYmd(new Date(), tz)}
               tz={tz}
               projectCards={projectCards ?? undefined}
-              moduleMode={moduleMode}
+              moduleMode={moduleMode ?? undefined}
             />
           </DeskHostProvider>
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />

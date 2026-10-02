@@ -22,6 +22,7 @@ import type { getItem } from "@/lib/items";
 import { MARKDOWN_FORMAT, type ItemBody } from "@/lib/body";
 import type { McpTool } from "@/lib/mcp/tools/wire";
 import type { SearchResult } from "@/lib/search";
+import type { StarterWidget } from "@/lib/starter-widgets";
 
 // --- canvas contract (re-homed from canvas-registry, ADR-041) --------------
 
@@ -295,6 +296,9 @@ export type ModuleManifest = {
   // `module-calendar-modes.tsx`. `wide` lets the view page drop its reading
   // width for a mode that needs the whole screen.
   calendarModes?: { id: string; label: string; wide?: boolean }[];
+  // Ready-made dashboard widgets this module adds to Add widget → Prebuilt
+  // (ADR-287 addendum). Plain data, like the core STARTER_WIDGETS.
+  starterWidgets?: StarterWidget[];
 };
 
 // An MCP resource a module serves: the resources/list descriptor plus a reader.
@@ -756,6 +760,14 @@ export function calendarModesFor(off: readonly string[] = []): ModuleCalendarMod
   return allModules()
     .filter((m) => !off.includes(m.id))
     .flatMap((m) => (m.calendarModes ?? []).map((c) => ({ ...c, moduleId: m.id })));
+}
+
+// The prebuilt dashboard widgets of every module not in `off`. Same off-list
+// contract as calendarModesFor.
+export function starterWidgetsFor(off: readonly string[] = []): StarterWidget[] {
+  return allModules()
+    .filter((m) => !off.includes(m.id))
+    .flatMap((m) => m.starterWidgets ?? []);
 }
 
 // Every registered module's public paths, ENABLED OR NOT. proxy.ts runs before

@@ -15,6 +15,29 @@ function t(name: string, fn: () => void) {
   console.log(`PASS  ${name}`);
 }
 
+t("outlookSpans: all-day and midnight-crossing events only", () => {
+  const ev = (id: string, ymd: string, start: string | null, durationMinutes: number) => ({ id, title: id, ymd, start, durationMinutes, location: null });
+  const r = Y.outlookSpans([
+    ev("a", "2026-10-05", null, 1440),
+    ev("b", "2026-10-06", null, 4320),
+    ev("c", "2026-10-07", "09:00", 120),
+    ev("d", "2026-10-08", "09:00", 4320),
+    ev("e", "2026-10-09", "22:00", 180),
+  ]);
+  assert.deepEqual(r.map((x) => [x.id, x.start, x.end, x.allDay]), [
+    ["a", "2026-10-05", "2026-10-05", true],
+    ["b", "2026-10-06", "2026-10-08", true],
+    ["d", "2026-10-08", "2026-10-11", false],
+    ["e", "2026-10-09", "2026-10-10", false],
+  ]);
+});
+
+t("parseYearSettings: showCalendar defaults off, keeps a boolean", () => {
+  assert.equal(Y.YEAR_DEFAULTS.showCalendar, false);
+  assert.equal(Y.parseYearSettings({ showCalendar: true }).showCalendar, true);
+  assert.equal(Y.parseYearSettings({ showCalendar: "yes" }).showCalendar, false);
+});
+
 t("parseYearSettings: garbage gives defaults", () => {
   for (const g of [null, undefined, 5, "x", [], [1, 2]]) assert.deepEqual(Y.parseYearSettings(g), Y.YEAR_DEFAULTS);
   assert.deepEqual(Y.parseYearSettings({}), Y.YEAR_DEFAULTS);

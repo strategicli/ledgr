@@ -9,6 +9,8 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import DashboardClient from "@/components/dashboards/DashboardClient";
 import { resolveDashboardData } from "@/lib/dashboard-resolve";
+import { starterWidgetsFor } from "@/lib/modules";
+import { offModuleIds } from "@/lib/modules/enabled";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { getSettings } from "@/lib/settings";
 import { getAppTimezone } from "@/lib/today";
@@ -48,6 +50,7 @@ export default async function DashboardView({
       isHome={settings.homeDashboardId === resolved.id}
       isToday={settings.todayDashboardId === resolved.id}
       initialWidgets={resolved.widgets}
+      moduleStarters={starterWidgetsFor(offModuleIds(settings))}
     />
   );
 }
