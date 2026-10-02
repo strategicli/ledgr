@@ -1,0 +1,140 @@
+/* Year Map (ADR-287). Ported from explorations/year-map-mock.html; colors come
+   from the app's token layer (globals.css), so every theme flips it. Knobs the
+   view saves arrive as custom properties on .ym-root: --fs, --dayw, --cols. */
+.ym-root {
+  --ym-panel: var(--surface-1);
+  --ym-cell: var(--surface-0);
+  --ym-line: var(--line);
+  --ym-fg: var(--ink);
+  --ym-muted: var(--ink-muted);
+  --ym-weekend: color-mix(in srgb, var(--ink) 8%, var(--surface-0));
+  --ym-today: #fb923c;
+  --ym-bar-ink: #1a1a17;
+  --labelw: 56px;
+  --lane-h: calc(var(--fs) + 9px);
+  color: var(--ym-fg);
+  font-size: 12px;
+}
+.ym-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 8px; }
+.ym-controls label { display: flex; gap: 4px; align-items: center; color: var(--ym-muted); }
+.ym-controls select, .ym-controls input[type="number"] {
+  font: inherit; color: var(--ym-fg); background: var(--ym-panel);
+  border: 1px solid var(--ym-line); border-radius: 4px; padding: 2px 4px;
+}
+.ym-controls input[type="number"] { width: 52px; }
+.ym-seg { display: inline-flex; border: 1px solid var(--ym-line); border-radius: 4px; overflow: hidden; }
+.ym-seg button { font: inherit; background: var(--ym-panel); color: var(--ym-muted); border: 0; padding: 3px 8px; cursor: pointer; }
+.ym-seg button[aria-pressed="true"] { background: var(--ym-fg); color: var(--ym-cell); }
+.ym-nav { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.ym-nav a { color: var(--ym-muted); padding: 0 4px; }
+.ym-nav a:hover { color: var(--ym-fg); }
+.ym-btn { font: inherit; border: 1px solid var(--ym-line); background: var(--ym-panel); color: var(--ym-fg); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.ym-more { position: relative; }
+.ym-more summary { cursor: pointer; list-style: none; border: 1px solid var(--ym-line); border-radius: 4px; padding: 2px 8px; background: var(--ym-panel); color: var(--ym-fg); }
+.ym-more summary::-webkit-details-marker { display: none; }
+.ym-more > div {
+  position: absolute; right: 0; top: 110%; z-index: 8; background: var(--ym-panel);
+  border: 1px solid var(--ym-line); border-radius: 6px; padding: 8px 10px;
+  display: grid; gap: 6px; min-width: 220px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.ym-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 10px; align-items: center; }
+.ym-legend .k { color: var(--ym-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px; }
+.ym-chip {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--ym-line);
+  border-radius: 999px; padding: 1px 8px 1px 3px; background: var(--ym-panel); color: var(--ym-fg);
+}
+.ym-chip.off { opacity: 0.4; text-decoration: line-through; }
+.ym-chip button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: inherit; }
+.ym-chip input[type="color"] { width: 16px; height: 16px; border: 0; padding: 0; background: none; border-radius: 50%; overflow: hidden; cursor: pointer; }
+.ym-chip input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.ym-chip input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.ym-wrap { border: 1px solid var(--ym-line); border-radius: 6px; background: var(--ym-panel); overflow: auto; max-height: calc(100vh - 220px); }
+.ym-fit .ym-wrap { overflow-x: hidden; }
+.ym-grid { display: grid; font-size: var(--fs); min-width: max-content; }
+.ym-fit .ym-grid { min-width: 0; width: 100%; }
+.ym-month { display: grid; grid-template-columns: var(--labelw) repeat(var(--cols), var(--dayw)); border-top: 1px solid var(--ym-line); }
+.ym-fit .ym-month { grid-template-columns: var(--labelw) repeat(var(--cols), minmax(0, 1fr)); }
+.ym-head { position: sticky; top: 0; z-index: 4; background: var(--ym-panel); border-top: 0; }
+.ym-head .h { text-align: center; padding: 4px 0; color: var(--ym-muted); font-family: ui-monospace, monospace; font-size: 10px; overflow: hidden; }
+.ym-head .h.we { background: var(--ym-weekend); color: var(--ym-fg); }
+.ym-mlabel {
+  grid-row: 1 / -1; grid-column: 1; position: sticky; left: 0; z-index: 3; background: var(--ym-panel);
+  border-right: 1px solid var(--ym-line); padding: 4px 6px; font-weight: 600; font-size: 12px;
+}
+.ym-day { grid-row: 1 / -1; background: var(--ym-cell); border-right: 1px solid color-mix(in srgb, var(--ym-line) 55%, transparent); position: relative; min-width: 0; }
+.ym-day.we { background: var(--ym-weekend); }
+.ym-day.today::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: 3px;
+  background: color-mix(in srgb, var(--ym-today) 28%, transparent);
+}
+.ym-day .n { position: absolute; top: 2px; left: 3px; font-family: ui-monospace, monospace; font-size: 9px; color: var(--ym-muted); line-height: 1; }
+.ym-pad { grid-row: 1 / -1; background: repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--ym-line) 40%, transparent) 6px 7px); }
+.ym-bar {
+  z-index: 1; margin: 2px 1px 0; height: calc(var(--lane-h) - 4px); border-radius: 4px; padding: 0 5px;
+  font-size: var(--fs); line-height: calc(var(--lane-h) - 4px); color: var(--ym-bar-ink); background: var(--c);
+  white-space: nowrap; overflow: clip; min-width: 0; text-decoration: none; display: block;
+}
+.ym-bar .t { position: sticky; left: calc(var(--labelw) + 6px); display: inline-block; }
+.ym-bar.past { opacity: 0.45; }
+.ym-bar.outline { background: color-mix(in srgb, var(--c) 22%, transparent); border: 1.5px solid var(--c); color: var(--ym-fg); line-height: calc(var(--lane-h) - 7px); }
+.ym-bar.dashed { background: color-mix(in srgb, var(--c) 22%, transparent); border: 1.5px dashed var(--c); color: var(--ym-fg); line-height: calc(var(--lane-h) - 7px); }
+.ym-bar.striped { background: repeating-linear-gradient(135deg, var(--c) 0 5px, color-mix(in srgb, var(--c) 45%, white) 5px 10px); }
+.ym-bar.bold { font-weight: 600; }
+.ym-bar.caps { text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(var(--fs) - 1px); }
+.ym-bar.dot::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ym-bar-ink); margin-right: 4px; vertical-align: middle; }
+.ym-dots .ym-bar.one { font-size: 0; padding: 0; width: 8px; height: 8px; border-radius: 50%; margin: 5px auto 0; justify-self: center; }
+.ym-dots .ym-bar.one::before { display: none; }
+.ym-dots .ym-day .n { display: none; }
+.ym-legend .ym-bar { height: 14px; line-height: 14px; margin: 0; padding: 0 6px; font-size: 10px; color: var(--ym-fg); --c: #9ca3af; }
+.ym-pop {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); background: var(--ym-panel); color: var(--ym-fg);
+  border: 1px solid var(--ym-line); border-radius: 6px; padding: 6px 9px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); pointer-events: none; max-width: 280px;
+}
+.ym-pop b { display: block; font-weight: 600; margin-bottom: 2px; }
+.ym-pop .m { color: var(--ym-muted); }
+.ym-note { color: var(--ym-muted); font-size: 12px; margin-top: 8px; }
+
+/* Editing (slice 2): grab cursors, edge handles, the drag-to-create range,
+   and the title box for a new item. */
+.ym-grid { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ym-bar { -webkit-touch-callout: none; }
+.ym-bar { position: relative; }
+.ym-bar.drag { cursor: grab; }
+.ym-bar.drag:active { cursor: grabbing; }
+.ym-h { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+.ym-h.l { left: 0; }
+.ym-h.r { right: 0; }
+.ym-bar:hover .ym-h { background: color-mix(in srgb, var(--ym-bar-ink) 25%, transparent); }
+.ym-dots .ym-bar.one .ym-h { display: none; }
+.ym-day.sel { background: color-mix(in srgb, var(--ym-today) 22%, var(--ym-cell)); }
+.ym-new {
+  position: fixed; z-index: 31; width: 250px; display: grid; gap: 4px; background: var(--ym-panel); color: var(--ym-fg);
+  border: 1px solid var(--ym-line); border-radius: 6px; padding: 6px 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); font-size: 12px;
+}
+.ym-new .m { color: var(--ym-muted); }
+.ym-new input { font: inherit; color: var(--ym-fg); background: var(--ym-cell); border: 1px solid var(--ym-line); border-radius: 4px; padding: 3px 6px; }
+
+/* Outlook events (slice 3): read-only, tinted like the planner overlay. */
+.ym-bar.ym-ev {
+  background: color-mix(in srgb, #38bdf8 18%, var(--ym-cell)); border-left: 2px solid #38bdf8;
+  color: var(--ym-fg); cursor: default;
+}
+.ym-dots .ym-bar.ym-ev.one { background: #38bdf8; border-left: 0; }
+
+@media print {
+  /* Print only the map: hide everything that is neither the map nor one of its
+     ancestors, then lay the grid out to the page width in light colors. */
+  body *:not(:has(.ym-root)):not(.ym-root):not(.ym-root *) { display: none !important; }
+  html, body { background: #fff !important; }
+  .ym-root {
+    --ym-panel: #fff; --ym-cell: #fff; --ym-line: #c9c5bb; --ym-fg: #000; --ym-muted: #555;
+    --ym-weekend: #ebe6f6; --ym-today: #c2410c;
+  }
+  .ym-controls, .ym-legend, .ym-note, .ym-pop, .ym-new, .ym-h { display: none !important; }
+  .ym-wrap { max-height: none; overflow: visible; border: 0; }
+  .ym-grid { min-width: 0; width: 100%; }
+  .ym-month { grid-template-columns: var(--labelw) repeat(var(--cols), minmax(0, 1fr)) !important; break-inside: avoid; }
+  .ym-head { position: static; }
+  .ym-root * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

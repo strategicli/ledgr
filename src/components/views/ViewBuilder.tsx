@@ -13,7 +13,7 @@ import { resolveStatusSchema, type StatusDef, type StatusMode } from "@/lib/stat
 import type { PropertyDef } from "@/lib/types";
 import type { WhereGroup } from "@/lib/view-where";
 import { CALENDAR_MODES, TIMELINE_ZOOMS } from "@/lib/views";
-import type { ColumnField, ViewColumn, ViewDefinition, ViewDisplay, CalendarMode, TimelineZoom } from "@/lib/views";
+import type { ColumnField, ViewColumn, ViewDefinition, ViewDisplay, CalendarMode, TimelineZoom, ViewMode } from "@/lib/views";
 import {
   DEFAULT_PROJECT_CARD,
   PROJECT_CARD_ELEMENTS,
@@ -167,9 +167,13 @@ export default function ViewBuilder({
   initial,
   people,
   types,
+  moduleModes = [],
 }: {
   initial?: ViewDefinition;
   people: PersonOption[];
+  // Calendar modes contributed by modules that are on (ADR-287), resolved by
+  // the page through calendarModesFor.
+  moduleModes?: { id: string; label: string }[];
   // The full type registry (system + custom), so a view can filter to a
   // user-created type, not just the five system ones. propertySchema rides
   // along so a board can group by the type's select properties (a workflow's
@@ -192,6 +196,9 @@ export default function ViewBuilder({
   // A type's select/multi_select properties, as group-by options encoded
   // "prop:<key>" so they share the one Group-by control with the built-in
   // fields. A board grouped by one of these reads as a workflow board.
+  // Hidden fields stay pickable in every picker, marked so the owner knows why
+  // they're missing from everyday surfaces.
+  const hid = (p: PropertyDef) => (p.hidden ? `${p.label} (hidden)` : p.label);
   function groupPropsFor(
     typeKey: string
   ): { value: string; label: string; suffix: string }[] {
@@ -199,7 +206,7 @@ export default function ViewBuilder({
     return [
       ...schema
         .filter((p) => p.kind === "select" || p.kind === "multi_select")
-        .map((p) => ({ value: `prop:${p.key}`, label: p.label, suffix: "field" })),
+        .map((p) => ({ value: `prop:${p.key}`, label: hid(p), suffix: "field" })),
       // Relation fields (Tags, and any other the owner declares) encoded
       // "rel:<role>" — this is how "group my tasks by tag" becomes a saved view
       // (Tyler, 2026-08-12). A relation grouping FANS OUT, so a task with two tags
@@ -207,7 +214,7 @@ export default function ViewBuilder({
       // dropped into — moving edges isn't the PATCH a drop writes).
       ...schema
         .filter((p) => p.kind === "relation")
-        .map((p) => ({ value: `rel:${p.key}`, label: p.label, suffix: "links" })),
+        .map((p) => ({ value: `rel:${p.key}`, label: hid(p), suffix: "links" })),
     ];
   }
   // The type's own `date` properties, offered beside the built-in date fields so
@@ -217,7 +224,7 @@ export default function ViewBuilder({
   // "prop:<key>", the Sort control's convention.
   function datePropsFor(typeKey: string): { key: string; label: string }[] {
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
-    return schema.filter((p) => p.kind === "date").map((p) => ({ key: p.key, label: p.label }));
+    return schema.filter((p) => p.kind === "date").map((p) => ({ key: p.key, label: hid(p) }));
   }
   function datePlacementFor(typeKey: string): string[] {
     return [...dateFieldsFor(typeKey), ...datePropsFor(typeKey).map((p) => `prop:${p.key}`)];
@@ -230,7 +237,7 @@ export default function ViewBuilder({
   // The type's custom properties, offered as property columns.
   function propColumnsFor(typeKey: string): { key: string; label: string }[] {
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
-    return schema.map((p) => ({ key: p.key, label: p.label }));
+    return schema.map((p) => ({ key: p.key, label: hid(p) }));
   }
   // A type's select/multi_select properties offered as list filters, with their
   // option lists (the filter counterpart to groupPropsFor).
@@ -240,7 +247,7 @@ export default function ViewBuilder({
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
     return schema
       .filter((p) => p.kind === "select" || p.kind === "multi_select")
-      .map((p) => ({ key: p.key, label: p.label, options: p.options ?? [] }));
+      .map((p) => ({ key: p.key, label: hid(p), options: p.options ?? [] }));
   }
   // Properties usable as a SORT key (ADR-164): text/number/date/select/checkbox
   // order sensibly; url/multi_select/relation don't. Encoded "prop:<key>" so the
@@ -249,7 +256,7 @@ export default function ViewBuilder({
     const schema = types.find((t) => t.key === typeKey)?.propertySchema ?? [];
     return schema
       .filter((p) => ["text", "number", "date", "select", "checkbox"].includes(p.kind))
-      .map((p) => ({ key: p.key, label: p.label, numeric: p.kind === "number" }));
+      .map((p) => ({ key: p.key, label: hid(p), numeric: p.kind === "number" }));
   }
   // Every condition subject the rule builder offers for a type: scalar
   // properties, relation fields, plus the priority/status built-ins where the
@@ -259,12 +266,12 @@ export default function ViewBuilder({
     const opts: RuleSubjectOption[] = [];
     for (const p of schema) {
       if (p.kind === "relation") {
-        opts.push({ subject: "relation", key: p.key, label: p.label, targetType: p.targetType ?? null });
+        opts.push({ subject: "relation", key: p.key, label: hid(p), targetType: p.targetType ?? null });
       } else {
         opts.push({
           subject: "property",
           key: p.key,
-          label: p.label,
+          label: hid(p),
           kind: p.kind,
           options: p.options,
           numeric: p.kind === "number",
@@ -369,7 +376,19 @@ export default function ViewBuilder({
   });
   // Calendar display defaults (ADR-166): the mode a calendar view opens in and,
   // for the Timeline, its initial zoom. Stored in views.display; null → defaults.
-  const [calMode, setCalMode] = useState<CalendarMode>(initial?.display?.mode ?? "month");
+  const [calMode, setCalMode] = useState<ViewMode>(initial?.display?.mode ?? "month");
+  // Core modes, plus the modes of modules that are on (ADR-287). A stored mode
+  // whose module is off stays listed so saving round-trips it.
+  const modeOpts: { value: string; label: string }[] = [
+    ...CALENDAR_MODES.filter((m) => m !== "timegrid" || calMode === "timegrid").map((m) => ({
+      value: m as string,
+      label: MODE_LABELS[m],
+    })),
+    ...moduleModes.map((m) => ({ value: m.id, label: m.label })),
+  ];
+  if (!modeOpts.some((o) => o.value === calMode)) {
+    modeOpts.push({ value: calMode, label: `${calMode} (module off)` });
+  }
   const [calZoom, setCalZoom] = useState<TimelineZoom>(initial?.display?.zoom ?? "week");
   // The AND/OR rules group (ADR-164); null = no rules. Cleared when the type
   // changes, since its conditions reference that type's properties.
@@ -911,11 +930,11 @@ export default function ViewBuilder({
         >
           <select
             value={calMode}
-            onChange={(e) => setCalMode(e.target.value as CalendarMode)}
+            onChange={(e) => setCalMode(e.target.value)}
             className={selectClass}
           >
-            {CALENDAR_MODES.filter((m) => m !== "timegrid" || calMode === "timegrid").map((m) => (
-              <Opt key={m} value={m} label={MODE_LABELS[m]} />
+            {modeOpts.map((m) => (
+              <Opt key={m.value} value={m.value} label={m.label} />
             ))}
           </select>
         </Field>

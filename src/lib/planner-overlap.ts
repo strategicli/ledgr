@@ -60,9 +60,22 @@ function layoutCluster(cluster: OverlapInput[]): Map<string, OverlapLayout> {
     return out;
   }
 
-  const laneEnds: number[] = []; // end minute of the last block in each lane
-  const laneOf = new Map<string, number>();
+  const { laneOf, lanes } = assignLanes(cluster);
+  const width = 1 / lanes;
   for (const b of cluster) {
+    out.set(b.id, { left: (laneOf.get(b.id) ?? 0) * width, width });
+  }
+  return out;
+}
+
+// The greedy lane pass on its own, for a caller that stacks rows instead of
+// splitting width (the Year Map stacks each month's bars into lanes, ADR-287).
+// Blocks must arrive sorted by start; an end is exclusive, so a block may take
+// the lane of one that ends exactly where it starts.
+export function assignLanes(sorted: OverlapInput[]): { laneOf: Map<string, number>; lanes: number } {
+  const laneEnds: number[] = []; // end of the last block in each lane
+  const laneOf = new Map<string, number>();
+  for (const b of sorted) {
     let lane = laneEnds.findIndex((end) => end <= b.startMin);
     if (lane === -1) {
       lane = laneEnds.length;
@@ -72,10 +85,5 @@ function layoutCluster(cluster: OverlapInput[]): Map<string, OverlapLayout> {
     }
     laneOf.set(b.id, lane);
   }
-  const lanes = laneEnds.length;
-  const width = 1 / lanes;
-  for (const b of cluster) {
-    out.set(b.id, { left: (laneOf.get(b.id) ?? 0) * width, width });
-  }
-  return out;
+  return { laneOf, lanes: laneEnds.length };
 }

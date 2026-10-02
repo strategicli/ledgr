@@ -25,6 +25,7 @@ import {
 import type { StarterWidget } from "@/lib/starter-widgets";
 import type { ViewDefinition } from "@/lib/views";
 import AddWidgetMenu from "./AddWidgetMenu";
+import { useModuleStarters } from "./ModuleStartersContext";
 import WidgetFrame from "./WidgetFrame";
 import { buildActionWidget, buildImageWidget, buildTextWidget, buildViewWidget } from "./widget-defaults";
 import { widgetTitle } from "./widget-title";
@@ -45,6 +46,7 @@ export default function ContainerWidget({
   onContainerChange: (settings: ContainerWidgetSettings) => void;
 }) {
   const s = data.widget.settings as ContainerWidgetSettings;
+  const moduleStarters = useModuleStarters();
   const childData = data.childData ?? [];
   const [tab, setTab] = useState(Math.min(Math.max(s.activeTab, 0), Math.max(childData.length - 1, 0)));
 
@@ -80,6 +82,7 @@ export default function ContainerWidget({
       onAddText={() => addChild(buildTextWidget())}
       onAddAction={(action) => addChild(buildActionWidget(action))}
       onAddImage={() => addChild(buildImageWidget())}
+      moduleStarters={moduleStarters}
       onAddStarter={async (starter: StarterWidget, kind) => {
         try {
           const res = await fetch("/api/views", {
@@ -89,7 +92,7 @@ export default function ContainerWidget({
           });
           if (!res.ok) return;
           const { view } = (await res.json()) as { view: ViewDefinition };
-          addChild(buildViewWidget(view, kind));
+          addChild(buildViewWidget(view, kind, starter.renderStyle));
         } catch {
           /* swallow — user can retry */
         }

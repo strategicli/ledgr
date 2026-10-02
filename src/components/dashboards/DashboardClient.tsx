@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layouts } from "react-grid-layout";
 import AddWidgetMenu from "./AddWidgetMenu";
+import { ModuleStartersProvider } from "./ModuleStartersContext";
 import BackgroundPanel from "./BackgroundPanel";
 import DashboardGridLayout from "./DashboardGridLayout";
 import StageBackground from "./StageBackground";
@@ -80,6 +81,8 @@ function mergeLayouts(widgets: WidgetData[], all: Layouts): WidgetData[] {
   });
 }
 
+const NO_STARTERS: StarterWidget[] = [];
+
 export default function DashboardClient({
   dashboardId,
   name: nameProp,
@@ -90,6 +93,7 @@ export default function DashboardClient({
   isToday,
   initialWidgets,
   today,
+  moduleStarters,
 }: {
   dashboardId: string;
   name: string;
@@ -99,6 +103,8 @@ export default function DashboardClient({
   isHome: boolean;
   isToday: boolean;
   initialWidgets: WidgetData[];
+  // Prebuilt widgets contributed by the modules this owner has on (starterWidgets slot).
+  moduleStarters?: StarterWidget[];
   // App-timezone today (YYYY-MM-DD), from the server. When set, widget rows carry
   // the shared row menu (ADR-142); left undefined the rows stay plain.
   today?: string;
@@ -310,8 +316,8 @@ export default function DashboardClient({
   );
 
   const handleAdd = useCallback(
-    (view: ViewDefinition, kind: ViewWidgetKind) => {
-      const widget = buildViewWidget(view, kind);
+    (view: ViewDefinition, kind: ViewWidgetKind, renderStyle?: "compact" | "faithful") => {
+      const widget = buildViewWidget(view, kind, renderStyle);
       // Refetch so the new widget shows real, correctly-typed data.
       void commit([...widgetsRef.current, { widget, view, items: [], count: 0 }], true);
     },
@@ -389,7 +395,7 @@ export default function DashboardClient({
         });
         if (!res.ok) return;
         const { view } = (await res.json()) as { view: ViewDefinition };
-        handleAdd(view, kind);
+        handleAdd(view, kind, starter.renderStyle);
       } catch {
         /* swallow — the menu stays open-less; user can retry */
       }
@@ -471,6 +477,7 @@ export default function DashboardClient({
   const reservedHeight = useMemo(() => estimateGridHeight(widgets), [widgets]);
 
   return (
+    <ModuleStartersProvider value={moduleStarters ?? NO_STARTERS}>
     <main className="relative min-h-screen">
       <StageBackground appearance={appearance} />
       <div className={`relative z-10 mx-auto w-full max-w-6xl px-6 ${contentPad} sm:px-12`}>
@@ -528,6 +535,7 @@ export default function DashboardClient({
               <AddWidgetMenu
                 onAdd={handleAdd}
                 onAddStarter={handleAddStarter}
+                moduleStarters={moduleStarters}
                 onAddText={handleAddText}
                 onAddAction={handleAddAction}
                 onAddEmbed={handleAddEmbed}
@@ -572,6 +580,7 @@ export default function DashboardClient({
         )}
       </div>
     </main>
+    </ModuleStartersProvider>
   );
 }
 

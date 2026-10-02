@@ -25,7 +25,7 @@ export async function GET(_request: Request, context: Context) {
     const id = asUuid((await context.params).id, "id");
     const item = await getItem(owner.id, id);
     const typeDef = await getType(item.type).catch(() => null);
-    const schema = typeDef?.propertySchema ?? [];
+    const schema = (typeDef?.propertySchema ?? []).filter((p) => !p.hidden);
     const scalarProps = schema.filter((p) => p.kind !== "relation");
     const relationProps = schema.filter((p) => p.kind === "relation");
 

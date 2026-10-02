@@ -26,7 +26,8 @@ import { groupValuesFor, orderedGroups, type GroupEdges } from "@/lib/view-group
 import BoardColumn from "@/components/views/BoardColumn";
 import { DEFAULT_GRAIN, type Grain } from "@/lib/timeline-grain";
 import type { TimelineEntry, TimelineUndated } from "@/lib/timeline-entry";
-import { DISPLAY_DEFAULTS } from "@/lib/views";
+import { DISPLAY_DEFAULTS, isCoreCalendarMode } from "@/lib/views";
+import ModuleModeView from "@/lib/module-calendar-modes-client";
 import type { ColumnField, ViewColumn, ViewDefinition } from "@/lib/views";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
 import { isTerminalCategory, type StatusDef } from "@/lib/status";
@@ -1032,25 +1033,12 @@ function CalendarLayout({
   );
 }
 
-export default function ViewRenderer({
-  view,
-  items,
-  groupOrder,
-  propertyLabels = {},
-  propertyKinds = {},
-  boardDraggable = false,
-  statuses,
-  month,
-  calendarNavHref,
-  calendarEvents,
-  selectable = false,
-  rowActions,
-  rollups,
-  today,
-  tz = DEFAULT_TIMEZONE,
-  groupEdges,
-  projectCards,
-}: {
+export type ViewRendererProps = {
+  // A module calendar mode's prepared data from a server caller (ADR-287); the
+  // browser-safe ModuleModeView turns it into the mode's component.
+  moduleMode?: { mode: string; data: unknown };
+  // Render the module mode at widget scale (no controls), for dashboards.
+  compactModuleMode?: boolean;
   view: ViewDefinition;
   items: ViewItem[];
   // Rich project cards (2026-08-17): card data + element config, resolved by
@@ -1114,7 +1102,30 @@ export default function ViewRenderer({
   // the calendar/agenda day grouping render in it. Defaults to DEFAULT_TIMEZONE
   // so a caller that hasn't threaded it behaves exactly as before.
   tz?: string;
-}) {
+};
+
+export default function ViewRenderer(allProps: ViewRendererProps) {
+  const {
+  view,
+  items,
+  groupOrder,
+  propertyLabels = {},
+  propertyKinds = {},
+  boardDraggable = false,
+  statuses,
+  month,
+  calendarNavHref,
+  calendarEvents,
+  selectable = false,
+  rowActions,
+  rollups,
+  today,
+  tz = DEFAULT_TIMEZONE,
+  groupEdges,
+  projectCards,
+  moduleMode,
+  compactModuleMode,
+} = allProps;
   if (items.length === 0) {
     return (
       <p className="mt-6 px-2 text-sm text-neutral-600">
@@ -1148,6 +1159,19 @@ export default function ViewRenderer({
         />
       );
     case "calendar": {
+      // A module's mode (ADR-287), e.g. the Year Map: the server caller
+      // (moduleCalendarModeData) prepares its data and passes it in. Without it
+      // (module off, mode unknown, or a mount that doesn't resolve modes) the view
+      // renders as Month.
+      const mode = view.display?.mode ?? DISPLAY_DEFAULTS.mode;
+      if (!isCoreCalendarMode(mode)) {
+        const modeView = moduleMode && (
+          <ModuleModeView mode={moduleMode.mode} data={moduleMode.data} compact={compactModuleMode} />
+        );
+        if (modeView) return modeView;
+        const asMonth = { ...view, display: { ...view.display, mode: "month" } };
+        return <ViewRenderer {...allProps} view={asMonth} />;
+      }
       // History (2026-09-03): the vertical spine, ahead of every planner check.
       // It rides display.mode rather than a sixth view_layout, so it needed no
       // enum migration and every ViewRenderer mount picks it up unchanged.

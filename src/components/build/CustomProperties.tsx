@@ -447,7 +447,8 @@ export default function CustomProperties({
   // set of relations edges with role = the field key, rendered by the typed
   // relation input (RelationProperties), not here. Skip them so this scalar
   // panel doesn't draw an empty control for them.
-  const scalarSchema = schema.filter((p) => p.kind !== "relation");
+  // Hidden fields (PropertyDef.hidden) stay off the canvas.
+  const scalarSchema = schema.filter((p) => p.kind !== "relation" && !p.hidden);
   if (scalarSchema.length === 0) return null;
 
   // Split the schema into filled/open fields (labelled rows) and empty box-like

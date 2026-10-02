@@ -66,6 +66,8 @@ type Row = {
   withTime: boolean;
   // Show as a settable chip on the quick-add card (ADR-268).
   quickCapture: boolean;
+  // Keep off the item page, default columns, list tabs and quick add.
+  hidden: boolean;
 };
 
 function Field({
@@ -181,6 +183,7 @@ export default function TypeBuilder({
     withEnd: p?.withEnd === true,
     withTime: p?.withTime === true,
     quickCapture: p?.quickCapture === true,
+    hidden: p?.hidden === true,
   });
 
   const [label, setLabel] = useState(initial?.label ?? "");
@@ -209,6 +212,7 @@ export default function TypeBuilder({
       withEnd: p.withEnd === true,
       withTime: p.withTime === true,
       quickCapture: p.quickCapture === true,
+      hidden: p.hidden === true,
     }))
   );
   const [busy, setBusy] = useState(false);
@@ -271,6 +275,7 @@ export default function TypeBuilder({
         if (r.withTime) def.withTime = true;
       }
       if (r.quickCapture) def.quickCapture = true;
+      if (r.hidden) def.hidden = true;
       schema.push(def);
     }
     return { schema };
@@ -606,6 +611,24 @@ export default function TypeBuilder({
               />
               Show as a chip on the quick-add card
               <span className="text-neutral-600">(set it before you press Add)</span>
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <input
+                type="checkbox"
+                className="ledgr-check"
+                checked={row.hidden}
+                onChange={(e) => updateRow(row.id, { hidden: e.target.checked })}
+              />
+              <span className="group relative cursor-help underline decoration-dotted decoration-neutral-600 underline-offset-2">
+                Hidden
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-neutral-700 bg-neutral-900 p-2 text-xs normal-case text-neutral-300 opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+                >
+                  Keep this field off the item page, default columns, list tabs and quick add. It
+                  still shows in every view setting, so a view can use it.
+                </span>
+              </span>
             </label>
             {NEEDS_OPTIONS.includes(row.kind) && (
               <input

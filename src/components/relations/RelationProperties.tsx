@@ -37,7 +37,7 @@ export default async function RelationProperties({
   // the "+" add on the right — replacing the dt/dd rows and the link glyph.
   rail?: boolean;
 }) {
-  const relationProps = props.filter((p) => p.kind === "relation");
+  const relationProps = props.filter((p) => p.kind === "relation" && !p.hidden);
   if (relationProps.length === 0) return null;
 
   const [byRole, typeRows] = await Promise.all([

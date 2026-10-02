@@ -102,7 +102,7 @@ export default async function TypeList({
   // and the active sort lens (reversible) orders a window of rows (Load-more
   // grows it). The count is the true match total (filters included). Bespoke
   // lenses (calendar/timeline) ignore the sort and render their own body.
-  const filterProps = propertyFilterOptions(typeDef.propertySchema);
+  const filterProps = propertyFilterOptions(typeDef.propertySchema.filter((p) => !p.hidden));
   const propFilters = propertyFiltersFromParams(sp, typeDef.propertySchema);
   const filter = { type, ...(propFilters.length ? { propertyFilters: propFilters } : {}) };
   const show = parseListWindow(sp.show);

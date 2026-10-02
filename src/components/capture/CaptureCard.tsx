@@ -146,7 +146,7 @@ function SimpleCapture({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!live) return;
-        const props = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
+        const props = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]).filter((p) => !p.hidden) : [];
         setSchema(props);
         setOpenProps(props.filter((p) => p.quickCapture).map((p) => p.key));
         const t = d?.type as { quickCaptureStatus?: boolean; statusMode?: StatusMode; statusSchema?: StatusDef[] | null } | undefined;

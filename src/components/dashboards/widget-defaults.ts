@@ -12,7 +12,11 @@ import type { ViewDefinition } from "@/lib/views";
 export type ViewWidgetKind = "view" | "stat" | "tree";
 
 // A view-backed widget (list / count / nested-list).
-export function buildViewWidget(view: ViewDefinition, kind: ViewWidgetKind): DashboardWidget {
+export function buildViewWidget(
+  view: ViewDefinition,
+  kind: ViewWidgetKind,
+  renderStyle: "compact" | "faithful" = "compact"
+): DashboardWidget {
   const base = { id: crypto.randomUUID(), viewId: view.id, itemId: null, layout: {} as WidgetLayout };
   if (kind === "stat") return { ...base, kind, settings: { label: view.name, metric: "count" } };
   if (kind === "tree")
@@ -33,7 +37,7 @@ export function buildViewWidget(view: ViewDefinition, kind: ViewWidgetKind): Das
   return {
     ...base,
     kind,
-    settings: { titleOverride: null, itemLimit: null, sortOverride: null, renderStyle: "compact" },
+    settings: { titleOverride: null, itemLimit: null, sortOverride: null, renderStyle },
   };
 }
 

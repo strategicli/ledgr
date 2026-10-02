@@ -18,7 +18,8 @@ import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
-import { getView, queryViewItems } from "@/lib/views";
+import { getView, queryViewItems, VIEW_MAX } from "@/lib/views";
+import { calendarModeWide, moduleCalendarModeData, moduleModeQueryWindow } from "@/lib/module-calendar-modes";
 import { projectCardsForView } from "@/lib/project-cards";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { childRollups } from "@/lib/subtasks";
@@ -52,7 +53,20 @@ export default async function ViewPage({ params, searchParams }: Context) {
     throw err;
   }
 
-  const items = await queryViewItems(owner.id, view.filter, view.sort);
+  // A whole-year module mode (ADR-287) takes the full width and the full row cap.
+  // The query loads only rows whose dates can touch the window the map shows.
+  // ponytail: ceiling is VIEW_MAX (2,000) rows inside that window, in the view's
+  // sort; a window holding more drops the tail.
+  const wide = view.layout === "calendar" && calendarModeWide(view.display?.mode);
+  const dateWindow = wide
+    ? moduleModeQueryWindow(view, { month, today: appTodayYmd(new Date(), await getAppTimezone(owner.id)) })
+    : null;
+  const items = await queryViewItems(
+    owner.id,
+    view.filter,
+    view.sort,
+    wide ? { limit: VIEW_MAX, dateWindow: dateWindow ?? undefined } : undefined
+  );
   const rollups = await childRollups(owner.id, items.map((i) => i.id));
   const tz = await getAppTimezone(owner.id);
   // Rich project cards (2026-08-17): a project-scoped list/board view renders
@@ -135,9 +149,22 @@ export default async function ViewPage({ params, searchParams }: Context) {
         )
       : undefined;
 
+  const moduleMode = wide
+    ? await moduleCalendarModeData({
+        ownerId: owner.id,
+        view,
+        items,
+        statuses,
+        today: appTodayYmd(new Date(), tz),
+        tz,
+        month,
+        navHref: `/views/${view.id}`,
+      })
+    : null;
+
   return (
     <main className="min-h-screen">
-      <div className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-12">
+      <div className={wide ? "w-full px-4 py-6 sm:px-6" : "mx-auto w-full max-w-5xl px-6 py-10 sm:px-12"}>
         <div className="flex items-baseline justify-between gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-neutral-100">
             {view.name}
@@ -201,6 +228,7 @@ export default async function ViewPage({ params, searchParams }: Context) {
               today={appTodayYmd(new Date(), tz)}
               tz={tz}
               projectCards={projectCards ?? undefined}
+              moduleMode={moduleMode ?? undefined}
             />
           </DeskHostProvider>
           <BulkActionBar {...(type ? bulkConfigForType(type) : {})} />

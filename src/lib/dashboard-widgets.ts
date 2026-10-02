@@ -311,6 +311,9 @@ export type WidgetData = {
   // only a single-select property is safe to drag (a multi_select would be
   // corrupted into a string).
   groupPropKind?: string | null;
+  // A module calendar mode's prepared data (Year Map, ADR-287), for a faithful
+  // calendar widget whose view uses that mode. Plain JSON; ViewRenderer draws it.
+  moduleMode?: { mode: string; data: unknown };
   // Per-item confirmed related items (the compact list's "associated with" chip).
   related?: Record<string, { id: string; title: string; type: string }[]>;
   // tree kind: the parent rows, plus each parent's (capped) child rows and the

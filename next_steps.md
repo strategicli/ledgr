@@ -15,6 +15,11 @@ Built and verified on the dev database, not yet merged. After it ships to the hu
 4. **Repoint each scheduled Claude task** to end with: file a Claude Run with the report, tick Notify me only if Brandon needs to know. Then turn off the Claude app's notifications on the phone.
 5. **First real ping is the proof.** If none arrives, Build → Errors will have a `claude-runs` row saying why.
 
+## 🟡 NEXT: Year Map: remaining queue (ADR-287, slices 1 to 3 built 2026-10-02 on branch `feat/year-map`)
+
+Slice 1 is a default-off module (Build → Modules → Year Map) with a "Year Map" saved view, per-view settings, a legend, and print. Slice 2 adds drag to move, edge drag to resize, and drag or double-click to create, with undo. Slice 3 adds an Outlook all-day and multi-day layer (More, needs calendar sync) and the "Next 3 Months (Year Map)" dashboard preset (Add widget, Prebuilt). Record and ceilings: `explorations/year-map.md`. Queue:
+1. **Touch editing:** a long-press drag on phones (slice 2 is mouse and pen only, so the map still scrolls on touch).
+
 ## 🟡 NEXT — Presentations module: first real use (explorations/presentations.md)
 
 Built 2026-09-26, off by default (Build → Modules → Presentations). Left for Brandon:

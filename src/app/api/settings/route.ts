@@ -12,6 +12,7 @@ import { ensureNoteEditingPrompt } from "@/lib/note-editing-prompt";
 // the inversion if this route ever joins the fence (ADR-272 step 4).
 import { agentAvailable } from "@/modules/agent/lib/gate";
 import { ensureAgentPrompts } from "@/modules/agent/lib/prompts";
+import { ensureYearMapView } from "@/modules/year-map/server";
 import { moduleOn } from "@/lib/modules/enabled";
 import { requiresViolations } from "@/lib/modules";
 
@@ -65,6 +66,10 @@ export async function PATCH(request: Request) {
     if (!moduleOn(before, "live-context") && moduleOn(settings, "live-context")) {
       await ensureNoteEditingPrompt(owner.id);
       settings = await getSettings(owner.id);
+    }
+    // First time the Year Map is turned on (ADR-287): seed its saved view.
+    if (!moduleOn(before, "year-map") && moduleOn(settings, "year-map")) {
+      await ensureYearMapView(owner.id);
     }
     return NextResponse.json({ settings });
   } catch (err) {

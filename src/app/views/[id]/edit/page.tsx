@@ -7,6 +7,9 @@ import ViewBuilder from "@/components/views/ViewBuilder";
 import { ItemError } from "@/lib/items";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
+import { calendarModesFor } from "@/lib/modules";
+import { offModuleIds } from "@/lib/modules/enabled";
+import { getSettings } from "@/lib/settings";
 import { getView, listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +50,7 @@ export default async function EditView({ params }: Context) {
           </Link>
         </div>
         <ViewBuilder
+          moduleModes={calendarModesFor(offModuleIds(await getSettings(owner.id))).map((m) => ({ id: m.id, label: m.label }))}
           initial={view}
           people={people.map((p) => ({ id: p.id, title: p.title }))}
           types={types.map((t) => ({

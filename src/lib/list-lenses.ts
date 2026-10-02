@@ -152,7 +152,7 @@ export function resolveLensSort(lens: Lens, reversed: boolean): ListSort | null 
 
 // --- Editor helpers -------------------------------------------------------
 
-type PropLike = { key: string; label: string; kind: string };
+type PropLike = { key: string; label: string; kind: string; hidden?: boolean };
 
 // The type's properties that make sense to sort a lens by: text, number, date,
 // and single-select. (multi_select is an array; url/checkbox/relation aren't
@@ -162,7 +162,12 @@ export function lensPropertyOptions(
 ): { key: string; label: string; numeric: boolean }[] {
   return schema
     .filter((p) => p.kind === "text" || p.kind === "number" || p.kind === "date" || p.kind === "select")
-    .map((p) => ({ key: p.key, label: p.label, numeric: p.kind === "number" }));
+    .map((p) => ({
+      key: p.key,
+      // Hidden fields stay pickable here, marked.
+      label: p.hidden ? `${p.label} (hidden)` : p.label,
+      numeric: p.kind === "number",
+    }));
 }
 
 // --- Validation (used by parseSettings + the API route) -------------------

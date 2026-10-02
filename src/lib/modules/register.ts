@@ -36,6 +36,7 @@ import { tailscaleModule } from "@/modules/tailscale/manifest";
 import { presentationsModule } from "@/modules/presentations/manifest";
 import { websitePagesModule } from "@/modules/website-pages/manifest";
 import { claudeRunsModule } from "@/modules/claude-runs/manifest";
+import { yearMapModule } from "@/modules/year-map/manifest";
 
 const WORKFLOW_MODULES: ModuleManifest[] = [
   songModule,
@@ -67,6 +68,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   presentationsModule,
   websitePagesModule,
   claudeRunsModule,
+  yearMapModule,
 ];
 
 for (const m of WORKFLOW_MODULES) {
