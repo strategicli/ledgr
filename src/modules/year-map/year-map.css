@@ -97,7 +97,8 @@
 
 /* Editing (slice 2): grab cursors, edge handles, the drag-to-create range,
    and the title box for a new item. */
-.ym-grid { user-select: none; }
+.ym-grid { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ym-bar { -webkit-touch-callout: none; }
 .ym-bar { position: relative; }
 .ym-bar.drag { cursor: grab; }
 .ym-bar.drag:active { cursor: grabbing; }

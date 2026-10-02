@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 
 const Y = await import("../src/modules/year-map/lib");
+const W0 = await import("../src/modules/year-map/window");
 const { layoutOverlaps, assignLanes } = await import("../src/lib/planner-overlap");
 const { parseDisplay } = await import("../src/lib/views");
 
@@ -202,6 +203,23 @@ t("drag math: day steps, moves, and edge drags that never cross", () => {
   assert.deepEqual(Y.dragSpan("end", span, "2026-09-25", "2026-09-01"), { start: "2026-09-21", end: "2026-09-21" });
   assert.deepEqual(Y.dragSpan("start", span, "2026-09-21", "2026-09-30"), { start: "2026-09-25", end: "2026-09-25" });
   assert.deepEqual(Y.dragSpan("start", span, "2026-09-21", "2026-09-14"), { start: "2026-09-14", end: "2026-09-25" });
+});
+
+t("clampPrompt keeps the title box on a phone screen", () => {
+  assert.deepEqual(Y.clampPrompt(300, 20, 375, 700), { left: 107, top: 20 });
+  assert.deepEqual(Y.clampPrompt(-5, 690, 375, 700), { left: 8, top: 622 });
+});
+
+t("query window: calendar, fiscal and rolling ranges, and the view's date field", () => {
+  assert.deepEqual(W0.yearWindowRange({ window: "year" }, { y: 2026, m: 6 }), { start: "2026-01-01", end: "2026-12-31" });
+  assert.deepEqual(W0.yearWindowRange({ window: "fiscal", fiscalStart: 7 }, { y: 2026, m: 3 }), { start: "2025-07-01", end: "2026-06-30" });
+  assert.deepEqual(W0.yearWindowRange({ window: "rolling", months: 3 }, { y: 2026, m: 11 }), { start: "2026-11-01", end: "2027-01-31" });
+  const v = { display: null, dateProperty: null } as never;
+  assert.equal(W0.yearQueryWindow(v, { today: "2026-10-02" }).start, "2026-01-01");
+  assert.equal(W0.yearQueryWindow(v, { month: "2025-02", today: "2026-10-02" }).start, "2025-01-01");
+  const c = { display: { startField: { prop: "footprint" } }, dateProperty: null } as never;
+  assert.deepEqual(W0.yearQueryWindow(c, { today: "2026-10-02" }).propKeys, ["footprint"]);
+  assert.deepEqual(W0.yearQueryWindow({ display: null, dateProperty: "createdAt" } as never, { today: "2026-10-02" }).stamps, ["createdAt"]);
 });
 
 console.log(`\n${n} checks passed.`);

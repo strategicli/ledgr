@@ -7,14 +7,16 @@
 // asks the document which cell it is over. That works across month rows and in
 // both column alignments with no geometry of its own.
 //
-// ponytail: mouse and pen only. A touch drag would fight the two-axis scroll;
-// add a long-press gesture (usePlannerTouchDrag) if editing on the phone matters.
+// Touch: press and hold (the planner's LONG_PRESS_MS) arms a move drag on a bar or
+// a new item on an empty day; moving before that is a scroll. Edge handles stay
+// mouse/pen only, since they are too small for a finger.
 "use client";
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/ui/ActionToast";
 import { buildPatch, type PlaceableItem, type PlacementSpec } from "@/lib/placement";
+import { exceedsMoveThreshold, LONG_PRESS_MS } from "@/lib/board-touch-drag";
 import { dragSpan, fmtSpan, type DaySpan, type DragKind } from "./lib";
 
 export type YearEdit = {
@@ -88,9 +90,66 @@ export function useYearEdit({ tz, specs, createType }: { tz: string; specs: Plac
     });
   }
 
+  // Touch press-and-hold, shared by bars and empty days. Before the hold, a move
+  // past the tolerance hands the gesture back to the browser (a scroll). After it,
+  // touchmove is cancelled so the page stays put while the finger drags.
+  function touchHold(ev: React.PointerEvent, h: { arm(): void; move(x: number, y: number): void; end(x: number, y: number): void; cancel(): void }) {
+    const from = { x: ev.clientX, y: ev.clientY };
+    let armed = false;
+    const ac = new AbortController();
+    const opts = { signal: ac.signal };
+    const timer = setTimeout(() => {
+      armed = true;
+      navigator.vibrate?.(10);
+      h.arm();
+    }, LONG_PRESS_MS);
+    const stop = () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+    window.addEventListener("pointermove", (m) => {
+      if (armed) return h.move(m.clientX, m.clientY);
+      if (exceedsMoveThreshold(from, { x: m.clientX, y: m.clientY })) stop();
+    }, opts);
+    window.addEventListener("touchmove", (t) => { if (armed && t.cancelable) t.preventDefault(); }, { ...opts, passive: false });
+    window.addEventListener("contextmenu", (c) => c.preventDefault(), opts);
+    window.addEventListener("pointerup", (u) => {
+      stop();
+      if (armed) h.end(u.clientX, u.clientY);
+    }, opts);
+    window.addEventListener("pointercancel", () => {
+      stop();
+      if (armed) h.cancel();
+    }, opts);
+  }
+
   // A press on a bar (or one of its edge handles).
   function beginDrag(ev: React.PointerEvent, e: Editable, kind: DragKind) {
-    if (ev.button !== 0 || ev.pointerType === "touch" || !e.edit) return;
+    if (ev.button !== 0 || !e.edit) return;
+    if (ev.pointerType === "touch") {
+      if (kind !== "move" || !e.edit.can.move) return;
+      const grab = dayAt(ev.clientX, ev.clientY);
+      if (!grab) return;
+      const orig: DaySpan = override[e.id] ?? { start: e.start, end: e.end };
+      let next = orig;
+      dragged.current = false;
+      touchHold(ev, {
+        arm: () => { dragged.current = true; },
+        move: (x, y) => {
+          const at = dayAt(x, y);
+          if (!at) return;
+          next = dragSpan("move", orig, grab, at);
+          setOverride((o) => ({ ...o, [e.id]: next }));
+        },
+        end: () => {
+          // The click after a hold may never fire, so don't leave the guard set.
+          setTimeout(() => { dragged.current = false; }, 400);
+          if (next.start !== orig.start || next.end !== orig.end) commit(e, orig, next);
+        },
+        cancel: () => setOverride((o) => ({ ...o, [e.id]: orig })),
+      });
+      return;
+    }
     const can = e.edit.can;
     if (kind === "move" && !can.move) return;
     if (kind === "start" && !(can.resizeStart || e.edit.stretch)) return;
@@ -126,10 +185,21 @@ export function useYearEdit({ tz, specs, createType }: { tz: string; specs: Plac
 
   // A press on empty days: drag out a range, then name the new item.
   function beginCreate(ev: React.PointerEvent) {
-    if (!canCreate || ev.button !== 0 || ev.pointerType === "touch") return;
+    if (!canCreate || ev.button !== 0) return;
     if ((ev.target as HTMLElement).closest(".ym-bar")) return;
     const from = dayAt(ev.clientX, ev.clientY);
     if (!from) return;
+    if (ev.pointerType === "touch") {
+      // Hold lights the day; letting go opens the title box (focus needs that gesture).
+      const day = { start: from, end: from };
+      touchHold(ev, {
+        arm: () => setDraft(day),
+        move: () => {},
+        end: (x, y) => setPrompt({ span: day, x, y }),
+        cancel: () => setDraft(null),
+      });
+      return;
+    }
     let span: DaySpan = { start: from, end: from };
     const ac = new AbortController();
     window.addEventListener("pointermove", (m) => {

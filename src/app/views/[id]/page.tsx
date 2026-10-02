@@ -19,7 +19,7 @@ import { appTodayYmd } from "@/lib/recurrence-service";
 import { getType } from "@/lib/types";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
 import { getView, queryViewItems, VIEW_MAX } from "@/lib/views";
-import { calendarModeWide, moduleCalendarModeData } from "@/lib/module-calendar-modes";
+import { calendarModeWide, moduleCalendarModeData, moduleModeQueryWindow } from "@/lib/module-calendar-modes";
 import { projectCardsForView } from "@/lib/project-cards";
 import { outgoingRelationsBySource } from "@/lib/relations";
 import { childRollups } from "@/lib/subtasks";
@@ -54,10 +54,19 @@ export default async function ViewPage({ params, searchParams }: Context) {
   }
 
   // A whole-year module mode (ADR-287) takes the full width and the full row cap.
-  // ponytail: the cap is VIEW_MAX rows in the view's sort, not a date window;
-  // add a date-range filter if a year ever holds more.
+  // The query loads only rows whose dates can touch the window the map shows.
+  // ponytail: ceiling is VIEW_MAX (2,000) rows inside that window, in the view's
+  // sort; a window holding more drops the tail.
   const wide = view.layout === "calendar" && calendarModeWide(view.display?.mode);
-  const items = await queryViewItems(owner.id, view.filter, view.sort, wide ? VIEW_MAX : undefined);
+  const dateWindow = wide
+    ? moduleModeQueryWindow(view, { month, today: appTodayYmd(new Date(), await getAppTimezone(owner.id)) })
+    : null;
+  const items = await queryViewItems(
+    owner.id,
+    view.filter,
+    view.sort,
+    wide ? { limit: VIEW_MAX, dateWindow: dateWindow ?? undefined } : undefined
+  );
   const rollups = await childRollups(owner.id, items.map((i) => i.id));
   const tz = await getAppTimezone(owner.id);
   // Rich project cards (2026-08-17): a project-scoped list/board view renders

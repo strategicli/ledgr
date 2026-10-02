@@ -11,7 +11,9 @@ import { moduleOnFor } from "@/lib/modules/enabled";
 import type { StatusDef } from "@/lib/status";
 import type { ViewDefinition } from "@/lib/views";
 import type { ViewItem } from "@/components/views/ViewRenderer";
+import type { DateWindow } from "@/lib/views";
 import { prepareYearMap } from "@/modules/year-map/YearMap";
+import { yearQueryWindow } from "@/modules/year-map/window";
 
 // What a module's mode receives: the view, its already owner-scoped body-free
 // rows, and the calendar context ViewRenderer was given.
@@ -34,6 +36,20 @@ const CALENDAR_MODE_PREPARE: Record<string, (props: CalendarModeProps) => Promis
 // a switched-off module's mode renders as Month, which is fine wide too.
 export function calendarModeWide(mode: unknown): boolean {
   return calendarModesFor().some((m) => m.id === mode && m.wide);
+}
+
+// Per mode, the date window its rows must cover (so the page loads only items
+// whose dates can touch it); null or absent = load the view's rows as before.
+const CALENDAR_MODE_WINDOW: Record<string, (view: ViewDefinition, ctx: { month?: string; today: string }) => DateWindow | null> = {
+  year: yearQueryWindow,
+};
+
+// The date window a view's module mode needs, or null (core mode, module off is
+// the caller's concern: a window only narrows rows, it never changes meaning).
+export function moduleModeQueryWindow(view: ViewDefinition, ctx: { month?: string; today: string }): DateWindow | null {
+  const mode = view.display?.mode;
+  const reg = calendarModesFor().find((m) => m.id === mode);
+  return (reg && CALENDAR_MODE_WINDOW[reg.id]?.(view, ctx)) || null;
 }
 
 // The prepared mode for a view, or null when its mode is core, unregistered, or

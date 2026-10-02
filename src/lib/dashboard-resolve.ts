@@ -21,7 +21,7 @@ import {
   TREE_PARENT_DEFAULT,
 } from "@/lib/dashboard-tree";
 import { getItem, ItemError, type ItemListRow } from "@/lib/items";
-import { moduleCalendarModeData } from "@/lib/module-calendar-modes";
+import { moduleCalendarModeData, moduleModeQueryWindow } from "@/lib/module-calendar-modes";
 import { relatedSummaryFor } from "@/lib/relations";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
@@ -175,8 +175,8 @@ export async function resolveWidget(
       "renderStyle" in widget.settings && widget.settings.renderStyle === "faithful";
     // A module calendar mode (the Year Map) draws the whole row set, not a
     // preview of it, so it ignores the widget's row limit.
-    // ponytail: capped at VIEW_MAX rows in the view's sort, not a date window; add
-    // a date-range filter if a map's rows ever exceed it.
+    // It loads only rows whose dates can touch its window.
+    // ponytail: ceiling is VIEW_MAX (2,000) rows inside that window.
     const modeId = view.layout === "calendar" ? view.display?.mode : undefined;
     const moduleModeWanted = faithful && modeId != null && !isCoreCalendarMode(modeId);
     const limit = moduleModeWanted
@@ -184,12 +184,15 @@ export async function resolveWidget(
       : "itemLimit" in widget.settings && widget.settings.itemLimit
         ? widget.settings.itemLimit
         : PREVIEW;
+    const dateWindow = moduleModeWanted
+      ? moduleModeQueryWindow(view, { today: appTodayYmd(new Date(), await getAppTimezone(ownerId)) })
+      : null;
     const sort =
       "sortOverride" in widget.settings && widget.settings.sortOverride
         ? widget.settings.sortOverride
         : view.sort;
     const [rows, count, grouping] = await Promise.all([
-      queryViewItems(ownerId, filter, sort, limit),
+      queryViewItems(ownerId, filter, sort, dateWindow ? { limit, dateWindow } : limit),
       countViewItems(ownerId, filter),
       faithful ? groupingFor(view) : Promise.resolve(undefined),
     ]);

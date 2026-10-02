@@ -4,7 +4,7 @@
 // stored system views later without a query rewrite. Same discipline as
 // every list read: owner-scoped, body-free listColumns, live items only.
 import { and, asc, desc, eq, inArray, isNull, lt, gte, ne, or, sql, type SQL } from "drizzle-orm";
-import { unionAll } from "drizzle-orm/pg-core";
+import { unionAll, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb } from "@/db";
 import { items, relations, views } from "@/db/schema";
 import { type ItemStatus, type Urgency } from "@/lib/item-enums";
@@ -507,15 +507,53 @@ function listOrderExpr(sort: Exclude<ListSort, { field: "mostLinked" }>): SQL {
   return asc ? sql`${col} asc nulls last` : sql`${col} desc nulls last`;
 }
 
+// An optional date window on the view query (Year Map, ADR-287). A deliberate
+// SUPERSET of "dates inside [start, end]" (YYYY-MM-DD, inclusive): a row passes
+// when SOME candidate date is on/after start AND SOME is on/before end, never a
+// miss. Candidates: the date columns plus properties->>key and ->>key__end for
+// each propKey. Text compares as text (never cast, so a malformed value can't
+// throw); end is made exclusive (< next day) so "2026-12-31T09:00" still passes.
+// Calendar-day columns are UTC-midnight (ADR-008); timestamps get a day of slack
+// each side so a time zone can't drop an edge item. Undated rows are excluded.
+export type DateWindow = {
+  start: string;
+  end: string;
+  propKeys?: string[];
+  // Built-in stamps a view may place by (its dateProperty) beyond the columns above.
+  stamps?: ("createdAt" | "updatedAt")[];
+};
+export type ViewQueryOpts = { limit?: number; dateWindow?: DateWindow };
+
+const DAY_MS = 86_400_000;
+const ymdMs = (ymd: string) => Date.parse(`${ymd}T00:00:00Z`);
+const ymdAt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+function dateWindowSql(w: DateWindow): SQL | null {
+  const lo = new Date(ymdMs(w.start) - DAY_MS);
+  const hi = new Date(ymdMs(w.end) + 2 * DAY_MS);
+  if (Number.isNaN(lo.getTime()) || Number.isNaN(hi.getTime())) return null;
+  const endExcl = ymdAt(ymdMs(w.end) + DAY_MS);
+  const cols: AnyPgColumn[] = [items.scheduledDate, items.dueDate, items.meetingAt, items.endAt, items.noteDate];
+  for (const st of w.stamps ?? []) cols.push(st === "createdAt" ? items.createdAt : items.updatedAt);
+  const texts = (w.propKeys ?? []).flatMap((k) => [k, `${k}__end`]).map((k) => sql`(${items.properties} ->> ${k})`);
+  const after = or(...cols.map((c) => gte(c, lo)), ...texts.map((t) => sql`${t} >= ${w.start}`));
+  const before = or(...cols.map((c) => lt(c, hi)), ...texts.map((t) => sql`${t} < ${endExcl}`));
+  return after && before ? (and(after, before) ?? null) : null;
+}
+
 // Exposed as a query builder (items.ts pattern) so verification can assert
 // the generated SQL carries owner_id and selects no body.
 export function viewItemsQuery(
   ownerId: string,
   filter: ViewFilter,
   sort: ListSort = { field: "updatedAt", dir: "desc" },
-  limit = VIEW_LIMIT
+  opts: number | ViewQueryOpts = VIEW_LIMIT
 ) {
+  const o: ViewQueryOpts = typeof opts === "number" ? { limit: opts } : opts;
+  const limit = o.limit ?? VIEW_LIMIT;
   const where = viewWhere(ownerId, filter);
+  const win = o.dateWindow ? dateWindowSql(o.dateWindow) : null;
+  if (win) where.push(win);
   const db = getDb();
   const capped = Math.min(Math.max(limit, 1), VIEW_MAX);
 
@@ -575,9 +613,9 @@ export async function queryViewItems(
   ownerId: string,
   filter: ViewFilter,
   sort?: ListSort,
-  limit?: number
+  opts?: number | ViewQueryOpts
 ) {
-  return viewItemsQuery(ownerId, filter, sort, limit);
+  return viewItemsQuery(ownerId, filter, sort, opts);
 }
 
 // Badge count for a view (slice 29): the true number of matching items,

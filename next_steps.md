@@ -19,7 +19,6 @@ Built and verified on the dev database, not yet merged. After it ships to the hu
 
 Slice 1 is a default-off module (Build → Modules → Year Map) with a "Year Map" saved view, per-view settings, a legend, and print. Slice 2 adds drag to move, edge drag to resize, and drag or double-click to create, with undo. Slice 3 adds an Outlook all-day and multi-day layer (More, needs calendar sync) and the "Next 3 Months (Year Map)" dashboard preset (Add widget, Prebuilt). Record and ceilings: `explorations/year-map.md`. Queue:
 1. **Touch editing:** a long-press drag on phones (slice 2 is mouse and pen only, so the map still scrolls on touch).
-2. **The date-window query:** pass the window's dates into the view query, since the map and its widget read at most 2,000 rows in the view's sort.
 
 ## 🟡 NEXT — Presentations module: first real use (explorations/presentations.md)
 

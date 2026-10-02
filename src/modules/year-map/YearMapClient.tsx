@@ -12,6 +12,7 @@ import { useYearEdit, type YearEdit } from "./useYearEdit";
 import {
   PAPERS,
   addMonths,
+  clampPrompt,
   colorFor,
   fmtDay,
   daysIn,
@@ -143,6 +144,18 @@ export default function YearMapClient({
     if (await save(next)) router.refresh();
   }
 
+  // Window, fiscal start and rolling months change which rows the server loads,
+  // so they save at once and then refresh (like the Outlook toggle).
+  // A typed number (rolling months) waits for a pause, so "12" is one save.
+  function updateWindow(patch: Partial<YearSettings>, waitMs = 0) {
+    const next = { ...s, ...patch };
+    setS(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      if (view.isSystem || (await save(next))) router.refresh();
+    }, waitMs);
+  }
+
   // The window: which months, starting where.
   const anchor: Ym = month
     ? { y: Number(month.slice(0, 4)), m: Number(month.slice(5, 7)) }
@@ -243,7 +256,7 @@ export default function YearMapClient({
         )}
         <label>
           Window
-          <select value={s.window} onChange={(e) => update({ window: e.target.value as YearSettings["window"] })}>
+          <select value={s.window} onChange={(e) => updateWindow({ window: e.target.value as YearSettings["window"] })}>
             <option value="year">Calendar year</option>
             <option value="fiscal">Fiscal year</option>
             <option value="rolling">Rolling months</option>
@@ -252,7 +265,7 @@ export default function YearMapClient({
         {s.window === "fiscal" && (
           <label>
             from
-            <select value={s.fiscalStart} onChange={(e) => update({ fiscalStart: Number(e.target.value) })}>
+            <select value={s.fiscalStart} onChange={(e) => updateWindow({ fiscalStart: Number(e.target.value) })}>
               {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </select>
           </label>
@@ -260,7 +273,7 @@ export default function YearMapClient({
         {s.window === "rolling" && (
           <label>
             <input type="number" min={1} max={24} value={s.months}
-              onChange={(e) => update({ months: Math.min(24, Math.max(1, Number(e.target.value) || 3)) })} />
+              onChange={(e) => updateWindow({ months: Math.min(24, Math.max(1, Number(e.target.value) || 3)) }, 700)} />
             months
           </label>
         )}
@@ -446,7 +459,7 @@ export default function YearMapClient({
         </div>
       )}
       {ed.prompt && (
-        <form className="ym-new" style={{ left: Math.min(ed.prompt.x, window.innerWidth - 260), top: ed.prompt.y + 8 }}
+        <form className="ym-new" style={clampPrompt(ed.prompt.x, ed.prompt.y + 8, window.innerWidth, window.innerHeight)}
           onSubmit={(ev) => {
             ev.preventDefault();
             void ed.create(new FormData(ev.currentTarget).get("title") as string);
@@ -462,7 +475,7 @@ export default function YearMapClient({
       {saveError && <p className="ym-note" role="alert">{saveError}</p>}
       {!compact && <p className="ym-note">
         Click a legend label to hide or show that group; click its swatch to recolor it. Drag a bar to move it, or its ends to
-        change its dates. Drag across empty days, or double-click one, to add an item. Settings save to this view.
+        change its dates. Drag across empty days, or double-click one, to add an item. On a phone, press and hold a bar to move it, or an empty day to add. Settings save to this view.
       </p>}
     </div>
   );

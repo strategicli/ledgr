@@ -239,3 +239,8 @@ export function dragSpan(kind: DragKind, orig: DaySpan, grab: string, at: string
   if (kind === "start") return { start: at <= orig.end ? at : orig.end, end: orig.end };
   return { start: orig.start, end: at >= orig.start ? at : orig.start };
 }
+
+// Keep the new-item box on screen (it is ~260px wide, ~70px tall) at phone width.
+export function clampPrompt(x: number, y: number, vw: number, vh: number, w = 260, h = 70): { left: number; top: number } {
+  return { left: Math.max(8, Math.min(x, vw - w - 8)), top: Math.max(8, Math.min(y, vh - h - 8)) };
+}
