@@ -290,6 +290,11 @@ export type ModuleManifest = {
   available?: () => boolean;
   // --- step 4: where the module's route files live ---
   routes?: string[]; // src/app paths owned by this module
+  // Calendar sub-modes this module adds to the calendar layout (ADR-287). The
+  // policy half, like a type's canvasId: the renderer for each id is wired in
+  // `module-calendar-modes.tsx`. `wide` lets the view page drop its reading
+  // width for a mode that needs the whole screen.
+  calendarModes?: { id: string; label: string; wide?: boolean }[];
 };
 
 // An MCP resource a module serves: the resources/list descriptor plus a reader.
@@ -740,6 +745,17 @@ export function navEntriesForModules(off: readonly string[] = []): ModuleNavEntr
   return allModules()
     .filter((m) => !off.includes(m.id))
     .flatMap((m) => (m.nav ?? []).map((e) => ({ ...e, moduleId: m.id })));
+}
+
+// The calendar modes of every module not in `off` (ADR-287), for the view
+// builder's mode picker. Same off-list contract as navEntriesForModules.
+export type ModuleCalendarMode = NonNullable<ModuleManifest["calendarModes"]>[number] & {
+  moduleId: string;
+};
+export function calendarModesFor(off: readonly string[] = []): ModuleCalendarMode[] {
+  return allModules()
+    .filter((m) => !off.includes(m.id))
+    .flatMap((m) => (m.calendarModes ?? []).map((c) => ({ ...c, moduleId: m.id })));
 }
 
 // Every registered module's public paths, ENABLED OR NOT. proxy.ts runs before

@@ -114,6 +114,10 @@ export type PropertyDef = {
   // property on Build → Types, or via `quickCaptureProperties` on the type's
   // quick-capture route / MCP update_type.
   quickCapture?: boolean;
+  // Hidden: keeps the field off everyday surfaces (the item page, default list
+  // columns, list tabs, quick add). It still appears in every field picker, so a
+  // view can use it explicitly. Unset = shown as usual.
+  hidden?: boolean;
 };
 
 export type TypeDefinition = {
@@ -252,6 +256,7 @@ export function parsePropertySchema(raw: unknown): PropertyDef[] {
       def.withTime = true;
     }
     if (e.quickCapture === true) def.quickCapture = true;
+    if (e.hidden === true) def.hidden = true;
     if (KINDS_WITH_OPTIONS.includes(def.kind)) {
       if (!Array.isArray(e.options)) bad(`property '${key}' needs options`);
       const options = Array.from(

@@ -161,6 +161,8 @@ export const typeTools: McpTool[] = [
             ...(p.withTime ? { withTime: true } : {}),
             // Shown as a settable chip on the quick-add card (ADR-268).
             ...(p.quickCapture ? { quickCapture: true } : {}),
+            // Kept off the item page, default columns, list tabs and quick add.
+            ...(p.hidden ? { hidden: true } : {}),
           })),
         })),
       };
@@ -182,7 +184,8 @@ export const typeTools: McpTool[] = [
       "field may set `withTime: true` (stores a full ISO instant, not a day) " +
       "and/or `withEnd: true` (its end lives at `<key>__end`). Any field may set " +
       "`quickCapture: true` to appear as a settable chip on the quick-add card " +
-      "(the q key). Example: a " +
+      "(the q key), or `hidden: true` to keep it off the item page, default " +
+      "columns, list tabs and quick add (views can still pick it). Example: a " +
       "'sermon' type with a `series` select, a `date`, and a `passage` relation. " +
       "Call describe_workspace/list_types first to avoid duplicating an existing " +
       "type, and confirm the shape with the owner before creating.",

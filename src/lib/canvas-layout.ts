@@ -178,11 +178,12 @@ export function cardVocabulary(
   ids.push("body");
   if (type === "task") ids.push("recurrence", "recurrenceCalendar", "subtasks");
   if (type === "event") ids.push("meetingPrep", "meetingNotes", "meetingTranscripts");
+  // Hidden fields (PropertyDef.hidden) get no card; views still reach them.
   for (const p of propertySchema) {
-    if (p.kind !== "relation") ids.push(`prop:${p.key}`);
+    if (p.kind !== "relation" && !p.hidden) ids.push(`prop:${p.key}`);
   }
   for (const p of propertySchema) {
-    if (p.kind === "relation") ids.push(`rel:${p.key}`);
+    if (p.kind === "relation" && !p.hidden) ids.push(`rel:${p.key}`);
   }
   // files sits where the classic canvases place the Files section: after the
   // content web, before export (ADR-237 addendum 3 — an arrangeable card, so

@@ -352,7 +352,7 @@ export default function AddTaskCard({
     fetch("/api/types/task")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        const schema = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]) : [];
+        const schema = Array.isArray(d?.type?.propertySchema) ? (d.type.propertySchema as PropertyDef[]).filter((pr) => !pr.hidden) : [];
         setTaskSchema(schema);
         // Chip-flagged properties (ADR-268) start open; the rest wait in the kebab.
         setOpenProps(schema.filter((pr) => pr.quickCapture).map((pr) => pr.key));

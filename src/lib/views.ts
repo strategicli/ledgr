@@ -659,6 +659,20 @@ export type ViewColumn =
 export const CALENDAR_MODES = ["month", "timegrid", "timeline", "spine"] as const;
 export type CalendarMode = (typeof CALENDAR_MODES)[number];
 
+// A module can contribute a further mode (ADR-287, e.g. the Year Map's "year"),
+// registered through the manifest's `calendarModes` slot. The stored value is
+// then that mode's id, kept as-is even while its module is off so switching it
+// back on restores the view; the renderer shows Month meanwhile.
+export type ViewMode = CalendarMode | (string & {});
+const MODULE_MODE_ID = /^[a-z][a-z0-9-]{0,31}$/;
+export function isCoreCalendarMode(m: unknown): m is CalendarMode {
+  return CALENDAR_MODES.includes(m as CalendarMode);
+}
+// The core mode for a renderer that knows only core modes.
+export function coreCalendarMode(m: ViewMode | undefined): CalendarMode {
+  return isCoreCalendarMode(m) ? m : "month";
+}
+
 // Timeline zoom = how much time fills the screen; sets px-per-day (the geometry
 // lives in timeline-geometry.ts). "week" is the default (the Multi-day analog).
 export const TIMELINE_ZOOMS = [
@@ -682,7 +696,7 @@ export type PlaceBy = (typeof PLACE_BY)[number];
 export const SLOT_MINUTES = [15, 30, 60] as const;
 
 export type ViewDisplay = {
-  mode?: CalendarMode; // default "month"
+  mode?: ViewMode; // default "month"
   dayCount?: number; // time-grid days shown, 1–7; default 7
   slotMinutes?: number; // 15 | 30 | 60; default 30
   placeBy?: PlaceBy; // default "scheduled"
@@ -707,6 +721,10 @@ export type ViewDisplay = {
   // to a card-rendering type (project) on the list/board layouts. Absent =
   // inherit the type default (settings.cardsByType) → DEFAULT_PROJECT_CARD.
   card?: ProjectCardConfig;
+  // --- Module calendar modes (ADR-287) ---
+  // Settings a module's mode owns, keyed by mode id (e.g. modes.year). Core
+  // stores them opaquely; the module parses its own entry tolerantly.
+  modes?: Record<string, Record<string, unknown>>;
 };
 
 // Resolved defaults for a calendar view with no (or partial) display config.
@@ -723,6 +741,7 @@ export const DISPLAY_DEFAULTS: Required<ViewDisplay> = {
   startField: null,
   endField: null,
   card: DEFAULT_PROJECT_CARD,
+  modes: {},
 };
 
 export type ViewDefinition = {
@@ -966,7 +985,9 @@ export function parseDisplay(raw: unknown): ViewDisplay | null {
   if (typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   const out: ViewDisplay = {};
-  if (CALENDAR_MODES.includes(r.mode as CalendarMode)) out.mode = r.mode as CalendarMode;
+  if (isCoreCalendarMode(r.mode) || (typeof r.mode === "string" && MODULE_MODE_ID.test(r.mode))) {
+    out.mode = r.mode;
+  }
   if (r.dayCount != null) {
     const n = Math.round(Number(r.dayCount));
     if (Number.isFinite(n)) out.dayCount = Math.min(7, Math.max(1, n));
@@ -1006,6 +1027,21 @@ export function parseDisplay(raw: unknown): ViewDisplay | null {
   // Project-card element override (2026-08-17); tolerant like the rest.
   const card = parseProjectCardConfig(r.card);
   if (card) out.card = card;
+  const modes = parseModeSettings(r.modes);
+  if (modes) out.modes = modes;
+  return Object.keys(out).length ? out : null;
+}
+
+// Module-owned mode settings: an object of plain objects keyed by a mode id,
+// each capped in size so a runaway client can't bloat the row. Anything else drops.
+function parseModeSettings(raw: unknown): Record<string, Record<string, unknown>> | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (!MODULE_MODE_ID.test(k) || typeof v !== "object" || v === null || Array.isArray(v)) continue;
+    if (JSON.stringify(v).length > 16_000) continue;
+    out[k] = v as Record<string, unknown>;
+  }
   return Object.keys(out).length ? out : null;
 }
 

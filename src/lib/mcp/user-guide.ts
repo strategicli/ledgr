@@ -448,6 +448,13 @@ Build your own kinds of item at \`/build/types\`.
   value becomes a tap-to-call or tap-to-mail link, on the record and in a table
   view, with the right keyboard on a phone. Type the number however you like —
   it is stored exactly as you enter it, extension and all.
+- **Hide a field you only use in views.** On a type's field (Build, then Types,
+  then open the type), tick **Hidden**. The field leaves the item page, quick
+  add and capture chips, and the list's filter chips, but stays in every view's
+  field pickers, marked "(hidden)": date placement, columns, sort, group,
+  filters and rules, and the Year Map's color and style pickers. Use it for a
+  field that exists only to drive a view, such as a "Footprint" date range.
+  Untick it and the field returns everywhere.
 - **Statuses are yours per type.** Name your own stages and colours. Or choose no
   status at all, or a plain done/undone checkbox. Each stage sits in one of four
   fixed groups (Not Started, In Progress, Done, Closed), and the arrows on each
@@ -954,6 +961,50 @@ devotional writings.
 - **Your own devotional writings** carry a "Devotional Writing" tag, so the
   Library row's link always finds them; tag a new one the same way to add it
   to the shelf.
+
+## Year Map
+
+A calendar mode that lays a whole year out as twelve month rows, so you can see
+the year at a glance and print it. It is a module and starts off.
+
+- **Turn it on** at \`/build/modules\`, under Features. The first time, Ledgr
+  makes a saved view named **Year Map** (every type, colored by tag). Open it
+  at \`/views\`, or add it to your Work nav with the destination picker, like
+  any saved view. To make another, set a calendar view's **Default view** to
+  Year Map. Switch the module off and those views show as Month until you turn
+  it back on. Nothing is lost.
+- **Read it.** Each row is a month. Days line up by weekday, so every Saturday
+  and Sunday sits in the same column down the page. Items that span days are
+  bars with their title; one-day items are small chips. Overlapping items stack.
+  Hover an item for a card with its details. Today is marked, and past items
+  fade.
+- **Move around.** The arrows step the window, and Today jumps back.
+- **Layout and size.** **Layout** is Scroll (the default: a fixed width per day,
+  scrolling sideways) or Fit (the whole year squeezed to the screen).
+  **Columns** is Weekdays (the default) or Day 1 (every month starts at the left
+  edge). **Text** sets the text size in pixels, and **Day** sets the day width in
+  pixels (Scroll only). When days get narrow, one-day items turn into dots.
+- **Window.** Calendar year, **Fiscal year** (pick the month it starts), or
+  **Rolling months** (pick how many, 1 to 24, starting at the month you are on).
+- **Color and style.** **Color by** picks one field (tag, type, status, or one
+  of your own) and gives each of its values a color. **Style by** picks a second
+  field and gives each of its values a bar look (outlined, striped, bold,
+  dashed, capitals, dot). Fields you marked Hidden still appear in these
+  pickers. A field with several values uses the first one.
+- **The legend** sits above the grid. Click a label to hide or show that group.
+  Click a swatch to pick its color.
+- **More** holds Fade past items, Shade weekends, the dots switch, and
+  **Paper** (Letter by default, then Legal, Tabloid, A4 or A3, all landscape).
+- **Print.** Choose **More**, then **Paper**, then **Print / Save as PDF**.
+  The browser's print dialog opens, set to landscape on the paper you chose.
+  Save as PDF there if you want a file.
+- **Settings save per view.** Every change is stored on that one view, so you
+  can keep several Year Map views with different looks: a fiscal year colored
+  by status, a rolling three months colored by tag.
+- **What it shows.** The view's own filter decides which items appear, up to
+  2,000 in the view's sort. Each is placed by the view's Date field. In a view
+  of every type with no date field named, an item uses its plan date, else its
+  meeting time, else its note date.
 
 ## Planner
 

@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import ViewBuilder from "@/components/views/ViewBuilder";
 import { resolveOwner } from "@/lib/owner";
 import { listTypes } from "@/lib/types";
+import { calendarModesFor } from "@/lib/modules";
+import { offModuleIds } from "@/lib/modules/enabled";
+import { getSettings } from "@/lib/settings";
 import { listPersonOptions } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +33,7 @@ export default async function NewView() {
           </Link>
         </div>
         <ViewBuilder
+          moduleModes={calendarModesFor(offModuleIds(await getSettings(owner.id))).map((m) => ({ id: m.id, label: m.label }))}
           people={people.map((p) => ({ id: p.id, title: p.title }))}
           types={types.map((t) => ({
             key: t.key,

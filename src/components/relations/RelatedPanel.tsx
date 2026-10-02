@@ -126,7 +126,7 @@ export default async function RelatedPanel({
   // hostType/hostDef are resolved above (the add bar needs them before the
   // nothing-linked-yet return). This item's relation fields render under
   // Properties, so claim those items here to avoid listing them twice.
-  const relationFields = (hostDef?.propertySchema ?? []).filter((p) => p.kind === "relation");
+  const relationFields = (hostDef?.propertySchema ?? []).filter((p) => p.kind === "relation" && !p.hidden);
   const byRole = relationFields.length
     ? await outgoingRelationsByRole(ownerId, itemId, relationFields.map((f) => f.key))
     : new Map<string, { id: string }[]>();

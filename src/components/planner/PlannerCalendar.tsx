@@ -13,7 +13,7 @@ import PlannerTimeGrid from "@/components/planner/PlannerTimeGrid";
 import PlannerTimeline from "@/components/planner/PlannerTimeline";
 import PlannerToast, { type PlannerToastMsg } from "@/components/planner/PlannerToast";
 import type { DateProperty, PlaceBy, ViewDisplay, CalendarMode } from "@/lib/views";
-import { DISPLAY_DEFAULTS } from "@/lib/views";
+import { coreCalendarMode } from "@/lib/views";
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import type { OverlayEvent } from "@/lib/calendar/overlay";
 import type { StatusDef } from "@/lib/status";
@@ -47,7 +47,7 @@ export default function PlannerCalendar({
   // anchor and both sub-views' "today" marker.
   today: string;
 }) {
-  const [mode, setMode] = useState<CalendarMode>(display?.mode ?? DISPLAY_DEFAULTS.mode);
+  const [mode, setMode] = useState<CalendarMode>(coreCalendarMode(display?.mode));
   // The multi-day time-grid's leftmost day. Multi-day is retired from the UI
   // (ADR-166 slice 5) — the Timeline replaces it — but the mode is kept
   // renderable (defer-by-hiding) for any stored view that still selects it.
