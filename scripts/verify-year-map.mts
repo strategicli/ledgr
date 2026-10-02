@@ -167,4 +167,18 @@ t("layoutOverlaps unchanged for two overlapping blocks", () => {
   assert.equal(assignLanes([{ id: "a", startMin: 0, endMin: 5 }, { id: "b", startMin: 5, endMin: 9 }]).lanes, 1);
 });
 
+t("drag math: day steps, moves, and edge drags that never cross", () => {
+  assert.equal(Y.addDays("2026-12-30", 3), "2027-01-02");
+  assert.equal(Y.addDays("2026-03-01", -1), "2026-02-28");
+  assert.equal(Y.dayDiff("2026-09-28", "2026-10-02"), 4);
+  assert.equal(Y.dayDiff("2026-10-02", "2026-09-28"), -4);
+  const span = { start: "2026-09-21", end: "2026-09-25" };
+  // Grab mid-bar on the 23rd, drop on Oct 1: both ends shift 8 days, across month rows.
+  assert.deepEqual(Y.dragSpan("move", span, "2026-09-23", "2026-10-01"), { start: "2026-09-29", end: "2026-10-03" });
+  assert.deepEqual(Y.dragSpan("end", span, "2026-09-25", "2026-10-09"), { start: "2026-09-21", end: "2026-10-09" });
+  assert.deepEqual(Y.dragSpan("end", span, "2026-09-25", "2026-09-01"), { start: "2026-09-21", end: "2026-09-21" });
+  assert.deepEqual(Y.dragSpan("start", span, "2026-09-21", "2026-09-30"), { start: "2026-09-25", end: "2026-09-25" });
+  assert.deepEqual(Y.dragSpan("start", span, "2026-09-21", "2026-09-14"), { start: "2026-09-14", end: "2026-09-25" });
+});
+
 console.log(`\n${n} checks passed.`);

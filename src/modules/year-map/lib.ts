@@ -178,3 +178,37 @@ export function colorFor(s: YearSettings, field: string, value: string, values: 
 export function styleFor(value: string, values: string[]): BarStyle {
   return BAR_STYLES[Math.max(0, values.indexOf(value)) % BAR_STYLES.length];
 }
+
+// --- dragging (slice 2) ----------------------------------------------------
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function fmtDay(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return `${MONTH_NAMES[m - 1]} ${d}, ${y}`;
+}
+export const fmtSpan = (s: DaySpan) => (s.start === s.end ? fmtDay(s.start) : `${fmtDay(s.start)} → ${fmtDay(s.end)}`);
+
+export function addDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+// Whole days from a to b (negative when b is earlier).
+export function dayDiff(a: string, b: string): number {
+  const t = (s: string) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
+  return Math.round((t(b) - t(a)) / 86_400_000);
+}
+
+export type DragKind = "move" | "start" | "end";
+export type DaySpan = { start: string; end: string };
+
+// Where a drag puts the span: a move shifts both ends by the days the pointer
+// travelled from where it grabbed; an edge drag sets that end to the day under
+// the pointer, never past the other end.
+export function dragSpan(kind: DragKind, orig: DaySpan, grab: string, at: string): DaySpan {
+  if (kind === "move") {
+    const d = dayDiff(grab, at);
+    return { start: addDays(orig.start, d), end: addDays(orig.end, d) };
+  }
+  if (kind === "start") return { start: at <= orig.end ? at : orig.end, end: orig.end };
+  return { start: orig.start, end: at >= orig.start ? at : orig.start };
+}

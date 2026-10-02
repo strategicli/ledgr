@@ -43,5 +43,5 @@ A calendar mode, not a type. One saved view lays a year (or a fiscal year, or a 
 
 ## Next slices
 
-- **S2: edit on the map.** Drag a bar to move it, drag an edge to resize it, and click-drag across empty days to create an item. Needs write paths through the normal item update, an undo toast, and a choice for what a drag does to an item with only a start date.
+- **S2: edit on the map. BUILT 2026-10-02.** Drag a bar to move it, drag an end to resize it (or stretch a one-day item into a span when the view names an end field), drag across empty days or double-click one to create. Writes go through `buildPatch` in `src/lib/placement.ts`, the same path the Timeline uses, with an Undo toast. Hit testing reads the date off the day cell under the pointer, so drags cross month rows with no geometry of their own. The pure drag math (`dragSpan`, `addDays`, `dayDiff`) is in `lib.ts` and checked by `scripts/verify-year-map.mts`. Ceiling: mouse and pen only; touch keeps scrolling, and a long-press gesture is the upgrade.
 - **S3: Outlook overlay and a dashboard widget.** Show Outlook events as a read-only layer, limited to all-day and multi-day events (a timed meeting is noise at this zoom). Add a dashboard widget preset with a rolling 3-month window, using the same renderer and per-view settings.

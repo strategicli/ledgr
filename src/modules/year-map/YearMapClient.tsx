@@ -1,15 +1,18 @@
 // The Year Map grid and its controls (ADR-287), ported from the design mock
-// (explorations/year-map-mock.html). Read-only in slice 1: a bar opens its
-// item; nothing drags. Every control saves to the view (display.modes.year),
+// (explorations/year-map-mock.html). A click on a bar opens its item; dragging
+// edits dates (slice 2, useYearEdit). Every control saves to the view (display.modes.year),
 // so each saved view of the same rows keeps its own look, and print uses it.
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { PlacementSpec } from "@/lib/placement";
 import type { ViewDefinition } from "@/lib/views";
+import { useYearEdit, type YearEdit } from "./useYearEdit";
 import {
   PAPERS,
   addMonths,
   colorFor,
+  fmtDay,
   daysIn,
   monthColumns,
   monthSegments,
@@ -32,6 +35,7 @@ export type YearEntry = {
   start: string; // YYYY-MM-DD
   end: string; // inclusive; equals start for a one-day chip
   vals: Record<string, string[]>; // field → values (tag, type, status, prop:<key>)
+  edit?: YearEdit; // absent = read-only
 };
 export type YearField = { key: string; label: string; hidden?: boolean };
 
@@ -48,10 +52,6 @@ const PAGE_SIZE: Record<Paper, string> = {
 };
 
 const first = (e: YearEntry, field: string) => e.vals[field]?.[0] ?? NONE;
-const fmtDay = (ymd: string) => {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return `${MONTHS[m - 1]} ${d}, ${y}`;
-};
 
 export default function YearMapClient({
   view,
@@ -59,6 +59,9 @@ export default function YearMapClient({
   entries,
   fields,
   today,
+  tz,
+  specs,
+  createType,
   month,
   navHref,
 }: {
@@ -67,14 +70,18 @@ export default function YearMapClient({
   entries: YearEntry[];
   fields: YearField[];
   today: string;
+  tz: string;
+  specs: PlacementSpec[];
+  createType: string; // the type a click-drag creates
   month?: string;
   navHref?: string;
 }) {
   const [s, setS] = useState<YearSettings>(() => parseYearSettings(settingsRaw));
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [pop, setPop] = useState<{ e: YearEntry; top: number } | null>(null);
+  const [pop, setPop] = useState<{ id: string; top: number } | null>(null);
   const [fitDayW, setFitDayW] = useState(99);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const ed = useYearEdit({ tz, specs, createType });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Save the settings onto the view, debounced so typing a number is one write.
@@ -133,7 +140,12 @@ export default function YearMapClient({
   const colorValues = useMemo(() => valuesOf(s.colorBy), [entries, s.colorBy]); // eslint-disable-line react-hooks/exhaustive-deps
   const styleValues = useMemo(() => valuesOf(s.styleBy), [entries, s.styleBy]); // eslint-disable-line react-hooks/exhaustive-deps
   const off = new Set(s.off[s.colorBy] ?? []);
-  const shown = entries.filter((e) => !off.has(first(e, s.colorBy)));
+  const shown = entries
+    .filter((e) => !off.has(first(e, s.colorBy)))
+    .map((e) => (ed.override[e.id] ? { ...e, ...ed.override[e.id] } : e));
+  // The hover card reads the live entry, so it shows a drag's new dates.
+  const popEntry = pop ? shown.find((x) => x.id === pop.id) : undefined;
+  const inDraft = (ymd: string) => !!ed.draft && ymd >= ed.draft.start && ymd <= ed.draft.end;
   const byId = new Map(shown.map((e) => [e.id, e]));
 
   // Chips collapse to dots when a day is too narrow for a word. Fit measures
@@ -284,7 +296,7 @@ export default function YearMapClient({
       </div>
 
       <div className="ym-wrap" ref={wrapRef} onScroll={() => setPop(null)}>
-        <div className={`ym-grid ${narrow ? "ym-dots" : ""}`}>
+        <div className={`ym-grid ${narrow ? "ym-dots" : ""}`} onPointerDown={ed.beginCreate} onDoubleClick={ed.createOnDay}>
           <div className="ym-month ym-head">
             <div className="ym-mlabel">{s.window === "year" ? start.y : ""}</div>
             {Array.from({ length: cols }, (_, c) =>
@@ -310,9 +322,11 @@ export default function YearMapClient({
                   const day = c - offset + 1;
                   if (day < 1 || day > nd) return <div key={c} className="ym-pad" style={{ gridColumn: c + 2 }} />;
                   const we = s.weekends && weekdayOf(ym.y, ym.m, day) >= 5;
-                  const isToday = `${ymKey(ym)}-${String(day).padStart(2, "0")}` === today;
+                  const ymd = `${ymKey(ym)}-${String(day).padStart(2, "0")}`;
                   return (
-                    <div key={c} className={`ym-day ${we ? "we" : ""} ${isToday ? "today" : ""}`} style={{ gridColumn: c + 2 }}>
+                    <div key={c} data-ymd={ymd}
+                      className={`ym-day ${we ? "we" : ""} ${ymd === today ? "today" : ""} ${inDraft(ymd) ? "sel" : ""}`}
+                      style={{ gridColumn: c + 2 }}>
                       <span className="n">{day}</span>
                     </div>
                   );
@@ -324,7 +338,11 @@ export default function YearMapClient({
                     s.styleBy ? styleFor(first(e, s.styleBy), styleValues) : "",
                     sg.single ? "one" : "",
                     s.fadePast && e.end < today ? "past" : "",
+                    e.edit?.can.move ? "drag" : "",
                   ].join(" ");
+                  // Edge handles only where the span really starts or ends.
+                  const canStart = e.edit && (e.edit.can.resizeStart || e.edit.stretch) && e.start >= `${ymKey(ym)}-01`;
+                  const canEnd = e.edit && (e.edit.can.resizeEnd || e.edit.stretch) && e.end <= `${ymKey(ym)}-${String(nd).padStart(2, "0")}`;
                   return (
                     <a key={sg.id} href={`/items/${e.id}`} className={cls}
                       style={{
@@ -332,9 +350,22 @@ export default function YearMapClient({
                         gridColumn: `${sg.from + offset + 1} / ${sg.to + offset + 2}`,
                         gridRow: sg.lane + 2,
                       } as CSSProperties}
-                      onMouseEnter={(ev) => setPop({ e, top: ev.currentTarget.getBoundingClientRect().bottom + 6 })}
+                      onPointerDown={(ev) => {
+                        setPop(null);
+                        ed.beginDrag(ev, e, "move");
+                      }}
+                      onClick={(ev) => {
+                        if (ed.dragged.current) {
+                          ev.preventDefault();
+                          ed.dragged.current = false;
+                        }
+                      }}
+                      draggable={false}
+                      onMouseEnter={(ev) => setPop({ id: e.id, top: ev.currentTarget.getBoundingClientRect().bottom + 6 })}
                       onMouseLeave={() => setPop(null)}>
+                      {canStart && <span className="ym-h l" title="Drag to change the start" onPointerDown={(ev) => ed.beginDrag(ev, e, "start")} />}
                       <span className="t">{e.title}</span>
+                      {canEnd && <span className="ym-h r" title="Drag to change the end" onPointerDown={(ev) => ed.beginDrag(ev, e, "end")} />}
                     </a>
                   );
                 })}
@@ -344,22 +375,37 @@ export default function YearMapClient({
         </div>
       </div>
 
-      {pop && (
+      {popEntry && pop && (
         <div className="ym-pop" style={{ top: pop.top }} role="tooltip">
-          <b>{pop.e.title}</b>
+          <b>{popEntry.title}</b>
           <span className="m">
-            {[first(pop.e, "type"), first(pop.e, "status"), ...(pop.e.vals.tag ?? [])].join(" · ")}
+            {[first(popEntry, "type"), first(popEntry, "status"), ...(popEntry.vals.tag ?? [])].join(" · ")}
           </span>
           <br />
           <span className="m">
-            {fmtDay(pop.e.start)}
-            {pop.e.end !== pop.e.start ? ` → ${fmtDay(pop.e.end)}` : ""}
+            {fmtDay(popEntry.start)}
+            {popEntry.end !== popEntry.start ? ` → ${fmtDay(popEntry.end)}` : ""}
           </span>
         </div>
       )}
+      {ed.prompt && (
+        <form className="ym-new" style={{ left: Math.min(ed.prompt.x, window.innerWidth - 260), top: ed.prompt.y + 8 }}
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            void ed.create(new FormData(ev.currentTarget).get("title") as string);
+          }}>
+          <span className="m">
+            New {createType} · {fmtDay(ed.prompt.span.start)}
+            {ed.prompt.span.end !== ed.prompt.span.start ? ` → ${fmtDay(ed.prompt.span.end)}` : ""}
+          </span>
+          <input name="title" autoFocus placeholder="Title, then Enter" aria-label="New item title"
+            onKeyDown={(ev) => ev.key === "Escape" && ed.cancelCreate()} onBlur={() => ed.cancelCreate()} />
+        </form>
+      )}
       {saveError && <p className="ym-note" role="alert">{saveError}</p>}
       <p className="ym-note">
-        Click a legend label to hide or show that group; click its swatch to recolor it. Settings save to this view.
+        Click a legend label to hide or show that group; click its swatch to recolor it. Drag a bar to move it, or its ends to
+        change its dates. Drag across empty days, or double-click one, to add an item. Settings save to this view.
       </p>
     </div>
   );

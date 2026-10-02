@@ -95,6 +95,25 @@
 .ym-pop .m { color: var(--ym-muted); }
 .ym-note { color: var(--ym-muted); font-size: 12px; margin-top: 8px; }
 
+/* Editing (slice 2): grab cursors, edge handles, the drag-to-create range,
+   and the title box for a new item. */
+.ym-grid { user-select: none; }
+.ym-bar { position: relative; }
+.ym-bar.drag { cursor: grab; }
+.ym-bar.drag:active { cursor: grabbing; }
+.ym-h { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 2; }
+.ym-h.l { left: 0; }
+.ym-h.r { right: 0; }
+.ym-bar:hover .ym-h { background: color-mix(in srgb, var(--ym-bar-ink) 25%, transparent); }
+.ym-dots .ym-bar.one .ym-h { display: none; }
+.ym-day.sel { background: color-mix(in srgb, var(--ym-today) 22%, var(--ym-cell)); }
+.ym-new {
+  position: fixed; z-index: 31; width: 250px; display: grid; gap: 4px; background: var(--ym-panel); color: var(--ym-fg);
+  border: 1px solid var(--ym-line); border-radius: 6px; padding: 6px 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); font-size: 12px;
+}
+.ym-new .m { color: var(--ym-muted); }
+.ym-new input { font: inherit; color: var(--ym-fg); background: var(--ym-cell); border: 1px solid var(--ym-line); border-radius: 4px; padding: 3px 6px; }
+
 @media print {
   /* Print only the map: hide everything that is neither the map nor one of its
      ancestors, then lay the grid out to the page width in light colors. */
@@ -104,7 +123,7 @@
     --ym-panel: #fff; --ym-cell: #fff; --ym-line: #c9c5bb; --ym-fg: #000; --ym-muted: #555;
     --ym-weekend: #ebe6f6; --ym-today: #c2410c;
   }
-  .ym-controls, .ym-legend, .ym-note, .ym-pop { display: none !important; }
+  .ym-controls, .ym-legend, .ym-note, .ym-pop, .ym-new, .ym-h { display: none !important; }
   .ym-wrap { max-height: none; overflow: visible; border: 0; }
   .ym-grid { min-width: 0; width: 100%; }
   .ym-month { grid-template-columns: var(--labelw) repeat(var(--cols), minmax(0, 1fr)) !important; break-inside: avoid; }

@@ -979,6 +979,14 @@ the year at a glance and print it. It is a module and starts off.
   Hover an item for a card with its details. Today is marked, and past items
   fade.
 - **Move around.** The arrows step the window, and Today jumps back.
+- **Edit on the map** (with a mouse or pen). Drag a bar to move it; its dates
+  shift together. Drag a bar's left or right end to change its start or end, or
+  to stretch a one-day item into a span. Drag across empty days, or
+  double-click one, then type a title and press Enter to add an item on those
+  dates (a task, or the view's own type). Each move offers **Undo**. A drag
+  writes the same date fields the view places items by; an item placed by a
+  date that can't be changed (created or updated) doesn't drag. On a phone the
+  map scrolls but doesn't drag.
 - **Layout and size.** **Layout** is Scroll (the default: a fixed width per day,
   scrolling sideways) or Fit (the whole year squeezed to the screen).
   **Columns** is Weekdays (the default) or Day 1 (every month starts at the left

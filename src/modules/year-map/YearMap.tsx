@@ -32,12 +32,14 @@ export default async function YearMap({ ownerId, view, items, today, tz, month, 
       ? []
       : [{ start: { field: "meetingAt" }, end: { field: "endAt" } }, { start: { field: "noteDate" } }];
 
+  const specs = [spec, ...fallbacks];
   const entries: YearEntry[] = [];
   for (const it of items) {
+    let specIdx = 0;
     let p = resolvePlacement(it, spec, tz);
-    for (const f of fallbacks) {
-      if (p.start) break;
-      p = resolvePlacement(it, f, tz);
+    for (let i = 1; i < specs.length && !p.start; i++) {
+      p = resolvePlacement(it, specs[i], tz);
+      specIdx = i;
     }
     if (!p.start) continue;
     const t = typeBy.get(it.type);
@@ -60,6 +62,27 @@ export default async function YearMap({ ownerId, view, items, today, tz, month, 
       start: p.start.ymd,
       end: p.end && p.end.ymd > p.start.ymd ? p.end.ymd : p.start.ymd,
       vals,
+      // What a drag needs to write the item back through buildPatch (slice 2).
+      edit: {
+        item: {
+          type: it.type,
+          scheduledDate: it.scheduledDate,
+          dueDate: it.dueDate,
+          meetingAt: it.meetingAt,
+          endAt: it.endAt,
+          noteDate: it.noteDate,
+          createdAt: it.createdAt,
+          updatedAt: it.updatedAt,
+          properties: it.properties,
+        },
+        specIdx,
+        startMin: p.start.minutes,
+        endMin: p.end?.minutes ?? null,
+        hasEnd: p.end != null,
+        can: p.can,
+        // The spec names an end field, so a one-day chip can be stretched into a bar.
+        stretch: p.can.move && specs[specIdx].end != null,
+      },
     });
   }
 
@@ -86,6 +109,9 @@ export default async function YearMap({ ownerId, view, items, today, tz, month, 
       entries={entries}
       fields={fields}
       today={today ?? appTodayYmd(new Date(), tz)}
+      tz={tz}
+      specs={specs}
+      createType={view.filter.type ?? "task"}
       month={month}
       navHref={navHref}
     />
