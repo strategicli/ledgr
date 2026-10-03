@@ -100,6 +100,8 @@ const LIST_PARAMS = new Set([
   "offset",
   "includeBody",
   "trash",
+  "inbox",
+  "updatedSince",
 ]);
 
 // CORS is open for the same reason /api/machine/capture's is (see the comment
@@ -222,6 +224,27 @@ export async function GET(request: Request) {
       const parsed = parseBoolParam("trash", rawTrash);
       if (!parsed.ok) return json({ error: parsed.error }, 400);
       opts.trash = parsed.value;
+    }
+
+    // inbox=true|false: only untriaged (or only triaged) items (ADR-288).
+    const rawInbox = params.get("inbox");
+    if (rawInbox !== null) {
+      const parsed = parseBoolParam("inbox", rawInbox);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      opts.inbox = parsed.value;
+    }
+
+    // updatedSince=<ISO instant>: items updated strictly after it (delta sync).
+    const rawSince = params.get("updatedSince");
+    if (rawSince !== null) {
+      const since = new Date(rawSince);
+      if (!rawSince.includes("T") || Number.isNaN(since.getTime())) {
+        return json(
+          { error: "updatedSince must be an ISO 8601 instant, e.g. 2026-10-03T12:00:00Z" },
+          400
+        );
+      }
+      opts.updatedSince = since;
     }
 
     const rawIncludeBody = params.get("includeBody");

@@ -41,12 +41,12 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   {
     method: "GET / POST / PATCH / DELETE",
     path: "/api/machine/items",
-    what: "read, write and trash items, up to 500 per request (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies, trash=true to list Trash). A write may carry tags (names) and relateTo (ids). DELETE moves to Trash",
+    what: "read, write and trash items, up to 500 per request (GET filters: id — one uuid or comma-separated — type, status, statusCategory, relatedTo, parentId, q, limit, offset; add includeBody=true for bodies, trash=true to list Trash; inbox=true|false; updatedSince=<ISO instant> for delta sync). A write may carry tags (names) and relateTo (ids). DELETE moves to Trash",
   },
   {
     method: "GET / DELETE",
     path: "/api/machine/items/<id>",
-    what: "read one item whole (body, custom properties, named surfaces), or move it to Trash",
+    what: "read one item whole (body, custom properties, named surfaces; add ?include=relations for its related items), or move it to Trash",
   },
   {
     method: "POST",
@@ -64,9 +64,39 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
     what: "link items to each other by id (a write to /items can do this inline with tags / relateTo)",
   },
   {
+    method: "DELETE",
+    path: "/api/machine/relations",
+    what: "un-link items: {sourceId, targetId, role?} or {relations: [...]}; both items stay",
+  },
+  {
     method: "GET",
     path: "/api/machine/types",
-    what: "list the type registry (incl. capability, so a client can find project-shaped types)",
+    what: "list the type registry (incl. capability, so a client can find project-shaped types, plus each type's statuses and custom property definitions)",
+  },
+  {
+    method: "GET / PATCH",
+    path: "/api/machine/notifications",
+    what: "GET ?filter=all|unread|read|archived lists notifications with counts; PATCH {ids, state} or {markAllRead: true} changes them. /notifications/unread-count returns {unread}",
+  },
+  {
+    method: "GET",
+    path: "/api/machine/search",
+    what: "full-text search: ?q= (required) &type= &limit= (1 to 50). Returns id, type, title, snippet, updatedAt",
+  },
+  {
+    method: "GET / POST / PATCH",
+    path: "/api/machine/favorites",
+    what: "GET lists starred items; POST {itemId, favorite} stars or unstars; PATCH {order: [ids]} reorders",
+  },
+  {
+    method: "GET",
+    path: "/api/machine/capture-routes",
+    what: "read-only: where each arrival path (quick capture, share sheet, email, ...) lands: inbox, filed, or a project id",
+  },
+  {
+    method: "POST",
+    path: "/api/machine/meetings/<id>/transcripts",
+    what: "attach a transcript to a meeting: {title?, text}. Same result as pasting one in the app (child item, link to the meeting, minutes pending)",
   },
   {
     method: "POST",

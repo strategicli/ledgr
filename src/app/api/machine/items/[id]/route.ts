@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { asUuid, errorResponse } from "@/lib/api";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import { getItem } from "@/lib/items";
+import { listRelatedItems } from "@/lib/relations";
+import { unknownParamsError } from "@/lib/machine/query";
 import { softDeleteItem } from "@/lib/item-mutations";
 import { resolveSurfaces } from "@/lib/item-surfaces";
 import { resolveMachineOwner } from "@/lib/machine/owner";
@@ -48,7 +50,10 @@ function json(body: unknown, status = 200): NextResponse {
 // page. An empty accepted-set still means a stray `?includeBody=true` (a fair
 // guess, carried over from the list route) gets told it was unnecessary rather
 // than ignored.
-const ITEM_PARAMS: ReadonlySet<string> = new Set<string>();
+// The one exception is ?include=relations (ADR-288), which adds the item's
+// related items (id, type, title, status, roles, matchState: the shape MCP
+// get_item returns) as `relations`.
+const ITEM_PARAMS: ReadonlySet<string> = new Set<string>(["include"]);
 
 export function OPTIONS() {
   return cors(new NextResponse(null, { status: 204 }));
@@ -73,15 +78,35 @@ export async function GET(request: Request, context: Context) {
     if (unknown.length > 0) {
       return json(
         {
-          error: `unknown query parameter${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. This route returns the whole item, body and properties included, and takes no parameters.`,
+          error: `${unknownParamsError(unknown, ITEM_PARAMS)}. This route returns the whole item, body and properties included; the only option is include=relations.`,
         },
         400
       );
     }
+    const include = params.get("include");
+    if (include !== null && include !== "relations") {
+      return json({ error: 'include must be "relations"' }, 400);
+    }
 
     const id = asUuid((await context.params).id, "id");
     const item = await getItem(ownerId, id);
-    return json({ item, surfaces: await resolveSurfaces(item) });
+    const surfaces = await resolveSurfaces(item);
+    if (include === "relations") {
+      const related = await listRelatedItems(ownerId, id);
+      return json({
+        item,
+        surfaces,
+        relations: related.map((r) => ({
+          id: r.id,
+          type: r.type,
+          title: r.title,
+          status: r.status,
+          roles: r.roles,
+          matchState: r.matchState,
+        })),
+      });
+    }
+    return json({ item, surfaces });
   } catch (err) {
     // errorResponse maps ItemError("not_found") to a JSON 404 and captures
     // anything else with a correlation id (rule 9).

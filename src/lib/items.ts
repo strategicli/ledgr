@@ -14,6 +14,7 @@ import {
   ilike,
   inArray,
   isNull,
+  gt,
   isNotNull,
   sql,
   type SQL,
@@ -58,6 +59,8 @@ export type ListOptions = {
   statusCategory?: StatusCategory | "active";
   parentId?: string;
   inbox?: boolean;
+  // Only items updated strictly after this instant (the phone's delta sync).
+  updatedSince?: Date;
   // Title substring match (powers the @-mention picker). Full-text search
   // over bodies is its own slice and uses the tsvector, not this.
   q?: string;
@@ -167,6 +170,7 @@ function listClauses(ownerId: string, opts: ListOptions) {
   if (opts.status) where.push(eq(items.status, opts.status));
   if (opts.parentId) where.push(eq(items.parentId, opts.parentId));
   if (opts.inbox !== undefined) where.push(eq(items.inbox, opts.inbox));
+  if (opts.updatedSince) where.push(gt(items.updatedAt, opts.updatedSince));
   if (opts.statusCategory) {
     where.push(
       opts.statusCategory === "active"
