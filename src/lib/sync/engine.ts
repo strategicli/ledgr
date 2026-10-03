@@ -173,6 +173,16 @@ export function cmpStamp(a: FieldStamp, b: FieldStamp): number {
   return a.deviceId < b.deviceId ? -1 : a.deviceId > b.deviceId ? 1 : 0;
 }
 
+// Does an incoming op's stamp beat the stored one? Strictly newer wins. An
+// exact tie from the SAME device also wins: stamps are millisecond-grained, so
+// two quick saves on one device can share a stamp, and the later one (ops are
+// applied in seq order) must not be dropped as a duplicate of the earlier.
+// ponytail: a replayed older same-ms op would also win; cursors prevent replay.
+function beats(a: FieldStamp, b: FieldStamp): boolean {
+  const c = cmpStamp(a, b);
+  return c > 0 || (c === 0 && a.deviceId === b.deviceId);
+}
+
 // The device a write ORIGINATED on: relayed ops keep their original writer in
 // origin_device_id (stamped by the relaying peer's trigger via the GUC).
 function opDevice(op: SyncOp): string {
@@ -272,7 +282,7 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
       const cur = local.row[field];
       if (jsonEq(cur, value)) continue;
       const stamp = local.fields[field];
-      const wins = !stamp || cmpStamp(opStamp(op), stamp) > 0;
+      const wins = !stamp || beats(opStamp(op), stamp);
 
       if (op.tbl === "items" && field === "body") {
         // A true conflict = both sides wrote the body and the last local
@@ -362,7 +372,7 @@ function mergeSettingsOp(
     for (const [k, value] of Object.entries(incoming)) {
       if (jsonEq(current[k], value)) continue;
       const stamp = local.fields[SETTINGS_PREFIX + k];
-      if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+      if (stamp && !beats(opStamp(op), stamp)) continue;
       merged[k] = value;
       local.fields[SETTINGS_PREFIX + k] = opStamp(op);
       changed = true;
@@ -374,7 +384,7 @@ function mergeSettingsOp(
     const value = op.changed[f];
     if (jsonEq(row[f], value)) continue;
     const stamp = local.fields[f];
-    if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+    if (stamp && !beats(opStamp(op), stamp)) continue;
     fields[f] = value;
     local.fields[f] = opStamp(op);
   }
@@ -440,7 +450,7 @@ function mergeRelationOp(op: SyncOp, state: LocalState, actions: WriteAction[]):
     const cur = local.row[field];
     if (stableStringify(cur ?? null) === stableStringify(value ?? null)) continue;
     const stamp = local.fields[field];
-    if (stamp && cmpStamp(opStamp(op), stamp) <= 0) continue;
+    if (stamp && !beats(opStamp(op), stamp)) continue;
     fields[field] = value;
     local.fields[field] = opStamp(op);
   }
