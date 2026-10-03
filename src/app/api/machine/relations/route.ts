@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { asUuid } from "@/lib/api";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import { ItemError } from "@/lib/items";
-import { relateItems } from "@/lib/relations";
+import { relateItems, unrelateItems } from "@/lib/relations";
 import { resolveMachineOwner } from "@/lib/machine/owner";
 import { captureError } from "@/lib/log";
 
@@ -22,7 +22,7 @@ const MAX_BATCH = 100;
 // (Launchpad's task tile) posts a tag/project edge right after creating a task.
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -89,4 +89,62 @@ export async function POST(request: Request) {
   }
 
   return json({ count: created.length, created, errors }, created.length > 0 ? 201 : 400);
+}
+
+// DELETE /api/machine/relations (ADR-288) — un-relate: remove the edge(s)
+// between two items; both items stay. Body: a bare { sourceId, targetId, role? }
+// or { relations: [...] } (max MAX_BATCH), through the same unrelateItems the
+// MCP unrelate_items tool uses: it removes every non-mention edge between the
+// pair in BOTH directions, narrowed to `role` when one is given. Response:
+// { count, removed: [{ sourceId, targetId, removed }], errors }; 200 if any
+// entry succeeded (even removing 0 edges: idempotent), 400 if every entry failed.
+export async function DELETE(request: Request) {
+  const identity = await verifyApiRequest(request.headers.get("authorization"));
+  if (!identity) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  const ownerId = await resolveMachineOwner();
+  if (!ownerId) {
+    return json({ error: "owner not configured" }, 503);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid JSON" }, 400);
+  }
+
+  const batch = (body as { relations?: unknown })?.relations;
+  const rawEdges = Array.isArray(batch) ? batch : [body];
+  if (rawEdges.length === 0) {
+    return json({ count: 0, removed: [], errors: [] });
+  }
+  if (rawEdges.length > MAX_BATCH) {
+    return json({ error: `too many edges (max ${MAX_BATCH} per request)` }, 400);
+  }
+
+  const removed: { sourceId: string; targetId: string; removed: number }[] = [];
+  const errors: { index: number; error: string }[] = [];
+  for (let i = 0; i < rawEdges.length; i++) {
+    try {
+      const e = (rawEdges[i] ?? {}) as Record<string, unknown>;
+      const sourceId = asUuid(e.sourceId ?? e.source, "sourceId");
+      const targetId = asUuid(e.targetId ?? e.target, "targetId");
+      const role = typeof e.role === "string" && e.role.trim() ? e.role.trim() : undefined;
+      const r = await unrelateItems(ownerId, sourceId, targetId, { role });
+      removed.push({ sourceId, targetId, removed: r.removed });
+    } catch (err) {
+      if (err instanceof ItemError) {
+        errors.push({ index: i, error: err.message });
+      } else {
+        const correlationId = crypto.randomUUID();
+        await captureError("machine-relations", err, { correlationId, detail: { index: i } });
+        errors.push({ index: i, error: `internal error (correlationId ${correlationId})` });
+      }
+    }
+  }
+
+  return json({ count: removed.length, removed, errors }, removed.length > 0 ? 200 : 400);
 }

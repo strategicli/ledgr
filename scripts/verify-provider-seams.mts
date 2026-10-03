@@ -95,8 +95,10 @@ check("StorageProvider interface exists", existsSync("src/lib/storage/types.ts")
 // before: the old file-level grep would pass a file whose GET was gated and whose
 // newly-added POST was not. Segmenting on `export async function` is enough
 // because each machine handler authenticates inline, at its top.
+// `http.authorize(` is the shared helper in src/lib/machine/http.ts (ADR-288),
+// whose first act is verifyApiRequest.
 const AUTH_HELPER =
-  /verifyMachineRequest\s*\(|verifyApiRequest\s*\(|verifyMachineToken\s*\(|verifyApiToken\s*\(|verifySyncDevice\s*\(/;
+  /verifyMachineRequest\s*\(|verifyApiRequest\s*\(|verifyMachineToken\s*\(|verifyApiToken\s*\(|verifySyncDevice\s*\(|http\.authorize\s*\(/;
 const machineRoutes = files.filter((p) => /^src\/app\/api\/machine\/.*\/route\.ts$/.test(p));
 const unauthedHandlers: string[] = [];
 let handlerCount = 0;

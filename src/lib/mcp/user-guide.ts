@@ -195,6 +195,10 @@ module, so it can be switched off at \`/build/modules\`.
   reads content back out, whole and unaltered, which is how an app moves a
   note's text somewhere else without anything retyping it. \`/build/api\` has
   the details.
+- **From a phone app:** the same credential also reaches notifications,
+  favorites, full-text search, the Inbox list, an item's related items,
+  link removal, and attaching a transcript to a meeting, so a native app can
+  do what the web app does. \`/build/api\` lists each one.
 - **Tagging over MCP:** \`create_item\` and \`update_item\` take \`tags\` as
   names too, so an assistant filing notes never has to look a tag up first.
 - **Undoing over MCP or the API:** \`delete_item\` / \`restore_item\` (and

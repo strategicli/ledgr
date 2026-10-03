@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyApiRequest } from "@/lib/auth/credentials";
 import { resolveMachineOwner } from "@/lib/machine/owner";
+import { resolveStatusSchema } from "@/lib/status";
 import { listTypes } from "@/lib/types";
 
 // GET /api/machine/types — the type registry for token clients (same door as
@@ -47,6 +48,11 @@ export async function GET(request: Request) {
         isSystem: t.isSystem,
         statusMode: t.statusMode ?? null,
         capability: t.capability ?? null,
+        // Added for the phone (ADR-288), additive: the statuses an item of this
+        // type can take (the system default set when the type defines none) and
+        // its custom property definitions.
+        statuses: resolveStatusSchema(t.statusSchema),
+        properties: t.propertySchema,
       })),
     })
   );
