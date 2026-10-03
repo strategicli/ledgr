@@ -38,6 +38,7 @@ const searchRoute = await import("../src/app/api/machine/search/route");
 const favoritesRoute = await import("../src/app/api/machine/favorites/route");
 const captureRoutesRoute = await import("../src/app/api/machine/capture-routes/route");
 const transcriptsRoute = await import("../src/app/api/machine/meetings/[id]/transcripts/route");
+const moveTypeRoute = await import("../src/app/api/machine/items/[id]/move-type/route");
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -120,6 +121,13 @@ try {
       { params: Promise.resolve({ id: fakeId }) }
     );
     check("POST /meetings/<id>/transcripts without a token is 401", r.status === 401);
+    const mt = await call(
+      moveTypeRoute.POST,
+      `/items/${fakeId}/move-type`,
+      { method: "POST", anon: true, body: { targetType: "note" } },
+      { params: Promise.resolve({ id: fakeId }) }
+    );
+    check("POST /items/<id>/move-type without a token is 401", mt.status === 401);
     const one = await call(itemRoute.GET, `/items/${fakeId}?include=relations`, { anon: true }, {
       params: Promise.resolve({ id: fakeId }),
     });
@@ -131,6 +139,7 @@ try {
     ["favorites", favoritesRoute],
     ["capture-routes", captureRoutesRoute],
     ["transcripts", transcriptsRoute],
+    ["move-type", moveTypeRoute],
   ] as const) {
     const r = (mod as { OPTIONS: () => Response }).OPTIONS();
     check(
@@ -359,6 +368,16 @@ try {
     { params: Promise.resolve({ id: a.id }) }
   );
   check("transcript onto a non-event is a 400", notEvent.status === 400);
+  const mtCtx = { params: Promise.resolve({ id: a.id }) };
+  const mtNoType = await call(moveTypeRoute.POST, `/items/${a.id}/move-type`, { method: "POST", body: {} }, mtCtx);
+  check("move-type without targetType is a 400", mtNoType.status === 400);
+  const mtBadDry = await call(
+    moveTypeRoute.POST,
+    `/items/${a.id}/move-type`,
+    { method: "POST", body: { targetType: "note", dryRun: "yes" } },
+    mtCtx
+  );
+  check("move-type with a non-boolean dryRun is a 400", mtBadDry.status === 400);
   const missing = "00000000-0000-4000-8000-000000000001";
   const nf = await call(
     transcriptsRoute.POST,

@@ -95,6 +95,11 @@ const ENDPOINTS: { method: string; path: string; what: string }[] = [
   },
   {
     method: "POST",
+    path: "/api/machine/items/<id>/move-type",
+    what: "change an item's type: {targetType, dryRun?}. dryRun:true returns {summary} (what carries over) without writing; otherwise {summary, item}",
+  },
+  {
+    method: "POST",
     path: "/api/machine/meetings/<id>/transcripts",
     what: "attach a transcript to a meeting: {title?, text}. Same result as pasting one in the app (child item, link to the meeting, minutes pending)",
   },
