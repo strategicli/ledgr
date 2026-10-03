@@ -1612,6 +1612,13 @@ your items (the HTTP API), act as an AI assistant (MCP), run scheduled jobs, and
 a ping-only permission for checking that a credential works. Nothing is ticked
 for you, and a credential can never grant itself more than you gave it.
 
+A phone app can also sign in without a pasted key. Steward, the Android launcher,
+opens a Ledgr page in your browser; you sign in, read what it asks for ("wants
+to read and change your Ledgr"), and tap **Authorize**. It then shows up in
+**User Settings → Sign-in** as an **app sign-in**, named after the app and your
+phone. **Sign out** beside it ends that one app on its very next request, and
+**Sign out everywhere** ends every app and browser at once.
+
 The same page lists every credential you have created, with its permissions,
 when you made it, and when it was last used, so you can tell a live one from a
 forgotten one. **Revoke** stops that one credential on its very next request and

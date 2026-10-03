@@ -29,7 +29,8 @@ import {
   verifyMachineToken,
   type MachineIdentity,
 } from "@/lib/auth/machine";
-import { verifyApiToken } from "@/lib/auth/oauth";
+import { appSigninAlive } from "@/lib/auth/app-signin";
+import { verifyApiToken, verifyDeviceToken } from "@/lib/auth/oauth";
 
 // --- the scope vocabulary ----------------------------------------------------
 // The scopes a minted credential may carry, in plain language for the
@@ -374,6 +375,27 @@ export async function verifyMintedCredential(
   return { name: row.name, scopes };
 }
 
+/**
+ * An app sign-in (ADR-289): an OAuth access token with scope `api` that carries
+ * the id of its device entry. Valid only while that entry exists (it is a row in
+ * signin_sessions, the Settings > Sign-in list), so signing the device out
+ * stops it on the next request. Holds requiredScope as the other paths do:
+ * a token that only has `api` is refused for `cron`, and an `mcp` grant never
+ * gets here (it has no device binding).
+ */
+export async function verifyDeviceRequest(
+  authorizationHeader: string | null,
+  requiredScope?: string
+): Promise<MachineIdentity | null> {
+  const payload = verifyDeviceToken(authorizationHeader);
+  if (!payload) return null;
+  const scopes = payload.scope.split(" ");
+  if (requiredScope && !scopes.includes(requiredScope)) return null;
+  const label = await appSigninAlive(payload.sid);
+  if (!label) return null;
+  return { name: `app:${label}`, scopes };
+}
+
 // --- the resolvers routes call ----------------------------------------------
 // Two async entry points that try every credential path in turn. The env path
 // goes FIRST and is unchanged, so an existing caller's request resolves
@@ -391,7 +413,8 @@ export async function verifyMachineRequest(
 ): Promise<MachineIdentity | null> {
   return (
     verifyMachineToken(authorizationHeader, requiredScope) ??
-    (await verifyMintedCredential(authorizationHeader, requiredScope))
+    (await verifyMintedCredential(authorizationHeader, requiredScope)) ??
+    (await verifyDeviceRequest(authorizationHeader, requiredScope))
   );
 }
 
@@ -405,6 +428,7 @@ export async function verifyApiRequest(
 ): Promise<MachineIdentity | null> {
   return (
     verifyApiToken(authorizationHeader) ??
-    (await verifyMintedCredential(authorizationHeader, "api"))
+    (await verifyMintedCredential(authorizationHeader, "api")) ??
+    (await verifyDeviceRequest(authorizationHeader, "api"))
   );
 }

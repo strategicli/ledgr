@@ -666,6 +666,26 @@ curl -X PATCH ${origin}/api/machine/items \\
                 : "No api-scoped entry set."}
             </span>
           </li>
+          <li className="flex items-start gap-2.5 ui-row text-ink-muted">
+            <span className="mt-1.5">
+              <StatusDot ok />
+            </span>
+            <span>
+              <strong className="text-ink">App sign-ins</strong> (ADR-289) — a
+              phone app signs in through Ledgr&rsquo;s OAuth server with the{" "}
+              <code className="font-mono text-xs">api</code> scope (register at{" "}
+              <code className="font-mono text-xs">/api/oauth/register</code>,
+              authorize with PKCE at{" "}
+              <code className="font-mono text-xs">/api/oauth/authorize</code>,
+              exchange at{" "}
+              <code className="font-mono text-xs">/api/oauth/token</code>) and
+              sends <code className="font-mono text-xs">Bearer &lt;access token&gt;</code>.
+              Each one is a device in User Settings → Sign-in, with its own
+              Sign out; the refresh token stops with it. An{" "}
+              <code className="font-mono text-xs">mcp</code> token does not open
+              these routes.
+            </span>
+          </li>
         </ul>
       </section>
 

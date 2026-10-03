@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
+  API_SCOPE,
   MCP_SCOPE,
   issueAccessToken,
   issueRefreshToken,
@@ -10,6 +11,7 @@ import {
   verifyPkceS256,
   verifyRefreshToken,
 } from "@/lib/auth/oauth";
+import { appSigninAlive } from "@/lib/auth/app-signin";
 
 // The OAuth token endpoint (ADR-117 Decision 5), stateless. Two grants:
 //   - authorization_code: verify the signed code, that the redirect_uri matches
@@ -32,13 +34,15 @@ function oauthError(error: string, desc: string, status = 400) {
   return NextResponse.json({ error, error_description: desc }, { status, headers: CORS });
 }
 
-function tokenResponse(sub: string, scope: string) {
+// `sid` is the app sign-in's device entry (ADR-289); both tokens carry it, so
+// both stop working when the owner signs that device out.
+function tokenResponse(sub: string, scope: string, sid?: string) {
   return NextResponse.json(
     {
-      access_token: issueAccessToken(sub, scope),
+      access_token: issueAccessToken(sub, scope, undefined, undefined, undefined, sid),
       token_type: "Bearer",
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
-      refresh_token: issueRefreshToken(sub, scope),
+      refresh_token: issueRefreshToken(sub, scope, sid),
       scope,
     },
     { headers: CORS }
@@ -93,7 +97,12 @@ export async function POST(request: Request) {
     if (!codeVerifier || !verifyPkceS256(codeVerifier, payload.code_challenge)) {
       return oauthError("invalid_grant", "PKCE verification failed");
     }
-    return tokenResponse(payload.sub, payload.scope);
+    // An `api` grant must carry a live device entry; one signed out between
+    // approval and redemption gets no tokens.
+    if (payload.scope === API_SCOPE && !(payload.sid && (await appSigninAlive(payload.sid)))) {
+      return oauthError("invalid_grant", "this sign-in was ended");
+    }
+    return tokenResponse(payload.sub, payload.scope, payload.sid);
   }
 
   if (grantType === "refresh_token") {
@@ -101,7 +110,14 @@ export async function POST(request: Request) {
     if (!payload) {
       return oauthError("invalid_grant", "refresh token is invalid or expired");
     }
-    return tokenResponse(payload.sub, payload.scope || MCP_SCOPE);
+    // The device check is what makes "Sign out" in Settings stick: a signed-out
+    // app cannot refresh its way back in (ADR-289).
+    if (payload.scope === API_SCOPE || payload.sid) {
+      if (!(payload.sid && (await appSigninAlive(payload.sid)))) {
+        return oauthError("invalid_grant", "this sign-in was ended");
+      }
+    }
+    return tokenResponse(payload.sub, payload.scope || MCP_SCOPE, payload.sid);
   }
 
   return oauthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");

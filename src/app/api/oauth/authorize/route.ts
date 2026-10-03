@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/owner";
 import {
+  API_SCOPE,
   MCP_SCOPE,
   issueCode,
   oauthConfigured,
+  parseGrantScope,
   verifyClientId,
   type ClientPayload,
+  type GrantScope,
 } from "@/lib/auth/oauth";
+import { appSigninLabel, createAppSignin } from "@/lib/auth/app-signin";
 
 // The OAuth authorization endpoint (ADR-117 Decision 4). This is the ONE OAuth
 // route that stays Clerk-protected (it is NOT in the proxy.ts public set): an
@@ -36,7 +40,14 @@ type AuthorizeParams = {
   redirectUri: string;
   codeChallenge: string;
   state: string | null;
+  // The one scope this grant carries: `mcp` (the AI connector, today's
+  // behavior and the default) or `api` (a phone app, ADR-289).
+  scope: GrantScope;
+  // Optional label the client passes for its device ("Pixel 9"), shown in
+  // Settings > Sign-in beside the app's name. Only used for `api` grants.
+  deviceName: string | null;
 };
+
 
 // Shared by GET (consent page) and POST (code issuance): both must run the
 // full validation, because the POST's hidden fields are client-controlled.
@@ -72,13 +83,20 @@ function validateAuthorize(params: URLSearchParams): AuthorizeParams | NextRespo
   if (!codeChallenge || codeChallengeMethod !== "S256") {
     return redirectError(redirectUri, state, "invalid_request", "PKCE with code_challenge_method=S256 is required");
   }
-  // Only the mcp scope exists; reject anything else explicitly rather than
-  // silently narrowing.
-  if (requestedScope && !requestedScope.split(" ").every((s) => s === MCP_SCOPE)) {
-    return redirectError(redirectUri, state, "invalid_scope", `only the '${MCP_SCOPE}' scope is available`);
+  // Two scopes exist; reject anything else explicitly rather than silently
+  // narrowing.
+  const scope = parseGrantScope(requestedScope);
+  if (!scope) {
+    return redirectError(
+      redirectUri,
+      state,
+      "invalid_scope",
+      `request the '${MCP_SCOPE}' scope or the '${API_SCOPE}' scope, one of them`
+    );
   }
+  const deviceName = params.get("device_name");
 
-  return { clientId: clientId as string, client, redirectUri, codeChallenge, state };
+  return { clientId: clientId as string, client, redirectUri, codeChallenge, state, scope, deviceName };
 }
 
 function esc(s: string): string {
@@ -103,7 +121,8 @@ function consentPage(p: AuthorizeParams): NextResponse {
     ["response_type", "code"],
     ["code_challenge", p.codeChallenge],
     ["code_challenge_method", "S256"],
-    ["scope", MCP_SCOPE],
+    ["scope", p.scope],
+    ...(p.deviceName ? [["device_name", p.deviceName] as [string, string]] : []),
     ...(p.state ? [["state", p.state] as [string, string]] : []),
   ]
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
@@ -139,12 +158,22 @@ function consentPage(p: AuthorizeParams): NextResponse {
 </head>
 <body>
   <main class="card">
-    <h1><span class="app">${esc(name)}</span> wants to connect to your Ledgr</h1>
+    ${
+      p.scope === API_SCOPE
+        ? `<h1><span class="app">${esc(name)}</span> wants to read and change your Ledgr</h1>
+    <p>Authorizing gives it:</p>
+    <ul>
+      <li>Read your items, notes, tasks, and notifications</li>
+      <li>Create, edit, and delete them</li>
+    </ul>
+    <p>You can sign it out at any time in Settings, under Sign-in.</p>`
+        : `<h1><span class="app">${esc(name)}</span> wants to connect to your Ledgr</h1>
     <p>Authorizing gives it:</p>
     <ul>
       <li>Full access to your workspace through the MCP API</li>
       <li>Search, read, create, and update your items</li>
-    </ul>
+    </ul>`
+    }
     <form method="post">
       ${hidden}
       <p class="host">After you choose, you'll be sent back to <strong>${esc(host)}</strong>.</p>
@@ -209,11 +238,18 @@ export async function POST(request: Request) {
     return redirectError(validated.redirectUri, validated.state, "access_denied", "the owner declined the request");
   }
 
+  // An `api` grant becomes a device entry in Settings > Sign-in, and its tokens
+  // are bound to it (ADR-289). An `mcp` grant stays stateless, as before.
+  const sid =
+    validated.scope === API_SCOPE
+      ? await createAppSignin(owner.id, appSigninLabel(validated.client.client_name, validated.deviceName))
+      : undefined;
   const code = issueCode({
     redirectUri: validated.redirectUri,
     codeChallenge: validated.codeChallenge,
-    scope: MCP_SCOPE,
+    scope: validated.scope,
     sub: owner.email,
+    sid,
   });
 
   const dest = new URL(validated.redirectUri);
