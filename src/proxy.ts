@@ -158,7 +158,10 @@ function passBuiltin(renewed: string | undefined): NextResponse {
 // Signed out on a password-sign-in copy: pages go to the sign-in page (and come
 // back afterwards); API calls get a plain 401.
 function toSignIn(request: NextRequest): NextResponse {
-  if (request.nextUrl.pathname.startsWith("/api/")) {
+  // /api/oauth/authorize is an API path only by address: a person (the owner,
+  // approving an app) lands on it in a browser, so it goes to the sign-in page
+  // and comes back, not to a bare 401 (ADR-289).
+  if (request.nextUrl.pathname.startsWith("/api/") && request.nextUrl.pathname !== "/api/oauth/authorize") {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const url = new URL("/sign-in", request.url);

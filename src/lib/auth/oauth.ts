@@ -23,6 +23,25 @@ import { verifyMachineToken, type MachineIdentity } from "@/lib/auth/machine";
 // scope so both credential paths authorize the same capability.
 export const MCP_SCOPE = "mcp";
 
+// The scope a phone app (Steward) signs in with (ADR-289). Unlike `mcp`, an
+// `api` grant is bound to a row in signin_sessions (`sid` in its tokens), so
+// the owner can sign that one device out from Settings > Sign-in.
+export const API_SCOPE = "api";
+
+export type GrantScope = typeof MCP_SCOPE | typeof API_SCOPE;
+
+// The scope /authorize grants for a request's `scope` parameter. None means
+// `mcp`, exactly as before. Otherwise exactly one of the two. A request for
+// both (or anything else) is null, which the route turns into invalid_scope:
+// an `mcp` token carries no device entry, so it must never share a grant with
+// one that has an entry.
+export function parseGrantScope(requested: string | null | undefined): GrantScope | null {
+  const words = [...new Set((requested ?? "").split(" ").filter(Boolean))];
+  if (words.length === 0) return MCP_SCOPE;
+  if (words.length === 1 && (words[0] === MCP_SCOPE || words[0] === API_SCOPE)) return words[0];
+  return null;
+}
+
 // Lifetimes. Codes are single-use-ish and short (the client redeems
 // immediately); access tokens are an hour (the client refreshes); refresh
 // tokens are long-lived (a connected phone shouldn't re-consent often). All are
@@ -55,6 +74,8 @@ export type CodePayload = BasePayload & {
   code_challenge: string; // S256 challenge from the authorize request
   scope: string;
   sub: string; // owner email, captured at authorize time (audit only)
+  // The signin_sessions row created when an `api` grant was approved (ADR-289).
+  sid?: string;
 };
 
 export type AccessPayload = BasePayload & {
@@ -68,12 +89,17 @@ export type AccessPayload = BasePayload & {
   // rotate-the-purpose-secret). Absent on every pre-ADR-179 token, which keeps
   // verifying unchanged.
   lbl?: string;
+  // The signin_sessions row this token is bound to (ADR-289): present on app
+  // sign-in tokens, absent on every other token. The DB layer (credentials.ts)
+  // checks the row on every verify, which is what makes one device revocable.
+  sid?: string;
 };
 
 export type RefreshPayload = BasePayload & {
   t: "refresh";
   scope: string;
   sub: string;
+  sid?: string; // same binding as AccessPayload.sid; checked at refresh
 };
 
 // --- secret + configured-ness ------------------------------------------------
@@ -177,6 +203,7 @@ export function issueCode(args: {
   codeChallenge: string;
   scope: string;
   sub: string;
+  sid?: string;
 }): string {
   const iat = nowSeconds();
   const payload: CodePayload = {
@@ -187,6 +214,7 @@ export function issueCode(args: {
     code_challenge: args.codeChallenge,
     scope: args.scope,
     sub: args.sub,
+    ...(args.sid ? { sid: args.sid } : {}),
   };
   return signToken(payload);
 }
@@ -202,7 +230,8 @@ export function issueAccessToken(
   scope: string,
   ttlSeconds = ACCESS_TTL_SECONDS,
   key = secret(),
-  label?: string
+  label?: string,
+  sid?: string
 ): string {
   const iat = nowSeconds();
   const payload: AccessPayload = {
@@ -213,10 +242,11 @@ export function issueAccessToken(
     sub,
   };
   if (label) payload.lbl = label;
+  if (sid) payload.sid = sid;
   return signToken(payload, key);
 }
 
-export function issueRefreshToken(sub: string, scope: string): string {
+export function issueRefreshToken(sub: string, scope: string, sid?: string): string {
   const iat = nowSeconds();
   const payload: RefreshPayload = {
     t: "refresh",
@@ -224,6 +254,7 @@ export function issueRefreshToken(sub: string, scope: string): string {
     exp: iat + REFRESH_TTL_SECONDS,
     scope,
     sub,
+    ...(sid ? { sid } : {}),
   };
   return signToken(payload);
 }
@@ -244,7 +275,27 @@ export function verifyAccessToken(
   const payload = verifyToken<AccessPayload>(token, "access");
   if (!payload) return null;
   if (!payload.scope.split(" ").includes(requiredScope)) return null;
+  // A device-bound (app sign-in) token is never an MCP credential: the MCP
+  // route does not check the device row, so honoring it there would dodge
+  // per-device revocation (ADR-289).
+  if (payload.sid) return null;
   return payload;
+}
+
+// Verifies an app sign-in access token (ADR-289): an `api`-scoped OAuth access
+// token that carries a device binding. Pure signature + expiry + shape; the
+// caller (credentials.ts) must still check that the bound row is alive, which
+// is what revocation means for these tokens. A token with no `sid` is refused
+// here, so a bound grant can never be used unbound.
+export function verifyDeviceToken(
+  authorizationHeader: string | null
+): (AccessPayload & { sid: string }) | null {
+  if (!authorizationHeader?.startsWith("Bearer ")) return null;
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  const payload = verifyToken<AccessPayload>(token, "access");
+  if (!payload || typeof payload.sid !== "string") return null;
+  if (!payload.scope.split(" ").includes(API_SCOPE)) return null;
+  return payload as AccessPayload & { sid: string };
 }
 
 export const ACCESS_TOKEN_TTL_SECONDS = ACCESS_TTL_SECONDS;
@@ -405,7 +456,7 @@ export function authorizationServerMetadata(origin: string) {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [MCP_SCOPE],
+    scopes_supported: [MCP_SCOPE], // `api` (ADR-289) is deliberately not advertised: a client that asks for every advertised scope would send "mcp api" and be refused
   };
 }
 

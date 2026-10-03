@@ -79,6 +79,30 @@ process.env.LEDGR_OAUTH_SECRET = "a-different-secret";
 check("token signed under the old secret is rejected after rotation", oauth.verifyAccessToken(`Bearer ${access}`, oauth.MCP_SCOPE) === null);
 process.env.LEDGR_OAUTH_SECRET = "test-secret-do-not-use-in-prod";
 
+// --- app sign-in: the `api` scope and the device binding (ADR-289) ---------
+check("absent scope is mcp (today's behavior)", oauth.parseGrantScope(null) === "mcp" && oauth.parseGrantScope("") === "mcp");
+check("scope mcp is mcp", oauth.parseGrantScope("mcp") === "mcp");
+check("scope api is api", oauth.parseGrantScope("api") === "api");
+check("mcp and api together are refused", oauth.parseGrantScope("mcp api") === null);
+check("an unknown scope is refused", oauth.parseGrantScope("admin") === null && oauth.parseGrantScope("api admin") === null);
+const SID = "11111111-2222-4333-8444-555555555555";
+const devAccess = oauth.issueAccessToken("owner@example.com", oauth.API_SCOPE, undefined, undefined, undefined, SID);
+check("device token verifies and carries its device id", oauth.verifyDeviceToken(`Bearer ${devAccess}`)?.sid === SID);
+check("device token is refused by the MCP route's verifier", oauth.verifyAccessToken(`Bearer ${devAccess}`, oauth.MCP_SCOPE) === null);
+check("an api token with no device id is not a device token", oauth.verifyDeviceToken(`Bearer ${oauth.issueAccessToken("o@x.test", oauth.API_SCOPE)}`) === null);
+check("an mcp token is not a device token", oauth.verifyDeviceToken(`Bearer ${access}`) === null);
+const devSidMcp = oauth.issueAccessToken("o@x.test", oauth.MCP_SCOPE, undefined, undefined, undefined, SID);
+check("a bound token cannot be used as MCP even if it says mcp", oauth.verifyAccessToken(`Bearer ${devSidMcp}`, oauth.MCP_SCOPE) === null);
+check("the api OAuth token is not accepted by the env/clipper/app api path", oauth.verifyApiToken(`Bearer ${devAccess}`) === null);
+const devRefresh = oauth.issueRefreshToken("owner@example.com", oauth.API_SCOPE, SID);
+check("refresh token carries the device id", oauth.verifyRefreshToken(devRefresh)?.sid === SID);
+check("an mcp refresh token has no device id", oauth.verifyRefreshToken(refresh)?.sid === undefined);
+const devCode = oauth.issueCode({ redirectUri: "http://127.0.0.1:5000/callback", codeChallenge: challenge, scope: oauth.API_SCOPE, sub: "o@x.test", sid: SID });
+check("code carries the device id", oauth.verifyCode(devCode)?.sid === SID);
+check("authorization-server metadata does not advertise api (keeps mcp-only connectors unchanged)", JSON.stringify(oauth.authorizationServerMetadata("https://x.test").scopes_supported) === JSON.stringify(["mcp"]));
+const loopbackClient = oauth.issueClientId(["http://127.0.0.1:53682/callback"], "Steward");
+check("loopback redirect registers and keeps the client name", oauth.verifyClientId(loopbackClient)?.client_name === "Steward");
+
 // --- discovery metadata ---------------------------------------------------
 const origin = "https://ledgr.example.com";
 const prm = oauth.protectedResourceMetadata(origin);

@@ -257,7 +257,7 @@ export default function SigninSettings(p: SigninSettingsProps) {
       {/* Sessions */}
       {(p.sessions.length > 0 || p.builtinSignedIn) && (
         <div className="mt-4 rounded-card border border-line bg-surface-1 p-4">
-          <p className="ui-row text-ink">Signed in with your password on this copy</p>
+          <p className="ui-row text-ink">Signed in on this copy</p>
           <ul className="mt-2 divide-y divide-line/60">
             {p.sessions.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-3 py-2">
@@ -265,6 +265,7 @@ export default function SigninSettings(p: SigninSettingsProps) {
                   <span className="block ui-row text-ink">
                     {s.label}
                     {s.current && <span className="ml-2 rounded bg-surface-3 px-1.5 py-0.5 text-xs text-ink-subtle">this browser</span>}
+                    {s.kind === "app" && <span className="ml-2 rounded bg-surface-3 px-1.5 py-0.5 text-xs text-ink-subtle">app sign-in</span>}
                   </span>
                   <span className="block ui-meta">
                     signed in {relativeTime(s.createdAt)}, last used {relativeTime(s.lastSeenAt)}
@@ -289,7 +290,7 @@ export default function SigninSettings(p: SigninSettingsProps) {
             <ConfirmButton
               onConfirm={() => signOutEverywhere()}
               title="Sign out everywhere?"
-              description="Every browser and phone signed in with your password on this copy is signed out, this one included."
+              description="Every browser signed in with your password and every app signed in to this copy is signed out, this one included."
               confirmLabel="Sign out everywhere"
               panelClassName="w-72"
               trigger="Sign out everywhere"

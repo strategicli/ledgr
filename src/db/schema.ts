@@ -135,6 +135,9 @@ export const signinSessions = pgTable(
     tokenHash: text("token_hash").notNull(),
     // "Edge on Windows", for the sessions list. Never the raw user agent.
     label: text("label"),
+    // 'browser' (a cookie session) or 'app' (a phone app signed in through OAuth,
+    // scope `api`; its id rides inside the app's signed tokens, ADR-289).
+    kind: text("kind").notNull().default("browser"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     // Valid while used within 90 days; bumped at most hourly.
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),

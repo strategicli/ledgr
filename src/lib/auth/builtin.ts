@@ -233,7 +233,8 @@ export async function endAllSessions(ownerId: string): Promise<void> {
   await clearCookie();
 }
 
-export type SessionSummary = { id: string; label: string; createdAt: string; lastSeenAt: string; current: boolean };
+// kind: a browser cookie session, or an app signed in through OAuth (ADR-289).
+export type SessionSummary = { id: string; label: string; kind: "browser" | "app"; createdAt: string; lastSeenAt: string; current: boolean };
 
 export async function listSessions(ownerId: string): Promise<SessionSummary[]> {
   const mine = await currentBuiltinSession().catch(() => null);
@@ -241,6 +242,7 @@ export async function listSessions(ownerId: string): Promise<SessionSummary[]> {
     .select({
       id: signinSessions.id,
       label: signinSessions.label,
+      kind: signinSessions.kind,
       createdAt: signinSessions.createdAt,
       lastSeenAt: signinSessions.lastSeenAt,
     })
@@ -250,6 +252,7 @@ export async function listSessions(ownerId: string): Promise<SessionSummary[]> {
   return rows.map((r) => ({
     id: r.id,
     label: r.label ?? "A browser",
+    kind: r.kind === "app" ? "app" : "browser",
     createdAt: r.createdAt.toISOString(),
     lastSeenAt: r.lastSeenAt.toISOString(),
     current: r.id === mine?.sessionId,
