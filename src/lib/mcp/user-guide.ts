@@ -146,9 +146,10 @@ Press **q** or **+ New**. A capture card opens with a type picker.
 - **Offline captures queue up** and send themselves when you reconnect. A pill
   shows how many are waiting.
 - **You can capture even when the app won't open.** With no connection, Ledgr
-  shows its offline page, which has a box for new notes. The first line becomes
-  the title and the rest the body. They're kept on that device and sent to your
-  Inbox the next time Ledgr opens online.
+  shows its offline page, with a title box, a notes box, and buttons for bold,
+  two heading sizes, bulleted lists and numbered lists. Saved captures appear
+  under "Waiting to sync," where you can edit or delete them. They stay on that
+  device and go to your Inbox the next time Ledgr opens online.
 
 ## The Inbox
 

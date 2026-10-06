@@ -18,11 +18,14 @@
      so it lands on sw.js's `request.mode === "navigate"` branch, where the pin
      fallback already lives. The service worker needed no change for this.
 
-     It also takes new captures with no connection: the box below writes into
-     the same localStorage outbox the in-app quick capture falls back to
+     It also takes new captures with no connection (title + a markdown body with
+     a small toolbar for bold, H1/H2, bulleted and numbered lists). Captures go
+     into the same localStorage outbox the in-app quick capture falls back to
      (src/lib/outbox.ts, key ledgr.outbox.v1, ADR-080), and OutboxSync sends
-     them the next time the app loads online. Keep the entry shape in step with
-     that file.
+     them the next time the app loads online. Everything queued (including
+     in-app captures that failed offline) is listed under "Waiting to sync",
+     where it can be edited or removed before it sends. Keep the entry shape in
+     step with that file.
 
      ⚠️ This file is precached into ledgr-shell-<VERSION> and served
      cache-first. Editing it does NOTHING on an installed device until VERSION
@@ -37,73 +40,98 @@
       body {
         margin: 0;
         min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         background: #191919;
         color: #d4d4d4;
         font-family: Arial, Helvetica, sans-serif;
       }
-      main { text-align: center; padding: 2rem; max-width: 26rem; }
-      .mark { width: 56px; height: 56px; border-radius: 12px; margin-bottom: 1rem; }
-      form { margin: 1.25rem 0 0; text-align: left; }
-      textarea {
-        box-sizing: border-box;
-        width: 100%;
-        min-height: 6rem;
-        resize: vertical;
-        background: #232323; color: #ededed;
-        border: 1px solid #2f2f2f; border-radius: 8px;
-        padding: 0.6rem 0.7rem;
-        font: inherit; font-size: 0.9rem; line-height: 1.45;
+      main { box-sizing: border-box; max-width: 36rem; margin: 0 auto; padding: 2.5rem 1rem 3rem; }
+      header { text-align: center; margin-bottom: 1.5rem; }
+      .mark { width: 56px; height: 56px; border-radius: 12px; margin-bottom: 0.75rem; }
+      h1 { font-size: 1.25rem; margin: 0 0 0.35rem; color: #ededed; }
+      h2 {
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+        color: #8a8a8a; margin: 2rem 0 0.5rem; font-weight: 600;
       }
-      textarea:focus { outline: none; border-color: #529cca; }
-      .row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.5rem; }
-      .row button { margin-top: 0; }
-      #queued { color: #6b6b6b; font-size: 0.78rem; }
-      button.ghost { background: transparent; color: #9b9b9b; border: 1px solid #2f2f2f; }
-      h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: #ededed; }
       p { margin: 0.25rem 0; color: #9b9b9b; font-size: 0.9rem; line-height: 1.5; }
-      ul {
-        list-style: none;
-        text-align: left;
-        margin: 1.25rem 0 1.1rem;
-        padding: 0;
-        border-top: 1px solid #2f2f2f;
+      .card { background: #202020; border: 1px solid #2f2f2f; border-radius: 10px; padding: 0.75rem; }
+      .card.editing { border-color: #529cca; }
+      #edit-label { color: #529cca; font-size: 0.75rem; margin: 0 0 0.5rem; }
+      input, textarea {
+        box-sizing: border-box; width: 100%;
+        background: #191919; color: #ededed;
+        border: 1px solid #2f2f2f; border-radius: 8px;
+        padding: 0.55rem 0.7rem; font: inherit; font-size: 0.9rem;
       }
-      li { border-bottom: 1px solid #2f2f2f; padding: 0.55rem 0.15rem; }
-      li a {
-        display: block;
-        color: #529cca;
-        text-decoration: none;
-        font-size: 0.9rem;
+      input { font-weight: 600; font-size: 1rem; }
+      textarea { min-height: 9rem; resize: vertical; line-height: 1.5; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; }
+      input:focus, textarea:focus { outline: none; border-color: #529cca; }
+      .toolbar { display: flex; gap: 0.25rem; margin: 0.5rem 0 0.35rem; flex-wrap: wrap; }
+      .toolbar button {
+        background: #262626; color: #d4d4d4; border: 1px solid #2f2f2f;
+        border-radius: 6px; min-width: 2.25rem; height: 2rem; padding: 0 0.5rem;
+        font-size: 0.82rem; cursor: pointer;
       }
-      li a:hover { text-decoration: underline; }
-      li span { color: #6b6b6b; font-size: 0.73rem; }
-      button {
-        margin-top: 1.25rem;
-        background: #529cca; color: #191919;
-        border: 0; border-radius: 6px;
-        padding: 0.5rem 1.25rem;
-        font-size: 0.9rem; font-weight: 600;
-        cursor: pointer;
+      .toolbar button:hover { border-color: #529cca; }
+      .row { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-top: 0.6rem; }
+      .row .note { margin-right: auto; color: #6b6b6b; font-size: 0.75rem; }
+      button.primary, button.ghost {
+        border-radius: 6px; padding: 0.5rem 1.1rem; font-size: 0.88rem; font-weight: 600; cursor: pointer;
       }
+      button.primary { background: #529cca; color: #191919; border: 0; }
+      button.ghost { background: transparent; color: #9b9b9b; border: 1px solid #2f2f2f; }
+      ul.list { list-style: none; margin: 0; padding: 0; border-top: 1px solid #2f2f2f; }
+      ul.list li { border-bottom: 1px solid #2f2f2f; padding: 0.6rem 0.15rem; }
+      ul.list a { color: #529cca; text-decoration: none; font-size: 0.9rem; }
+      ul.list a:hover { text-decoration: underline; }
+      ul.list span.meta { display: block; color: #6b6b6b; font-size: 0.73rem; margin-top: 0.15rem; }
+      .queued { display: flex; gap: 0.5rem; align-items: flex-start; }
+      .queued .text { flex: 1; min-width: 0; }
+      .queued .title { color: #ededed; font-size: 0.9rem; }
+      .queued .snippet { color: #8a8a8a; font-size: 0.8rem; margin-top: 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .queued button {
+        background: transparent; color: #9b9b9b; border: 1px solid #2f2f2f;
+        border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.78rem; cursor: pointer;
+      }
+      .queued button:hover { color: #ededed; }
+      .empty { color: #6b6b6b; font-size: 0.82rem; }
+      footer { text-align: center; margin-top: 2rem; }
     </style>
   </head>
   <body>
     <main>
-      <img class="mark" src="/icons/icon-192.png" alt="" />
-      <h1>You're offline</h1>
-      <form id="capture">
-        <textarea id="text" aria-label="New capture" placeholder="Write it down. It saves on this device and syncs when you're back online."></textarea>
+      <header>
+        <img class="mark" src="/icons/icon-192.png" alt="" />
+        <h1>You're offline</h1>
+        <p>Anything you write here is kept on this device and syncs the next time Ledgr opens online.</p>
+      </header>
+
+      <form id="capture" class="card">
+        <p id="edit-label" hidden>Editing a waiting capture</p>
+        <input id="title" type="text" placeholder="Title" aria-label="Title" autocomplete="off" />
+        <div class="toolbar" role="toolbar" aria-label="Formatting">
+          <button type="button" data-fmt="bold" title="Bold (Ctrl/Cmd+B)"><b>B</b></button>
+          <button type="button" data-fmt="h1" title="Heading 1">H1</button>
+          <button type="button" data-fmt="h2" title="Heading 2">H2</button>
+          <button type="button" data-fmt="ul" title="Bulleted list">• List</button>
+          <button type="button" data-fmt="ol" title="Numbered list">1. List</button>
+        </div>
+        <textarea id="body" aria-label="Notes" placeholder="Notes (optional). **bold**, # heading, - bullets and 1. numbers all work."></textarea>
         <div class="row">
-          <span id="queued" aria-live="polite"></span>
-          <button type="submit">Save</button>
+          <span class="note">Ctrl/Cmd+Enter to save</span>
+          <button type="button" id="cancel" class="ghost" hidden>Cancel</button>
+          <button type="submit" id="save" class="primary">Save</button>
         </div>
       </form>
-      <p id="intro">Ledgr needs a connection to load your items.</p>
-      <ul id="pins" hidden></ul>
-      <button class="ghost" onclick="location.reload()">Try again</button>
+
+      <h2 id="queue-head">Waiting to sync</h2>
+      <ul id="queue" class="list"></ul>
+
+      <h2 id="pins-head" hidden>Saved on this device</h2>
+      <ul id="pins" class="list" hidden></ul>
+
+      <footer>
+        <button class="ghost" onclick="location.reload()">Try again</button>
+      </footer>
     </main>
     <script>
       // Inline on purpose: this page must render with nothing else cached, so it
@@ -111,6 +139,244 @@
       // origin (see next.config.ts), and the Try again button above is already
       // an inline handler.
       (function () {
+        var $ = function (id) { return document.getElementById(id); };
+
+        // ---- Outbox (same key and entry shape as src/lib/outbox.ts) ----
+        var OUTBOX = "ledgr.outbox.v1";
+        function readOutbox() {
+          try {
+            var arr = JSON.parse(localStorage.getItem(OUTBOX) || "[]");
+            return Array.isArray(arr) ? arr : [];
+          } catch (e) {
+            return [];
+          }
+        }
+        function writeOutbox(entries) {
+          localStorage.setItem(OUTBOX, JSON.stringify(entries));
+        }
+        function newId() {
+          return crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random();
+        }
+
+        // ---- Formatting toolbar: plain markdown edits on the textarea ----
+        var ta = $("body");
+        function lineRange() {
+          var v = ta.value;
+          var start = v.lastIndexOf("\n", ta.selectionStart - 1) + 1;
+          var end = v.indexOf("\n", ta.selectionEnd);
+          if (end < 0) end = v.length;
+          return { start: start, end: end };
+        }
+        function replaceRange(start, end, text, selStart, selEnd) {
+          ta.setRangeText(text, start, end, "end");
+          if (selStart != null) ta.setSelectionRange(selStart, selEnd);
+          ta.focus();
+        }
+        var MARKER = /^(#{1,2} |- |\d+\. )/;
+        // Prefix every selected line; if they all already carry this exact
+        // style, take it off instead (toggle). Any other marker is swapped.
+        function prefixLines(kind) {
+          var r = lineRange();
+          var lines = ta.value.slice(r.start, r.end).split("\n");
+          var want = function (i) {
+            return kind === "h1" ? "# " : kind === "h2" ? "## " : kind === "ul" ? "- " : i + 1 + ". ";
+          };
+          var has = function (l) {
+            return kind === "h1" ? /^# /.test(l) : kind === "h2" ? /^## /.test(l) : kind === "ul" ? /^- /.test(l) : /^\d+\. /.test(l);
+          };
+          var all = lines.every(has);
+          var out = lines.map(function (l, i) {
+            var bare = l.replace(MARKER, "");
+            return all ? bare : want(i) + bare;
+          }).join("\n");
+          replaceRange(r.start, r.end, out, r.start, r.start + out.length);
+        }
+        function bold() {
+          var a = ta.selectionStart, b = ta.selectionEnd;
+          var sel = ta.value.slice(a, b);
+          if (/^\*\*[\s\S]*\*\*$/.test(sel) && sel.length >= 4) {
+            replaceRange(a, b, sel.slice(2, -2), a, b - 4);
+          } else if (sel) {
+            replaceRange(a, b, "**" + sel + "**", a, b + 4);
+          } else {
+            replaceRange(a, b, "****", a + 2, a + 2);
+          }
+        }
+        document.querySelectorAll("[data-fmt]").forEach(function (btn) {
+          // mousedown keeps the textarea's selection from collapsing on click.
+          btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+          btn.addEventListener("click", function () {
+            var f = btn.getAttribute("data-fmt");
+            if (f === "bold") bold();
+            else prefixLines(f);
+          });
+        });
+
+        ta.addEventListener("keydown", function (e) {
+          var mod = e.metaKey || e.ctrlKey;
+          if (mod && e.key === "Enter") {
+            e.preventDefault();
+            $("capture").requestSubmit();
+            return;
+          }
+          if (mod && (e.key === "b" || e.key === "B")) {
+            e.preventDefault();
+            bold();
+            return;
+          }
+          // Enter inside a list continues it; Enter on an empty item ends it.
+          if (e.key === "Enter" && !e.shiftKey && ta.selectionStart === ta.selectionEnd) {
+            var r = lineRange();
+            var line = ta.value.slice(r.start, ta.selectionStart);
+            var m = line.match(/^(- |(\d+)\. )(.*)$/);
+            if (!m) return;
+            e.preventDefault();
+            if (!m[3].trim()) {
+              replaceRange(r.start, ta.selectionStart, "", r.start, r.start);
+              return;
+            }
+            var next = m[2] ? Number(m[2]) + 1 + ". " : "- ";
+            var at = ta.selectionStart;
+            replaceRange(at, at, "\n" + next, at + 1 + next.length, at + 1 + next.length);
+          }
+        });
+        $("title").addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (e.metaKey || e.ctrlKey) $("capture").requestSubmit();
+            else ta.focus();
+          }
+        });
+
+        // ---- Save / edit ----
+        var editingId = null;
+        function resetForm() {
+          editingId = null;
+          $("title").value = "";
+          ta.value = "";
+          $("capture").classList.remove("editing");
+          $("edit-label").hidden = true;
+          $("cancel").hidden = true;
+          $("save").textContent = "Save";
+        }
+        function startEdit(entry) {
+          editingId = entry.id;
+          $("title").value = entry.payload.title || "";
+          var b = entry.payload.body;
+          ta.value = (b && b.text) || "";
+          $("capture").classList.add("editing");
+          $("edit-label").hidden = false;
+          $("cancel").hidden = false;
+          $("save").textContent = "Update";
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          $("title").focus();
+        }
+        $("cancel").addEventListener("click", resetForm);
+
+        $("capture").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var title = $("title").value.trim();
+          var text = ta.value.replace(/\s+$/, "");
+          if (!title && !text.trim()) return;
+          if (!title) {
+            // No title: borrow the first line of the notes, markers stripped.
+            var first = text.trim().split("\n")[0].replace(MARKER, "").replace(/\*\*/g, "");
+            title = first.slice(0, 80) || "Untitled";
+          }
+          var entries = readOutbox();
+          var existing = editingId && entries.find(function (x) { return x.id === editingId; });
+          if (existing) {
+            // Keep whatever else the capture carried (type, project, date).
+            existing.payload.title = title;
+            if (text.trim()) existing.payload.body = { format: "markdown", text: text };
+            else delete existing.payload.body;
+          } else {
+            var payload = { type: "unmarked", title: title, source: "quick_capture" };
+            if (text.trim()) payload.body = { format: "markdown", text: text };
+            entries.push({ id: newId(), payload: payload, ts: Date.now() });
+          }
+          try {
+            writeOutbox(entries);
+          } catch (err) {
+            alert("Couldn't save on this device. Storage may be full or blocked.");
+            return;
+          }
+          resetForm();
+          renderQueue();
+          $("title").focus();
+        });
+
+        // ---- Waiting to sync ----
+        function renderQueue() {
+          var entries = readOutbox().slice().reverse();
+          var list = $("queue");
+          list.textContent = "";
+          $("queue-head").textContent = "Waiting to sync" + (entries.length ? " (" + entries.length + ")" : "");
+          if (!entries.length) {
+            var li0 = document.createElement("li");
+            li0.className = "empty";
+            li0.textContent = "Nothing waiting. Saved captures show up here until they sync.";
+            list.appendChild(li0);
+            return;
+          }
+          entries.forEach(function (entry) {
+            var li = document.createElement("li");
+            li.className = "queued";
+            var text = document.createElement("div");
+            text.className = "text";
+            var t = document.createElement("div");
+            t.className = "title";
+            t.textContent = entry.payload.title || "Untitled";
+            text.appendChild(t);
+            var b = entry.payload.body && entry.payload.body.text;
+            if (b) {
+              var sn = document.createElement("div");
+              sn.className = "snippet";
+              sn.textContent = b
+                .split("\n")
+                .map(function (l) { return l.replace(MARKER, "").replace(/\*\*/g, "").trim(); })
+                .filter(Boolean)
+                .join(" · ");
+              text.appendChild(sn);
+            }
+            var meta = document.createElement("span");
+            meta.className = "meta";
+            meta.textContent = "saved " + new Date(entry.ts).toLocaleString(undefined, {
+              month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+            });
+            text.appendChild(meta);
+            li.appendChild(text);
+
+            var edit = document.createElement("button");
+            edit.type = "button";
+            edit.textContent = "Edit";
+            edit.addEventListener("click", function () { startEdit(entry); });
+            var del = document.createElement("button");
+            del.type = "button";
+            del.textContent = "Delete";
+            del.addEventListener("click", function () {
+              if (!confirm("Delete \"" + (entry.payload.title || "Untitled") + "\"? It hasn't synced, so this can't be undone.")) return;
+              writeOutbox(readOutbox().filter(function (x) { return x.id !== entry.id; }));
+              if (editingId === entry.id) resetForm();
+              renderQueue();
+            });
+            li.appendChild(edit);
+            li.appendChild(del);
+            list.appendChild(li);
+          });
+        }
+        renderQueue();
+        // Another tab (or the app's sender) changed the queue.
+        window.addEventListener("storage", function (e) {
+          if (e.key === OUTBOX) renderQueue();
+        });
+        // Back online: reload into the app, whose outbox sender posts the
+        // queue. Not while editing, so a half-written change isn't lost.
+        window.addEventListener("online", function () {
+          if (!editingId && !$("title").value && !ta.value) location.reload();
+        });
+
+        // ---- Saved on this device (Save Offline pins, ADR-193) ----
         var PIN_CACHE = "ledgr-pin-v1";
         // One row per pinned item. The /print key is the canonical one; matching
         // it alone drops the bare /items/{id} twin and every pinned image URL.
@@ -130,7 +396,7 @@
           if (!("caches" in window)) return;
           var cache = await caches.open(PIN_CACHE);
           var keys = await cache.keys();
-          var list = document.getElementById("pins");
+          var list = $("pins");
           var rows = [];
 
           for (var i = 0; i < keys.length; i++) {
@@ -168,6 +434,7 @@
 
             if (rows[j].at) {
               var meta = document.createElement("span");
+              meta.className = "meta";
               meta.textContent =
                 "saved " +
                 new Date(rows[j].at).toLocaleDateString(undefined, {
@@ -180,73 +447,13 @@
           }
 
           if (!rows.length) {
-            document.getElementById("intro").textContent =
-              "To read items with no connection, open them while online and press Save Offline.";
             return;
           }
-          document.getElementById("intro").textContent =
-            "Saved on this device:";
+          $("pins-head").hidden = false;
           list.hidden = false;
         }
 
-        // Offline capture. The first line becomes the title, anything after it
-        // the body, and it lands wherever Capture routing sends quick captures.
-        var OUTBOX = "ledgr.outbox.v1";
-        function readOutbox() {
-          try {
-            var arr = JSON.parse(localStorage.getItem(OUTBOX) || "[]");
-            return Array.isArray(arr) ? arr : [];
-          } catch (e) {
-            return [];
-          }
-        }
-        function showQueued(justSaved) {
-          var n = readOutbox().length;
-          document.getElementById("queued").textContent = n
-            ? (justSaved ? "Saved. " : "") + n + " waiting to sync"
-            : "";
-        }
-        document.getElementById("capture").addEventListener("submit", function (e) {
-          e.preventDefault();
-          var box = document.getElementById("text");
-          var text = box.value.trim();
-          if (!text) return;
-          var nl = text.indexOf("\n");
-          var title = (nl < 0 ? text : text.slice(0, nl)).trim();
-          var rest = nl < 0 ? "" : text.slice(nl + 1).trim();
-          var payload = { type: "unmarked", title: title, source: "quick_capture" };
-          if (rest) payload.body = { format: "markdown", text: rest };
-          var entries = readOutbox();
-          entries.push({
-            id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random(),
-            payload: payload,
-            ts: Date.now(),
-          });
-          try {
-            localStorage.setItem(OUTBOX, JSON.stringify(entries));
-          } catch (err) {
-            document.getElementById("queued").textContent = "Couldn't save on this device.";
-            return;
-          }
-          box.value = "";
-          box.focus();
-          showQueued(true);
-        });
-        // Ctrl/Cmd+Enter saves, plain Enter keeps writing.
-        document.getElementById("text").addEventListener("keydown", function (e) {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            document.getElementById("capture").requestSubmit();
-          }
-        });
-        showQueued(false);
-        // Back online: reload into the app, whose outbox sender posts the queue.
-        window.addEventListener("online", function () {
-          location.reload();
-        });
-
-        // Any failure leaves the static copy above standing, which is exactly
-        // the page this file used to be.
+        // Any failure leaves the pins section hidden.
         render().catch(function () {});
       })();
     </script>

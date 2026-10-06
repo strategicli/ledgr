@@ -50,7 +50,9 @@
 // served cache-first, so without this bump installed devices keep the old "L".
 // v11: offline.html gains an offline capture box and loses the Todoist/OneDrive
 // line and the old "L" mark. Same cache-first rule as v9.
-const VERSION = "v11";
+// v12: offline.html gets a title field, a markdown toolbar, and an editable
+// "Waiting to sync" list.
+const VERSION = "v12";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
