@@ -31,6 +31,8 @@ export type TriageItem = {
   urgency: number | null;
   // Persons already connected (any confirmed edge, ADR-175) for the People chip.
   people: { id: string; title: string }[];
+  // Undefined where the instance has no group type (the chip then hides).
+  groups?: { id: string; title: string }[];
 };
 
 type ExitDir = "left" | "right" | "down";
@@ -311,6 +313,7 @@ export default function TriageDeck({
                     scheduledDate={current.scheduledDate}
                     urgency={current.urgency as Priority | null}
                     people={current.people}
+                    groups={current.groups}
                     autoRefresh={false}
                     onEdited={(patch) => patchLocal(patch)}
                   />

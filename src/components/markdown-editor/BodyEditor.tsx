@@ -31,6 +31,7 @@ import MarkdownPreview from "./MarkdownPreview";
 import { isLargeForCanvas } from "@/lib/body";
 import { setToolbarOpenPref, useToolbarOpenPref } from "@/lib/toolbar-prefs";
 import type { PromotedRefs } from "./block-anchor-extension";
+import { useItemLocked } from "@/components/canvas/item-lock";
 import "./markdown-editor.css";
 
 type Mode = "rich" | "source" | "preview";
@@ -166,7 +167,7 @@ export default function BodyEditor({
   promotedRefs,
   collapsibleToolbar = false,
   compact = false,
-  editable = true,
+  editable: editableProp = true,
   tabsEnabled = false,
   preserveFootnotes = false,
   controlledSection,
@@ -174,6 +175,10 @@ export default function BodyEditor({
   follower = false,
   incoming,
 }: BodyEditorProps) {
+  // Bodies rendered outside ItemEditor (a meeting's notes tab, a paper) get
+  // the item lock from the canvas frame too (item-lock.tsx).
+  const frameLocked = useItemLocked();
+  const editable = editableProp && !frameLocked;
   const large = isLargeForCanvas(initialMarkdown, tabsEnabled);
   // Tab affordance (Brandon, 2026-07-20): TabbedBody owns tab state, but the
   // "start tabs" trigger now rides the body controls row here. It reports whether

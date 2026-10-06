@@ -8,6 +8,8 @@ import { types } from "@/db/schema";
 import TriageDeck, { type TriageItem } from "@/modules/triage/components/TriageDeck";
 import { listItems } from "@/lib/items";
 import { relatedSummaryFor } from "@/lib/relations";
+import { GROUP_TYPE } from "@/lib/events/people";
+import { getType } from "@/lib/types";
 import { resolveOwner } from "@/lib/owner";
 import { pageGate } from "@/lib/modules/gate";
 import { getAppTimezone } from "@/lib/today";
@@ -35,6 +37,10 @@ export default async function TriagePage() {
   // People chip — same batched read as the Inbox list.
   const taskIds = inboxItems.filter((i) => i.type === "task").map((i) => i.id);
   const peopleByTask = await relatedSummaryFor(owner.id, taskIds, { type: "person" });
+  const hasGroups = await getType(GROUP_TYPE).then(() => true, () => false);
+  const groupsByTask = hasGroups
+    ? await relatedSummaryFor(owner.id, taskIds, { type: GROUP_TYPE })
+    : null;
 
   const cards: TriageItem[] = inboxItems.map((it) => ({
     id: it.id,
@@ -44,6 +50,7 @@ export default async function TriagePage() {
     scheduledDate: it.scheduledDate,
     urgency: it.urgency,
     people: peopleByTask.get(it.id) ?? [],
+    groups: groupsByTask ? (groupsByTask.get(it.id) ?? []) : undefined,
   }));
 
   return (

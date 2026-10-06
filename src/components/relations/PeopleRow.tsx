@@ -6,7 +6,14 @@
 // through the generic RelationField (null role: adds write the default
 // 'related' edge, removes are role-blind). Persons linked only by a body
 // @-mention render as read-only chips, since the body owns that edge.
+//
+// Groups (ADR-144) get the same treatment in a "Groups" row right under People,
+// so a task can be about the Elders as easily as about one elder. It shows only
+// where the instance has the group type (scripts/setup-groups.mts), the same
+// rule the quick-add Group chip follows.
 import Link from "next/link";
+import { GROUP_TYPE } from "@/lib/events/people";
+import { getType } from "@/lib/types";
 import { MENTION_ROLE } from "@/lib/mentions";
 import { listRelatedItems } from "@/lib/relations";
 import NavGlyph from "@/components/nav/NavGlyph";
@@ -28,9 +35,57 @@ export default async function PeopleRow({
   // persons ride along as its read-only chips.
   rail?: boolean;
 }) {
-  const related = await listRelatedItems(ownerId, itemId);
+  const [related, hasGroups] = await Promise.all([
+    listRelatedItems(ownerId, itemId),
+    getType(GROUP_TYPE).then(
+      () => true,
+      () => false
+    ),
+  ]);
+  const rows = [
+    { type: "person", label: "Person", heading: "People", icon: "person" },
+    ...(hasGroups
+      ? [{ type: GROUP_TYPE, label: "Group", heading: "Groups", icon: "people" }]
+      : []),
+  ];
+
+  return (
+    <>
+      {rows.map((row) => (
+        <LinkRow
+          key={row.type}
+          {...row}
+          itemId={itemId}
+          related={related}
+          bare={bare}
+          rail={rail}
+        />
+      ))}
+    </>
+  );
+}
+
+function LinkRow({
+  type,
+  label,
+  heading,
+  icon,
+  itemId,
+  related,
+  bare,
+  rail,
+}: {
+  type: string;
+  label: string;
+  heading: string;
+  icon: string;
+  itemId: string;
+  related: Awaited<ReturnType<typeof listRelatedItems>>;
+  bare: boolean;
+  rail: boolean;
+}) {
   const people = related.filter(
-    (r) => r.type === "person" && r.matchState === "confirmed"
+    (r) => r.type === type && r.matchState === "confirmed"
   );
   const mentionOnly = people.filter((p) =>
     p.roles.every((r) => r === MENTION_ROLE)
@@ -42,11 +97,11 @@ export default async function PeopleRow({
       <RelationField
         itemId={itemId}
         role={null}
-        targetType="person"
-        targetTypeLabel="Person"
+        targetType={type}
+        targetTypeLabel={label}
         cardinality="many"
         initial={editable.map((p) => ({ id: p.id, title: p.title }))}
-        heading="People"
+        heading={heading}
         readOnlyChips={mentionOnly.map((p) => ({
           id: p.id,
           title: p.title,
@@ -63,11 +118,11 @@ export default async function PeopleRow({
       <dt className={bare ? "text-neutral-500" : "w-32 shrink-0 pt-1 text-neutral-500"}>
         <span className="inline-flex items-center gap-1.5">
           <NavGlyph
-            icon="person"
+            icon={icon}
             size={12}
             className="shrink-0 text-[var(--accent)]"
           />
-          People
+          {heading}
         </span>
       </dt>
       <dd className="min-w-0 flex-1">
@@ -88,8 +143,8 @@ export default async function PeopleRow({
           <RelationField
             itemId={itemId}
             role={null}
-            targetType="person"
-            targetTypeLabel="Person"
+            targetType={type}
+            targetTypeLabel={label}
             cardinality="many"
             initial={editable.map((p) => ({ id: p.id, title: p.title }))}
           />

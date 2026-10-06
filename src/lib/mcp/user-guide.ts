@@ -145,6 +145,11 @@ Press **q** or **+ New**. A capture card opens with a type picker.
   picker to one type. Picking an item adds a removable "Linked" chip.
 - **Offline captures queue up** and send themselves when you reconnect. A pill
   shows how many are waiting.
+- **You can capture even when the app won't open.** With no connection, Ledgr
+  shows its offline page, with a title box, a notes box, and buttons for bold,
+  two heading sizes, bulleted lists and numbered lists. Saved captures appear
+  under "Waiting to sync," where you can edit or delete them. They stay on that
+  device and go to your Inbox the next time Ledgr opens online.
 
 ## The Inbox
 
@@ -562,7 +567,9 @@ Build your own kinds of item at \`/build/types\`.
   them first.
 - **Tags are just a type.** A tag's page shows everything tagged with it.
 - **Groups** have a member roster. An event can be *for* a group, and a task can
-  link to one from the add card's Group chip.
+  link to one anywhere it links to a person: the add card's Group chip, the
+  **Groups** row under People on a task's page, and the **Groups** chip in the
+  Inbox and Triage.
 - **A resource can belong to several records.** Docs, meetings and links can be
   attached to more than one project at a time; tasks and milestones live in one.
 - **Discover** suggests items you probably should link but have not, ranked by
@@ -1069,7 +1076,10 @@ takes you there).
   screen size. A card is always exactly as tall as its content (nothing scrolls
   inside a card), and the Details, Save Offline, Share, and Version History
   cards always settle beneath everything else.
-- **Lock an item** from its ⋯ menu to make it read-only.
+- **Lock an item** from its ⋯ menu to make it read-only. On every kind of item,
+  the title, the text and every property, picker and button on the page stop
+  responding until you unlock it from the same menu. Links still open, and tabs
+  still switch so you can read them.
 - **Duplicate an item** from its ⋯ menu: the copy keeps the body, dates,
   properties, subitems and links (not attached files) and is titled
   "… - Copy". A short notice offers "Open the copy"; ignore it to stay put.

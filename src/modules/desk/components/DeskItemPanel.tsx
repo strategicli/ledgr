@@ -81,12 +81,13 @@ export default function DeskItemPanel({
         controlledSection={tabsEnabled ? section : undefined}
         // Non-focused panels follow the source's live text instead of editing.
         follower={!writer}
+        locked={doc.locked}
         onLiveChange={(next) => publishLive(itemId, next)}
       />
       {showDetails && (
         // Distinct key from the sibling editor (which is keyed by itemId); keying
         // by item still gives a fresh mount + refetch when the item changes.
-        <ItemDetails key={`details-${itemId}`} itemId={itemId} writer={writer} />
+        <ItemDetails key={`details-${itemId}`} itemId={itemId} writer={writer && !doc.locked} />
       )}
     </div>
   );

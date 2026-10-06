@@ -149,7 +149,9 @@ export default async function RelatedPanel({
   // Suggested person edges stay below — confirm/reject lives in this panel.
   if (claimPersons) {
     for (const r of related) {
-      if (r.type === "person" && r.matchState !== "suggested") claimed.add(r.id);
+      // Groups too: PeopleRow renders them in its Groups row.
+      if ((r.type === "person" || r.type === "group") && r.matchState !== "suggested")
+        claimed.add(r.id);
     }
   }
 

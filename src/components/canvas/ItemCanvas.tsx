@@ -30,6 +30,7 @@ import { ListenPanel } from "@/lib/module-editor";
 import PageTrashButton from "@/components/canvas/PageTrashButton";
 import TemplateBanner from "@/components/canvas/TemplateBanner";
 import TypeCue from "@/components/canvas/TypeCue";
+import { ItemLockProvider } from "@/components/canvas/item-lock";
 import { speechTextFor } from "@/lib/markdown-render";
 import { buildProjectMarkdown } from "@/lib/project-markdown";
 
@@ -109,6 +110,7 @@ export default async function ItemCanvas({
   ]);
   const canvasId = canvasIdForType(item.type, owner.id, typeDef?.capability);
   const Canvas = canvasComponentFor(canvasId);
+  const locked = Boolean((item.properties as Record<string, unknown> | null)?.locked);
 
   // Table of contents (ADR-114): a per-type, owner-scoped reading preference
   // resolved here so the outline mounts once, universally, over whatever canvas
@@ -252,9 +254,7 @@ export default async function ItemCanvas({
                   itemId={item.id}
                   type={item.type}
                   title={item.title}
-                  locked={Boolean(
-                    (item.properties as Record<string, unknown> | null)?.locked
-                  )}
+                  locked={locked}
                   favorited={favorited}
                   createdLabel={fmtChromeDate(item.createdAt)}
                   updatedLabel={fmtChromeDate(item.updatedAt)}
@@ -271,8 +271,19 @@ export default async function ItemCanvas({
         {/* canvasComponentFor is a registry lookup (module-wiring.tsx) returning a
             stable, module-registered component, not one created per render — its
             identity is constant across renders, so React won't remount it. */}
-        {/* eslint-disable-next-line react-hooks/static-components */}
-        <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
+        {/* A locked item (ADR-097) is read-only on every canvas: the provider
+            makes the title and body editors read-only, and the disabled
+            fieldset switches off every form control and button inside the
+            canvas at once (properties, subtasks, relations, pickers). Links
+            still work, and reading affordances that must stay usable (body
+            tabs) are deliberately not <button>s. `contents` keeps it out of
+            layout. */}
+        <ItemLockProvider locked={locked}>
+          <fieldset disabled={locked} className="contents">
+            {/* eslint-disable-next-line react-hooks/static-components */}
+            <Canvas item={item} ownerId={owner.id} variant={variant} arrange={arrange} />
+          </fieldset>
+        </ItemLockProvider>
         {/* Mounted here, not in the per-type canvas, so it works on every canvas
             (tabs, two-pane, module canvases included) — the bug a bespoke canvas
             exposed. Renders nothing until armed (kebab click or ?listen=1). */}

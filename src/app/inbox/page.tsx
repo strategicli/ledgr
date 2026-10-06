@@ -19,6 +19,8 @@ import RowMenu from "@/components/lists/RowMenu";
 import QuickCapture from "@/components/today/QuickCapture";
 import { listItems } from "@/lib/items";
 import { relatedSummaryFor } from "@/lib/relations";
+import { GROUP_TYPE } from "@/lib/events/people";
+import { getType } from "@/lib/types";
 import { resolveOwner } from "@/lib/owner";
 import { getAppTimezone } from "@/lib/today";
 import { appTodayYmd } from "@/lib/recurrence-service";
@@ -56,6 +58,11 @@ export default async function Inbox() {
   // People chip can show who's attached. One batched pair of queries.
   const taskIds = inboxItems.filter((i) => i.type === "task").map((i) => i.id);
   const peopleByTask = await relatedSummaryFor(owner.id, taskIds, { type: "person" });
+  // Groups the same way (ADR-144), only where the instance has the group type.
+  const hasGroups = await getType(GROUP_TYPE).then(() => true, () => false);
+  const groupsByTask = hasGroups
+    ? await relatedSummaryFor(owner.id, taskIds, { type: GROUP_TYPE })
+    : null;
 
   return (
     <main className="min-h-screen">
@@ -146,6 +153,7 @@ export default async function Inbox() {
                         scheduledDate={item.scheduledDate}
                         urgency={item.urgency as Priority | null}
                         people={peopleByTask.get(item.id) ?? []}
+                        groups={groupsByTask ? (groupsByTask.get(item.id) ?? []) : undefined}
                       />
                     )}
                     <TriageControls
