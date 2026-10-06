@@ -45,6 +45,7 @@ import {
 } from "@/components/nav/NavGlyphs";
 import { useHoverPopover } from "@/components/nav/useHoverPopover";
 import AppBadgeSync from "@/components/pwa/AppBadgeSync";
+import PushPromptBanner from "@/components/pwa/PushPromptBanner";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
@@ -1008,6 +1009,8 @@ export default function NavShell({
     <nav aria-label="Main">
       {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
       {notificationsOn && <AppBadgeSync count={unreadCount} />}
+      {/* Asks each browser once to sign up for push (ADR-290). */}
+      {notificationsOn && <PushPromptBanner />}
       {inBuild && (
         <BuildSidebar
           types={buildTypes}

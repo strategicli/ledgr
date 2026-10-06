@@ -1770,8 +1770,10 @@ Claude Runs under **Item types**.
   most, and runs move to Trash after 60 days. If no device received it, Ledgr
   tries again every 15 minutes for about two hours, then records that it gave
   up. Each phone and browser signs up on its own, and only on the copy of Ledgr
-  it was opened from: open Ledgr's home page from the address you actually use
-  and click **Enable notifications** once per device and browser.
+  it was opened from. While the Notification center is on, any browser that has
+  not signed up shows a **Turn on notifications for this browser?** banner;
+  **Turn on** signs it up, and **Not now** hides it in that browser for a week.
+  The home page's **Enable notifications** link does the same.
 
 ## Guides an assistant can read
 
