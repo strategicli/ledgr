@@ -26,6 +26,7 @@ import { publishBodyMarkdown } from "@/lib/word-count";
 import { uploadAttachment } from "@/components/attachments/upload";
 import BodyEditor from "./BodyEditor";
 import type { PromotedRefs } from "./block-anchor-extension";
+import { useItemLocked } from "@/components/canvas/item-lock";
 import { useTokenAutocomplete } from "./useTokenAutocomplete";
 
 const SAVE_DEBOUNCE_MS = 1500;
@@ -98,12 +99,16 @@ export default function ItemEditor({
   tabsEnabled = false,
   collapsibleToolbar = false,
   compactBody = false,
-  locked = false,
+  locked: lockedProp = false,
   done = false,
   onLiveChange,
   controlledSection,
   follower = false,
 }: ItemEditorProps) {
+  // The canvas frame's lock covers every canvas, even one that never passes
+  // the prop (see item-lock.tsx).
+  const frameLocked = useItemLocked();
+  const locked = lockedProp || frameLocked;
   const [title, setTitle] = useState(item.title);
   // Follower mode (ADR-165): mirror the source's live title. `item.title` comes
   // from the Desk doc store and updates as the source publishes; a follower

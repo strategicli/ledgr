@@ -26,6 +26,7 @@ const IconCalendar = <I d="M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-
 const IconFlag = <I d="M5 21V4" extra={<path d="M5 4h12l-2 4 2 4H5" />} />;
 const IconHash = <I d="M4 9h16M4 15h15M10 3L8 21M16 3l-2 18" />;
 const IconUser = <I d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" extra={<circle cx="12" cy="8" r="4" />} />;
+const IconGroup = <I d="M2 20c0-3 3-5 6.5-5s6.5 2 6.5 5" extra={<><circle cx="8.5" cy="8" r="3.5" /><path d="M16 5.5a3.5 3.5 0 0 1 0 7" /><path d="M17.5 15c2.6.4 4.5 2.3 4.5 5" /></>} />;
 
 function ymdToIso(ymd: string): string {
   return `${ymd}T00:00:00.000Z`;
@@ -47,6 +48,7 @@ export default function InboxTaskControls({
   scheduledDate,
   urgency,
   people = [],
+  groups,
   autoRefresh = true,
   onEdited,
 }: {
@@ -57,6 +59,9 @@ export default function InboxTaskControls({
   // Persons already connected to this task (any confirmed edge, ADR-175), so
   // the People chip shows who's attached instead of pretending nothing is.
   people?: { id: string; title: string }[];
+  // Groups already connected (ADR-144). Undefined = this instance has no group
+  // type, so the Groups chip isn't offered at all.
+  groups?: { id: string; title: string }[];
   // The Inbox list refreshes the server render after an edit so the list stays
   // in sync (default). The triage deck sets this false: it owns a stable local
   // snapshot, so a refresh there would reshuffle the deck under the current
@@ -77,6 +82,8 @@ export default function InboxTaskControls({
   const dispSched = autoRefresh ? scheduledDate : localSched;
   const dispPrio = autoRefresh ? urgency : localPrio;
   const dispPeople = autoRefresh ? people : localPeople;
+  const [localGroups, setLocalGroups] = useState(groups ?? []);
+  const dispGroups = autoRefresh ? (groups ?? []) : localGroups;
 
   useEffect(() => {
     if (!dateOpen) return;
@@ -190,6 +197,18 @@ export default function InboxTaskControls({
         excludeIds={dispPeople.map((p) => p.id)}
         onRelated={(hit) => setLocalPeople((prev) => [...prev, hit])}
       />
+      {groups !== undefined && (
+        <RelatePicker
+          itemId={id}
+          type="group"
+          label={dispGroups.length > 0 ? dispGroups.map((g) => g.title).join(", ") : "Groups"}
+          icon={IconGroup}
+          autoRefresh={autoRefresh}
+          filled={dispGroups.length > 0}
+          excludeIds={dispGroups.map((g) => g.id)}
+          onRelated={(hit) => setLocalGroups((prev) => [...prev, hit])}
+        />
+      )}
     </div>
   );
 }

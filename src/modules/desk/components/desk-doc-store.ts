@@ -30,6 +30,9 @@ export type DocState = {
   // refreshes them only on the next open, which is what the full canvas does too.
   createdAt: string | null;
   updatedAt: string | null;
+  // The item lock (ADR-097, items.properties.locked): a locked item is
+  // read-only in every Desk panel, as it is on the full canvas.
+  locked: boolean;
   // Live text the focused editor has published (reflects unsaved edits). Seeded
   // from the loaded item so a twin has something to show before the first edit.
   liveTitle: string;
@@ -66,6 +69,7 @@ export function ensureDoc(id: string): void {
     body: null,
     createdAt: null,
     updatedAt: null,
+    locked: false,
     liveTitle: "",
     liveMarkdown: "",
     dirty: false,
@@ -85,6 +89,7 @@ export function ensureDoc(id: string): void {
         body: item.body ?? null,
         createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
         updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : null,
+        locked: item.properties?.locked === true,
         liveTitle: title,
         liveMarkdown: md,
         dirty: false,
@@ -100,6 +105,7 @@ export function ensureDoc(id: string): void {
         body: prev?.body ?? null,
         createdAt: prev?.createdAt ?? null,
         updatedAt: prev?.updatedAt ?? null,
+        locked: prev?.locked ?? false,
         liveTitle: prev?.liveTitle ?? "",
         liveMarkdown: prev?.liveMarkdown ?? "",
         dirty: prev?.dirty ?? false,

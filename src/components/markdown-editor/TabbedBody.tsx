@@ -277,19 +277,30 @@ export default function TabbedBody({
                     className="w-40 max-w-[14rem] bg-transparent text-base font-semibold text-neutral-100 outline-none placeholder:text-neutral-500"
                   />
                 ) : (
-                  <button
-                    type="button"
+                  // Not a <button>: switching tabs is reading, and a locked
+                  // item's canvas sits in a disabled fieldset that would
+                  // switch every button off (item-lock.tsx).
+                  <span
+                    role="tab"
+                    tabIndex={0}
+                    aria-selected={isActive}
                     onClick={() => setActive(i)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setActive(i);
+                      }
+                    }}
                     onDoubleClick={() => {
                       if (!editable) return;
                       setActive(i);
                       setRenamingIdx(i);
                     }}
                     title={editable ? "Double-click to rename" : undefined}
-                    className="max-w-[14rem] truncate"
+                    className="max-w-[14rem] cursor-pointer truncate"
                   >
                     {t.title.trim() || "Untitled"}
-                  </button>
+                  </span>
                 )}
                 {editable && !isRenaming && (
                   <ConfirmButton
