@@ -9,6 +9,36 @@
 
 import { useEffect, useState } from "react";
 
+// What this device calls itself when it signs up, so Settings can list it by
+// name: the installed app or the browser, and the system. Best effort from the
+// user agent; nothing depends on it being right.
+export function deviceLabel(): string {
+  const ua = navigator.userAgent;
+  const os = /Android/i.test(ua)
+    ? "Android"
+    : /iPhone|iPad|iPod/i.test(ua)
+      ? "iPhone"
+      : /Mac OS X|Macintosh/i.test(ua)
+        ? "Mac"
+        : /Windows/i.test(ua)
+          ? "Windows"
+          : /Linux/i.test(ua)
+            ? "Linux"
+            : "this device";
+  const installed = window.matchMedia?.("(display-mode: standalone)").matches;
+  if (installed) return `Ledgr app on ${os}`;
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox\//.test(ua)
+      ? "Firefox"
+      : /Chrome\//.test(ua)
+        ? "Chrome"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Browser";
+  return `${browser} on ${os}`;
+}
+
 // VAPID public key (base64url) → the byte buffer applicationServerKey expects.
 // Backed by an explicit ArrayBuffer so the type satisfies BufferSource.
 function urlBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
@@ -97,6 +127,7 @@ export function usePushSubscription() {
           endpoint: json.endpoint,
           p256dh: json.keys?.p256dh,
           auth: json.keys?.auth,
+          label: deviceLabel(),
         }),
       });
       if (!res.ok) throw new Error(`subscribe failed (${res.status})`);

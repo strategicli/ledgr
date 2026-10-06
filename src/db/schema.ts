@@ -800,6 +800,10 @@ export const pushSubscriptions = pgTable(
     endpoint: text("endpoint").notNull().unique(),
     p256dh: text("p256dh").notNull(),
     auth: text("auth").notNull(),
+    // What the device called itself when it signed up ("Ledgr app on Android",
+    // "Chrome on Mac"), so Settings can list devices by name. Null on rows from
+    // before migration 0071.
+    label: text("label"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

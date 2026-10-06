@@ -9,7 +9,7 @@ import { deleteSubscription, saveSubscription } from "@/lib/push/store";
 // (not in the public-route set), so the machine-token door is never involved.
 export const dynamic = "force-dynamic";
 
-type Body = { endpoint?: unknown; p256dh?: unknown; auth?: unknown };
+type Body = { endpoint?: unknown; p256dh?: unknown; auth?: unknown; label?: unknown };
 
 function readSubscription(raw: unknown): {
   endpoint: string;
@@ -44,14 +44,16 @@ export async function POST(request: Request) {
   const off = await routeGate(owner.id, "notification-center");
   if (off) return off;
   try {
-    const sub = readSubscription(await request.json());
+    const raw = await request.json();
+    const sub = readSubscription(raw);
     if (!sub) {
       return NextResponse.json(
         { error: "endpoint, p256dh, and auth are required" },
         { status: 400 }
       );
     }
-    await saveSubscription(owner.id, sub);
+    const label = typeof (raw as Body).label === "string" ? ((raw as Body).label as string).trim().slice(0, 60) : "";
+    await saveSubscription(owner.id, sub, label || null);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errorResponse(err);

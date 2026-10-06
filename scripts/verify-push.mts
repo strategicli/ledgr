@@ -7,6 +7,7 @@
 // VAPID keys). Run: npx tsx scripts/verify-push.mts
 // Safe to delete once the slice is closed.
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import {
   createDecipheriv,
   createECDH,
@@ -144,6 +145,16 @@ try {
 
   await store.deleteSubscription(ownerId, subB.endpoint);
   check("unsubscribe removes by endpoint", (await store.countSubscriptions(ownerId)) === 1);
+
+  // Device names (Settings > Notifications > Devices): a label saves, a
+  // re-subscribe without one keeps it, and remove is owner-scoped by id.
+  await store.saveSubscription(ownerId, subA, "Chrome on Mac");
+  await store.saveSubscription(ownerId, { ...subA, p256dh: "UPDATED" });
+  const devs = await store.listDevices(ownerId);
+  check("a device keeps its name across a re-subscribe", devs.length === 1 && devs[0].label === "Chrome on Mac", JSON.stringify(devs));
+  check("another owner cannot remove it", (await store.deleteDevice(randomUUID(), devs[0].id)) === false);
+  check("getDevice returns the keys for a test send", (await store.getDevice(ownerId, devs[0].id))?.endpoint === subA.endpoint);
+  check("the owner can remove it by id", (await store.deleteDevice(ownerId, devs[0].id)) === true && (await store.countSubscriptions(ownerId)) === 0);
 
   // restore subA's real key and re-add subB for the send tests
   await store.saveSubscription(ownerId, subA);
