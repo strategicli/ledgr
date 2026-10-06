@@ -498,6 +498,13 @@
       "when": 1790600000000,
       "tag": "0070_app_signins",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1791292872062,
+      "tag": "0071_push_device_label",
+      "breakpoints": true
     }
   ]
 }

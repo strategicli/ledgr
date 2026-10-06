@@ -36,6 +36,7 @@ import {
 import { accentHighlightImageCss } from "@/lib/colors";
 import { TOOLBAR_ITEMS } from "@/components/markdown-editor/toolbar-icons";
 import NoteEditingPromptActions from "@/components/settings/NoteEditingPromptActions";
+import PushDevices from "@/components/settings/PushDevices";
 
 const POSITION_LABELS: Record<UserSettings["navPosition"], string> = {
   top: "Top",
@@ -833,6 +834,9 @@ export default function SettingsForm({
                   />
                 </Row>
               ))}
+            </Card>
+            <Card>
+              <PushDevices />
             </Card>
           </Group>
         )}

@@ -1773,7 +1773,9 @@ Claude Runs under **Item types**.
   it was opened from. While the Notification center is on, any browser that has
   not signed up shows a **Turn on notifications for this browser?** banner;
   **Turn on** signs it up, and **Not now** hides it in that browser for a week.
-  The home page's **Enable notifications** link does the same.
+  The home page's **Enable notifications** link does the same. To see which
+  devices a copy will notify, or check that one still works, use **Devices** in
+  Settings → Notifications.
 
 ## Guides an assistant can read
 
@@ -1799,7 +1801,7 @@ palette jumps straight to a named setting.
 | Layout | Navigation position (top, bottom, left, right), spacing, where an item opens |
 | Editing | Which toolbar buttons show; collapsible headings; collapsible bullets; toggle blocks. Quick-add card chips are set per type at \`/build/types\` |
 | Search | Your own synonym dictionary |
-| Notifications | Which events notify you (only while the notification center is on) |
+| Notifications | Which events notify you, and **Devices**: every phone and browser signed up on this copy, each with **Send test** and **Remove** (only while the notification center is on) |
 | AI | The Note Editing Partner prompt (when live editing context is on); the in-app agent's models and prompts. The AI switches themselves are at \`/build/modules\` |
 | Connections & data | Trash retention, in days; the task calendar (ICS) feed; API credentials |
 
