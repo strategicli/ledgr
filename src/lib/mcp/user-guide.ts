@@ -1763,16 +1763,15 @@ Claude Runs under **Item types**.
   of a run worth keeping, the task files a **Claude Run** record with the full
   report as its body, listed at \`/list/claude_run\`. If the task decides you
   need to know, it ticks **Notify me**. You then get one notification showing
-  the title and the report's first line: an entry in the notification inbox
-  (the bell, and the phone app) while the **Notification center** module is on,
-  and a push to every device that turned on notifications. Tapping it opens the
-  record. Most runs stay quiet. A run notifies once at most, and runs move to
-  Trash after 60 days. If nothing got through (no inbox entry and no device took
-  the push), Ledgr tries again every 15 minutes for about two hours, then
-  records that it gave up. Push sign-ups belong to one copy of Ledgr: turn on
-  notifications from the address you actually use (open Ledgr's home page in
-  the phone's installed app and tap **Enable notifications** once), or the
-  push goes to a copy you never open.
+  the title and the report's first line, on every phone and browser that turned
+  on notifications. Tapping it opens the record. While the **Notification
+  center** module is on, it is also listed in the notification inbox, where you
+  review and clear notifications. Most runs stay quiet. A run notifies once at
+  most, and runs move to Trash after 60 days. If no device received it, Ledgr
+  tries again every 15 minutes for about two hours, then records that it gave
+  up. Each phone and browser signs up on its own, and only on the copy of Ledgr
+  it was opened from: open Ledgr's home page from the address you actually use
+  and click **Enable notifications** once per device and browser.
 
 ## Guides an assistant can read
 

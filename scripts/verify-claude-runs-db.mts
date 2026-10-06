@@ -113,20 +113,27 @@ try {
   check("and then it is claimed", typeof (await props(unset.id)).notifiedAt === "string");
   check("a second retry pass finds nothing", (await retryPendingNotifications(ownerId)) === 0);
 
-  // With the Notification center on, a run also lands in the inbox, and the
-  // inbox alone counts as delivered: no retry even when no device took a push.
+  // With the Notification center on, a run also lands in the inbox. The inbox
+  // is only where notifications are reviewed, so it is NOT delivery: with no
+  // device reached the run is still retried, and the retry adds no second entry.
   await db.update(users).set({ settings: { modules: { "claude-runs": true, "notification-center": true } } }).where(eq(users.id, ownerId));
   const inboxed = await createItem(ownerId, { type: "claude_run", title: "Inbox run", body: body("Summary line\nmore"), properties: { notifyme: true } });
   await hitsAfter(5);
-  const rows = await db.select({ kind: notifications.kind, body: notifications.body }).from(notifications).where(eq(notifications.relatedItemId, inboxed.id));
+  const inboxRows = async (id: string) =>
+    db.select({ kind: notifications.kind, body: notifications.body }).from(notifications).where(eq(notifications.relatedItemId, id));
+  const rows = await inboxRows(inboxed.id);
   check("with the Notification center on it lands in the inbox", rows.length === 1 && rows[0].kind === "claude_run" && rows[0].body === "Summary line", rows);
   check("and still pushes", hits === 5, hits);
   delete process.env.VAPID_PRIVATE_KEY;
   const inboxOnly = await createItem(ownerId, { type: "claude_run", title: "Inbox only", properties: { notifyme: true } });
   let p2 = await props(inboxOnly.id);
-  for (let i = 0; i < 40 && !("notifiedAt" in p2); i++) p2 = (await sleep(100), await props(inboxOnly.id));
-  check("with push unset the inbox alone delivers it, no retry queued", typeof p2.notifiedAt === "string" && !("notifyRetry" in p2), p2);
+  for (let i = 0; i < 40 && !("notifyRetry" in p2); i++) p2 = (await sleep(100), await props(inboxOnly.id));
+  check("with no device reached, the inbox entry does not count: a retry is queued", !("notifiedAt" in p2) && "notifyRetry" in p2, p2);
+  check("and the inbox has the entry", (await inboxRows(inboxOnly.id)).length === 1);
   process.env.VAPID_PRIVATE_KEY = privateKey;
+  await retryPendingNotifications(ownerId);
+  check("the retry pushes", (await hitsAfter(6)) === 6, hits);
+  check("without a second inbox entry", (await inboxRows(inboxOnly.id)).length === 1);
 
   await db.execute(sql`update items set created_at = now() - interval '61 days' where id = ${quiet.id}`);
   const trashed = await trashOldRuns(ownerId);

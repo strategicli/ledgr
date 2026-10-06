@@ -2,7 +2,7 @@
 // it (retrying when nothing got through), and move old runs to Trash. Deterministic, no model (Principle 3).
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items } from "@/db/schema";
+import { items, notifications } from "@/db/schema";
 import { softDeleteItem } from "@/lib/item-mutations";
 import { captureError } from "@/lib/log";
 import { countUnread, recordNotification } from "@/lib/notifications";
@@ -34,14 +34,15 @@ async function thisCopy(): Promise<string> {
   return (await readLocalDeviceId()) ?? "this-copy";
 }
 
-// Deliver a run's notification once, the first time it has "Notify me" ticked:
-// a row in the notification inbox (the bell and the phone app read it) while
-// the Notification center module is on, plus a push to every device signed up
-// for push on this copy. The claim (stamping notifiedAt only where it is
-// absent) happens before sending, so two saves racing can never notify twice.
-// Delivered means the inbox row landed or at least one device took the push.
-// When neither happened the claim is released and the run is marked for this
-// copy to retry (retryPendingNotifications), never dropped silently.
+// Notify once, the first time a run has "Notify me" ticked: a push to every
+// device and browser signed up on this copy, plus one entry in the
+// notification inbox while the Notification center module is on. The inbox is
+// only where notifications are reviewed, so it never counts as delivery: the
+// run is delivered when at least one device takes the push. The claim
+// (stamping notifiedAt only where it is absent) happens before sending, so two
+// saves racing can never notify twice. When no device took it, the claim is
+// released and the run is marked for this copy to retry
+// (retryPendingNotifications); a retry resends the push, never the inbox entry.
 export async function notifyIfAsked(ownerId: string, itemId: string): Promise<void> {
   const db = getDb();
   const where = and(
@@ -68,7 +69,14 @@ export async function notifyIfAsked(ownerId: string, itemId: string): Promise<vo
 
   let inboxed = false;
   if (await notificationCenterOn(ownerId)) {
-    inboxed = (await recordNotification(ownerId, { kind: "claude_run", title, body, url, relatedItemId: itemId })) !== null;
+    const [already] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.ownerId, ownerId), eq(notifications.relatedItemId, itemId), eq(notifications.kind, "claude_run")))
+      .limit(1);
+    inboxed =
+      !!already ||
+      (await recordNotification(ownerId, { kind: "claude_run", title, body, url, relatedItemId: itemId })) !== null;
   }
 
   const sender = getWebPushSender();
@@ -92,9 +100,9 @@ export async function notifyIfAsked(ownerId: string, itemId: string): Promise<vo
       detail: { itemId, inboxed, pushed },
     });
   }
-  if (inboxed || pushed > 0) return;
+  if (pushed > 0) return;
 
-  // Nothing reached the owner. Release the claim and queue a retry on this
+  // No device took it. Release the claim and queue a retry on this
   // copy, or, past the attempt cap, leave it claimed and say it gave up.
   const props = (hit.properties ?? {}) as Record<string, unknown>;
   const prev = props.notifyRetry as RetryMark | undefined;
