@@ -71,6 +71,20 @@ export type ShellDest = {
   count: number | null;
 };
 
+// Swap the live unread count into every Notifications slot that shows a badge
+// (count null means its badge is off), and re-sum any group holding one.
+function withLiveUnread(list: ShellSlot[], live: number | null): ShellSlot[] {
+  if (live === null) return list;
+  const dest = (d: ShellDest): ShellDest =>
+    d.href === "/notifications" && d.count !== null ? { ...d, count: live } : d;
+  return list.map((s) => {
+    if (s.kind !== "tools") return { ...s, ...dest(s) };
+    const children = s.children.map(dest);
+    const counts = children.map((c) => c.count).filter((n): n is number => typeof n === "number");
+    return { ...s, children, count: counts.length ? counts.reduce((a, b) => a + b, 0) : null };
+  });
+}
+
 // A configured middle slot: one destination, or a named group of them.
 export type ShellSlot =
   | ({ kind: "destination" } & ShellDest)
@@ -132,9 +146,9 @@ const RAIL_NEXT_LABEL: Record<RailSize, string> = {
 };
 
 export default function NavShell({
-  slots,
-  mobileSlots,
-  unreadCount,
+  slots: serverSlots,
+  mobileSlots: serverMobileSlots,
+  unreadCount: serverUnreadCount,
   typeOptions,
   buildTypes,
   offModules,
@@ -170,6 +184,14 @@ export default function NavShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  // The nav lives in the root layout, which a client navigation never
+  // re-renders, so the server's unread count goes stale the moment a
+  // notification arrives. AppBadgeSync re-reads it (on focus, every minute
+  // while visible, and when a push lands) and the bell shows that number.
+  const [liveUnread, setLiveUnread] = useState<number | null>(null);
+  const unreadCount = liveUnread ?? serverUnreadCount;
+  const slots = withLiveUnread(serverSlots, liveUnread);
+  const mobileSlots = withLiveUnread(serverMobileSlots, liveUnread);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1008,7 +1030,7 @@ export default function NavShell({
   return (
     <nav aria-label="Main">
       {/* PWA app-icon badge: only while the notification center is live (ADR-130). */}
-      {notificationsOn && <AppBadgeSync count={unreadCount} />}
+      {notificationsOn && <AppBadgeSync count={serverUnreadCount} onCount={setLiveUnread} />}
       {/* Asks each browser once to sign up for push (ADR-290). */}
       {notificationsOn && <PushPromptBanner />}
       {inBuild && (

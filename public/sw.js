@@ -52,7 +52,9 @@
 // line and the old "L" mark. Same cache-first rule as v9.
 // v12: offline.html gets a title field, a markdown toolbar, and an editable
 // "Waiting to sync" list.
-const VERSION = "v12";
+// v13: the push handler tells open tabs a push arrived, so the in-app bell's
+// unread count updates without a reload (ADR-290).
+const VERSION = "v13";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
@@ -221,7 +223,11 @@ self.addEventListener("push", (event) => {
     if (data.count > 0) self.navigator.setAppBadge(data.count).catch(() => {});
     else self.navigator.clearAppBadge?.().catch(() => {});
   }
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Tell open Ledgr tabs, so the in-app bell updates without a reload.
+  const told = self.clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then((list) => list.forEach((c) => c.postMessage({ type: "push-received" })));
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), told]));
 });
 
 // Let an open page push the authoritative unread count to the app-icon badge
