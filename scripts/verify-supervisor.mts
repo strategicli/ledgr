@@ -888,8 +888,12 @@ check(
         "agent-purge",
         "calendar-sync",
         "claude-run-cleanup",
+        "claude-run-notify",
         "email-import",
         "export",
+        "notify-agenda",
+        "notify-digest",
+        "notify-prep",
         "purge",
         "relatedness",
         "snapshot",
@@ -953,6 +957,10 @@ check(
     "calendar-sync": false,
     "email-import": false,
     "youtube-transcript": false,
+    "claude-run-notify": false,
+    "notify-agenda": false,
+    "notify-prep": false,
+    "notify-digest": false,
   })
     .map((j) => j.name)
     .join(",") === "relatedness"
@@ -1093,6 +1101,10 @@ check(
     "calendar-sync": false,
     "email-import": false,
     "youtube-transcript": false,
+    "claude-run-notify": false,
+    "notify-agenda": false,
+    "notify-prep": false,
+    "notify-digest": false,
   });
   const now = Date.now();
   const text = serializeCronState(
@@ -1485,6 +1497,14 @@ check(
       "on": true,
       "why": "Moves Claude Run records older than 60 days to Trash. Every peer may run it: the rule is the same on every copy, a run another copy already trashed arrives here trashed, and trashing it twice lands the same row in the same place."
     },
+    "claude-run-notify": {
+      "path": "/api/machine/claude-run-notify",
+      "label": "Claude Runs notification retry",
+      "everyMinutes": 15,
+      "shared": true,
+      "on": true,
+      "why": "Retries a Claude Run notification that reached nobody. Safe on every peer: a failed run is marked with the id of the copy that tried, and only that copy retries it, because push sign-ups and the inbox are per machine."
+    },
     "snapshot": {
       "path": "/api/machine/snapshot",
       "label": "Local snapshots (restore points)",
@@ -1541,6 +1561,30 @@ check(
       "shared": false,
       "on": true,
       "why": "Writes the transcript into the saved link itself. Two machines transcribing the same video would both write the same body and then fight over whose copy wins, so the endpoint runs only on the copy named under Scheduled work, and stands down everywhere else. Scheduled here always so that naming this machine is all it takes (ADR-225)."
+    },
+    "notify-agenda": {
+      "path": "/api/machine/notify-agenda",
+      "label": "Morning agenda notification",
+      "at": "06:00",
+      "shared": false,
+      "on": true,
+      "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225)."
+    },
+    "notify-prep": {
+      "path": "/api/machine/notify-prep",
+      "label": "Event prep notifications",
+      "everyMinutes": 60,
+      "shared": false,
+      "on": true,
+      "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225)."
+    },
+    "notify-digest": {
+      "path": "/api/machine/notify-digest",
+      "label": "Project check-in notifications",
+      "at": "08:00",
+      "shared": false,
+      "on": true,
+      "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225)."
     },
     "health-check": {
       "path": "/api/machine/health-check",
@@ -1607,6 +1651,24 @@ check(
       "what": "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
       "movable": true,
       "consequence": "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes."
+    },
+    "notify-agenda": {
+      "label": "Morning agenda",
+      "what": "Sends one notification each morning with today's events and due tasks. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+      "movable": true,
+      "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
+    },
+    "notify-prep": {
+      "label": "Event prep reminders",
+      "what": "Tells you when an event with people is coming up in the next two hours. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+      "movable": true,
+      "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
+    },
+    "notify-digest": {
+      "label": "Project check-ins",
+      "what": "Nudges you about projects that have gone quiet or have a milestone coming up. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+      "movable": true,
+      "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
     }
   };
   let pickerSame = true;
@@ -1619,7 +1681,7 @@ check(
     "MOVABLE_JOBS equals the values it held before the move, in the same picker order",
     pickerSame &&
       JSON.stringify(MOVABLE_JOBS) === JSON.stringify(pickerBefore) &&
-      JSON.stringify(MOVABLE_JOB_NAMES) === "[\"export\",\"calendar-sync\",\"email-import\",\"todoist-sync\",\"transcription-poll\",\"health-check\",\"youtube-transcript\"]"
+      JSON.stringify(MOVABLE_JOB_NAMES) === "[\"export\",\"calendar-sync\",\"email-import\",\"todoist-sync\",\"transcription-poll\",\"health-check\",\"youtube-transcript\",\"notify-agenda\",\"notify-prep\",\"notify-digest\"]"
   );
 }
 

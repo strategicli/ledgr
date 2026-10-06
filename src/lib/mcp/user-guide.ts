@@ -484,12 +484,13 @@ Build your own kinds of item at \`/build/types\`.
   you name yourself.
 - **Modules** at \`/build/modules\` hold every on/off switch you have, in two
   groups. **Item types** are Songs, Papers, Mindmap, Files and Claude Runs
-  (scheduled Claude tasks file their reports and ping your phone only when
+  (scheduled Claude tasks file their reports and notify you only when
   they decide you need to know): turning one off removes its type from every
   list and picker, quick capture, "+ New" and an assistant's list of types,
   and no new items of it can be made.
   **Features** are AI Memory, Live editing context, the In-app agent, YouTube
-  transcripts, the Notification center (paused), Scripture passages (off for
+  transcripts, the Notification center (the inbox, the bell, phone alerts, and
+  every reminder that feeds them, all on or off together), Scripture passages (off for
   new installs, and left on for anyone who used Ledgr before that change: a
   Bible reference in a body becomes a link to that passage's page; switched
   off, new references stop linking and the editor's \`@/ref\` picker is gone), **Todoist** (off by default:
@@ -1761,13 +1762,17 @@ Claude Runs under **Item types**.
 - **Claude Runs** gives scheduled Claude tasks a place to report. At the end
   of a run worth keeping, the task files a **Claude Run** record with the full
   report as its body, listed at \`/list/claude_run\`. If the task decides you
-  need to know, it ticks **Notify me**, and your phone gets one notification
-  showing the title and the report's first line; tapping it opens the record.
-  Most runs stay quiet. A run pings once at most, and runs move to Trash after
-  60 days. For the ping to reach your phone, open Ledgr's home page on the
-  phone's installed app and tap **Enable notifications** once. Then turn off
-  the Claude app's own notifications in your phone's settings if you no longer
-  want them.
+  need to know, it ticks **Notify me**. You then get one notification showing
+  the title and the report's first line: an entry in the notification inbox
+  (the bell, and the phone app) while the **Notification center** module is on,
+  and a push to every device that turned on notifications. Tapping it opens the
+  record. Most runs stay quiet. A run notifies once at most, and runs move to
+  Trash after 60 days. If nothing got through (no inbox entry and no device took
+  the push), Ledgr tries again every 15 minutes for about two hours, then
+  records that it gave up. Push sign-ups belong to one copy of Ledgr: turn on
+  notifications from the address you actually use (open Ledgr's home page in
+  the phone's installed app and tap **Enable notifications** once), or the
+  push goes to a copy you never open.
 
 ## Guides an assistant can read
 
@@ -1983,7 +1988,11 @@ the next time it checks in with your other copies. For these jobs that gap is
 harmless, because each one catches up on its next run. If you want it closed now,
 **Check in now** on that machine's Network page does it immediately.
 
-**Offline backup, Calendar sync and Email capture can be moved today.** Each one
+**Offline backup, Calendar sync, Email capture, Video transcripts and the three
+reminders (Morning agenda, Event prep reminders, Project check-ins) can be moved
+today.** Send the reminders to the copy you actually use: phone alerts go to the
+devices that turned on notifications on that copy, and the inbox entries land in
+that copy's inbox. Each one
 picks up cleanly wherever it left off, whichever machine takes it. A job that
 cannot be moved yet says so in its own row, with the reason, instead of offering a
 dropdown that would quietly lose track of something. Moving a job to a machine
@@ -2240,11 +2249,6 @@ only if it still holds this address.
 
 Listed so you do not go looking.
 
-- **Notifications and push are paused.** The notification centre, the bell, and
-  the morning and meeting-prep pushes are all switched off. Reminders come from
-  the task calendar (ICS) feed instead, fired by your own calendar app. The
-  **Notification center** module at \`/build/modules\` brings back the inbox and
-  its menu link, but its reminder jobs stay off, so nothing new arrives.
 - **Import & Migration** (\`/build/import\`) is a placeholder. The page describes
   the plan; there are no actions on it. (Data Hygiene has its first real tool —
   the orphaned-files sweep; the rest of that page is still the plan.)

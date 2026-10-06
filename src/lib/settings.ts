@@ -559,6 +559,8 @@ export const NOTIFICATION_KINDS = [
   { kind: "task_due", label: "Task due", help: "When a task is due or overdue." },
   { kind: "calendar_soon", label: "Event starting soon", help: "When a calendar event is about to begin." },
   { kind: "sync_error", label: "Sync & system errors", help: "When a sync or background job fails." },
+  { kind: "project_digest", label: "Project check-ins", help: "When a project has gone quiet or has a milestone coming up." },
+  { kind: "claude_run", label: "Claude Runs", help: "When a scheduled Claude task finishes and asks to tell you." },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];

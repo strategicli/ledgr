@@ -115,6 +115,9 @@ const PICKER_ORDER = [
   "transcription-poll",
   "health-check",
   "youtube-transcript",
+  "notify-agenda",
+  "notify-prep",
+  "notify-digest",
 ] as const;
 
 /** Keyed by the ADR-214 job name. */

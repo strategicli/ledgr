@@ -1,6 +1,7 @@
 // Claude Runs (ADR-286). Scheduled Claude tasks file their report as a
 // `claude_run` item and tick "Notify me" when the owner should hear about it;
-// this module sends one phone ping for that and trashes runs after 60 days.
+// this module notifies once (inbox + push, retried when nothing got through)
+// and trashes runs after 60 days.
 // Pure: the save hooks live in ./server.ts, the cleanup job is
 // `claude-run-cleanup` in supervisor/jobs.json.
 import { DEFAULT_CANVAS, type ModuleManifest } from "@/lib/modules";
@@ -24,12 +25,12 @@ export const claudeRunsModule: ModuleManifest = {
   id: "claude-runs",
   label: "Claude Runs",
   description:
-    "Scheduled Claude tasks file their results as Claude Run records, ping your phone only when they tick Notify me, and clear out after 60 days.",
+    "Scheduled Claude tasks file their results as Claude Run records, notify you only when they tick Notify me, and clear out after 60 days.",
   enabledByDefault: false,
   types: [
     { key: "claude_run", label: "Claude Run", icon: "robot", canonicalFormat: MARKDOWN_FORMAT, canvasId: DEFAULT_CANVAS },
   ],
   exporters: [],
   mcpTools: { names: [], instructions: RUN_INSTRUCTIONS },
-  routes: ["src/app/api/machine/claude-run-cleanup/route.ts"],
+  routes: ["src/app/api/machine/claude-run-cleanup/route.ts", "src/app/api/machine/claude-run-notify/route.ts"],
 };
