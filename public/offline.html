@@ -18,6 +18,12 @@
      so it lands on sw.js's `request.mode === "navigate"` branch, where the pin
      fallback already lives. The service worker needed no change for this.
 
+     It also takes new captures with no connection: the box below writes into
+     the same localStorage outbox the in-app quick capture falls back to
+     (src/lib/outbox.ts, key ledgr.outbox.v1, ADR-080), and OutboxSync sends
+     them the next time the app loads online. Keep the entry shape in step with
+     that file.
+
      ⚠️ This file is precached into ledgr-shell-<VERSION> and served
      cache-first. Editing it does NOTHING on an installed device until VERSION
      is bumped in sw.js. -->
@@ -39,20 +45,23 @@
         font-family: Arial, Helvetica, sans-serif;
       }
       main { text-align: center; padding: 2rem; max-width: 26rem; }
-      .mark {
-        display: inline-block;
-        width: 56px; height: 56px;
-        border-radius: 12px;
-        background: #232323;
-        position: relative;
-        margin-bottom: 1rem;
+      .mark { width: 56px; height: 56px; border-radius: 12px; margin-bottom: 1rem; }
+      form { margin: 1.25rem 0 0; text-align: left; }
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 6rem;
+        resize: vertical;
+        background: #232323; color: #ededed;
+        border: 1px solid #2f2f2f; border-radius: 8px;
+        padding: 0.6rem 0.7rem;
+        font: inherit; font-size: 0.9rem; line-height: 1.45;
       }
-      .mark::before {
-        content: "L";
-        position: absolute; inset: 0;
-        display: flex; align-items: center; justify-content: center;
-        color: #529cca; font-size: 34px; font-weight: bold;
-      }
+      textarea:focus { outline: none; border-color: #529cca; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 0.5rem; }
+      .row button { margin-top: 0; }
+      #queued { color: #6b6b6b; font-size: 0.78rem; }
+      button.ghost { background: transparent; color: #9b9b9b; border: 1px solid #2f2f2f; }
       h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: #ededed; }
       p { margin: 0.25rem 0; color: #9b9b9b; font-size: 0.9rem; line-height: 1.5; }
       ul {
@@ -83,12 +92,18 @@
   </head>
   <body>
     <main>
-      <span class="mark" aria-hidden="true"></span>
+      <img class="mark" src="/icons/icon-192.png" alt="" />
       <h1>You're offline</h1>
+      <form id="capture">
+        <textarea id="text" aria-label="New capture" placeholder="Write it down. It saves on this device and syncs when you're back online."></textarea>
+        <div class="row">
+          <span id="queued" aria-live="polite"></span>
+          <button type="submit">Save</button>
+        </div>
+      </form>
       <p id="intro">Ledgr needs a connection to load your items.</p>
       <ul id="pins" hidden></ul>
-      <p id="hint">Capture on the go lives in Todoist; Sunday's fallback is the OneDrive export.</p>
-      <button onclick="location.reload()">Try again</button>
+      <button class="ghost" onclick="location.reload()">Try again</button>
     </main>
     <script>
       // Inline on purpose: this page must render with nothing else cached, so it
@@ -166,13 +181,69 @@
 
           if (!rows.length) {
             document.getElementById("intro").textContent =
-              "Nothing is saved on this device yet. Open an item with a connection and press Save Offline.";
+              "To read items with no connection, open them while online and press Save Offline.";
             return;
           }
           document.getElementById("intro").textContent =
-            "These are saved on this device and open with no connection.";
+            "Saved on this device:";
           list.hidden = false;
         }
+
+        // Offline capture. The first line becomes the title, anything after it
+        // the body, and it lands wherever Capture routing sends quick captures.
+        var OUTBOX = "ledgr.outbox.v1";
+        function readOutbox() {
+          try {
+            var arr = JSON.parse(localStorage.getItem(OUTBOX) || "[]");
+            return Array.isArray(arr) ? arr : [];
+          } catch (e) {
+            return [];
+          }
+        }
+        function showQueued(justSaved) {
+          var n = readOutbox().length;
+          document.getElementById("queued").textContent = n
+            ? (justSaved ? "Saved. " : "") + n + " waiting to sync"
+            : "";
+        }
+        document.getElementById("capture").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var box = document.getElementById("text");
+          var text = box.value.trim();
+          if (!text) return;
+          var nl = text.indexOf("\n");
+          var title = (nl < 0 ? text : text.slice(0, nl)).trim();
+          var rest = nl < 0 ? "" : text.slice(nl + 1).trim();
+          var payload = { type: "unmarked", title: title, source: "quick_capture" };
+          if (rest) payload.body = { format: "markdown", text: rest };
+          var entries = readOutbox();
+          entries.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random(),
+            payload: payload,
+            ts: Date.now(),
+          });
+          try {
+            localStorage.setItem(OUTBOX, JSON.stringify(entries));
+          } catch (err) {
+            document.getElementById("queued").textContent = "Couldn't save on this device.";
+            return;
+          }
+          box.value = "";
+          box.focus();
+          showQueued(true);
+        });
+        // Ctrl/Cmd+Enter saves, plain Enter keeps writing.
+        document.getElementById("text").addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            document.getElementById("capture").requestSubmit();
+          }
+        });
+        showQueued(false);
+        // Back online: reload into the app, whose outbox sender posts the queue.
+        window.addEventListener("online", function () {
+          location.reload();
+        });
 
         // Any failure leaves the static copy above standing, which is exactly
         // the page this file used to be.

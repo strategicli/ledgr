@@ -48,7 +48,9 @@
 // v10: the app icons are REPLACED (the stacked-layers mark, Tyler 2026-08-18)
 // and a maskable variant joins the precache — same rule as v9: the icons are
 // served cache-first, so without this bump installed devices keep the old "L".
-const VERSION = "v10";
+// v11: offline.html gains an offline capture box and loses the Todoist/OneDrive
+// line and the old "L" mark. Same cache-first rule as v9.
+const VERSION = "v11";
 const SHELL_CACHE = `ledgr-shell-${VERSION}`;
 const PIN_CACHE = "ledgr-pin-v1";
 const OFFLINE_URL = "/offline.html";
