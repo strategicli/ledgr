@@ -33,6 +33,6 @@ export const FEATURE_MODULES: ModuleManifest[] = [
   feature(
     "notification-center",
     "Notification center",
-    "An in-app notification inbox and push alerts. Paused: its reminder jobs are switched off, so turning it on shows the inbox but sends nothing new."
+    "The notification inbox and bell, phone push alerts, and the reminders that feed them: the morning agenda, meeting prep, project check-ins, and Claude Runs. Turning it off silences all of them."
   ),
 ];

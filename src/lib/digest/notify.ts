@@ -7,10 +7,9 @@
 // `checkin_reviewed` event (reviewCheckin, PJ1), which advances last_reviewed_at,
 // so the next run sees the project as fresh.
 //
-// Persistence note: at integration with origin/main this will also record into
-// Brandon's existing `notifications` table (ADR-129/130) instead of only pushing
-// + stamping the project; the compose/select logic here is channel-agnostic and
-// stays.
+// Like the other reminders it runs only while the Notification center module is
+// on, records each nudge in the inbox (kind `project_digest`), and honors that
+// source's on/off switch in Settings, which silences the row and the push.
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { activityEvents, items, relations } from "@/db/schema";
@@ -20,6 +19,9 @@ import { resolveComposition, DEFAULT_DIGEST } from "@/lib/composition";
 import { getType } from "@/lib/types";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
+import { countUnread, recordNotification } from "@/lib/notifications";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
+import { getSettings, notificationEnabled } from "@/lib/settings";
 
 const DAY_MS = 86_400_000;
 
@@ -31,6 +33,13 @@ export async function runDigestNotify(
   const db = getDb();
   const tally: SendTally = { sent: 0, pruned: 0, failed: 0 };
   let notified = 0;
+  // Off means nothing at all: no rows, no pushes, no stamps, so turning it back
+  // on still surfaces a project that is due a nudge.
+  if (!(await notificationCenterOn(ownerId))) return { checked: 0, notified, tally };
+  const settings = await getSettings(ownerId);
+  if (!notificationEnabled(settings.notificationPrefs, "project_digest")) {
+    return { checked: 0, notified, tally };
+  }
 
   const projectType = await getType("project").catch(() => null);
   const projects = await db
@@ -126,11 +135,19 @@ export async function runDigestNotify(
       upcoming: status.trigger === "upcoming_milestone" || upcoming.length > 0 ? upcoming[0] : null,
     });
 
+    await recordNotification(ownerId, {
+      kind: "project_digest",
+      title: message.title,
+      body: message.body,
+      url: `/items/${p.id}`,
+      relatedItemId: p.id,
+    });
     const t = await sendToOwner(ownerId, sender, {
       title: message.title,
       body: message.body,
       url: `/items/${p.id}`,
       tag: `ledgr-digest-${p.id}`,
+      count: await countUnread(ownerId),
     });
     tally.sent += t.sent;
     tally.pruned += t.pruned;

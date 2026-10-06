@@ -20,9 +20,11 @@ function urlBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-type Status = "loading" | "unsupported" | "unconfigured" | "off" | "on" | "busy";
+export type Status = "loading" | "unsupported" | "unconfigured" | "off" | "on" | "busy";
 
-export default function PushToggle() {
+// This browser's push state plus enable/disable, shared by the Today toggle
+// and the sign-up banner (PushPromptBanner) so both subscribe the same way.
+export function usePushSubscription() {
   const [status, setStatus] = useState<Status>("loading");
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [note, setNote] = useState<string>("");
@@ -125,6 +127,12 @@ export default function PushToggle() {
       setNote(err instanceof Error ? err.message : "could not disable");
     }
   }
+
+  return { status, note, enable, disable };
+}
+
+export default function PushToggle() {
+  const { status, note, enable, disable } = usePushSubscription();
 
   if (status === "loading" || status === "unsupported" || status === "unconfigured") {
     // Stay quiet unless explicitly unsupported/unconfigured would only add

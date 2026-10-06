@@ -34,6 +34,15 @@
     "module": "claude-runs",
     "why": "Moves Claude Run records older than 60 days to Trash. Every peer may run it: the rule is the same on every copy, a run another copy already trashed arrives here trashed, and trashing it twice lands the same row in the same place."
   },
+  "claude-run-notify": {
+    "path": "/api/machine/claude-run-notify",
+    "label": "Claude Runs notification retry",
+    "everyMinutes": 15,
+    "shared": true,
+    "on": true,
+    "module": "claude-runs",
+    "why": "Retries a Claude Run notification that reached nobody. Safe on every peer: a failed run is marked with the id of the copy that tried, and only that copy retries it, because push sign-ups and the inbox are per machine."
+  },
   "snapshot": {
     "path": "/api/machine/snapshot",
     "label": "Local snapshots (restore points)",
@@ -136,6 +145,45 @@
       "No timeoutMs on purpose: the endpoint starts the work and answers immediately, because Node destroys any request left open for five minutes. A 30-minute ceiling it once carried could never be reached and only made the scheduler wait five minutes to hear \"fetch failed\" about work that was going fine (first real run, 2026-08-31).",
       "movable from the day it shipped: the waiting list is worked out fresh each run (saved videos with no transcript yet), and the done mark lives in the video body, which syncs. A machine without the transcribing tools says so on Build rather than failing quietly."
     ]
+  },
+  "notify-agenda": {
+    "path": "/api/machine/notify-agenda",
+    "label": "Morning agenda notification",
+    "at": "06:00",
+    "shared": false,
+    "on": true,
+    "module": "notification-center",
+    "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225).",
+    "ownerLabel": "Morning agenda",
+    "what": "Sends one notification each morning with today's events and due tasks. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+    "movable": true,
+    "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
+  },
+  "notify-prep": {
+    "path": "/api/machine/notify-prep",
+    "label": "Event prep notifications",
+    "everyMinutes": 60,
+    "shared": false,
+    "on": true,
+    "module": "notification-center",
+    "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225).",
+    "ownerLabel": "Event prep reminders",
+    "what": "Tells you when an event with people is coming up in the next two hours. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+    "movable": true,
+    "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
+  },
+  "notify-digest": {
+    "path": "/api/machine/notify-digest",
+    "label": "Project check-in notifications",
+    "at": "08:00",
+    "shared": false,
+    "on": true,
+    "module": "notification-center",
+    "why": "Sends to the owner's devices and writes the inbox. Push sign-ups and the inbox are per machine, so two copies sending would notify twice, and the endpoint runs only on the copy named under Scheduled work. Scheduled here always so that naming this machine is all it takes (ADR-225).",
+    "ownerLabel": "Project check-ins",
+    "what": "Nudges you about projects that have gone quiet or have a milestone coming up. Phone alerts go to the devices that turned on notifications on the machine named here, and the inbox entries land in that machine's inbox.",
+    "movable": true,
+    "consequence": "A late run sends late. A machine that is asleep at the time sends nothing until it wakes, and a reminder that comes too late is simply skipped."
   },
   "health-check": {
     "path": "/api/machine/health-check",

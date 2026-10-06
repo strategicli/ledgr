@@ -12,7 +12,7 @@ for (const line of readFileSync(".env.local", "utf8").replace(/^﻿/, "").split(
 }
 
 const { getDb } = await import("../src/db");
-const { items, users, activityEvents } = await import("../src/db/schema");
+const { items, users, activityEvents, notifications } = await import("../src/db/schema");
 const { getItem } = await import("../src/lib/items");
 const { createItem } = await import("../src/lib/item-mutations");
 const { setHome } = await import("../src/lib/relations");
@@ -52,7 +52,10 @@ console.log("\n# Pure: composeDigest + daysUntil");
 
 const db = getDb();
 const stamp = Date.now();
-const [owner] = await db.insert(users).values({ email: `verify-digest-${stamp}@example.invalid` }).returning({ id: users.id });
+const [owner] = await db
+  .insert(users)
+  .values({ email: `verify-digest-${stamp}@example.invalid`, settings: { modules: { "notification-center": true } } })
+  .returning({ id: users.id });
 const ownerId = owner.id;
 const created: string[] = [];
 async function make(type: string, title: string, extra: Record<string, unknown> = {}) {
@@ -73,8 +76,15 @@ console.log("\n# Live: fresh vs stale (isolated owner)");
 
   // Just past the default quiet window (14d since ADR-200), read from source so it can't drift.
   const future = new Date(Date.now() + (DEFAULT_DIGEST.stalenessDays + 3) * DAY);
+  await db.update(users).set({ settings: { modules: { "notification-center": false } } }).where(eq(users.id, ownerId));
+  const off = await runDigestNotify(ownerId, sender, future);
+  check("with the Notification center off nothing is sent or stamped", off.notified === 0 && (await digestStamp(project.id)) === undefined);
+  await db.update(users).set({ settings: { modules: { "notification-center": true } } }).where(eq(users.id, ownerId));
+
   const stale = await runDigestNotify(ownerId, sender, future);
   check("a stale project pings", stale.notified === 1 && typeof (await digestStamp(project.id)) === "string");
+  const rows = await db.select({ kind: notifications.kind }).from(notifications).where(eq(notifications.relatedItemId, project.id));
+  check("and lands in the inbox", rows.length === 1 && rows[0].kind === "project_digest", JSON.stringify(rows));
 
   const again = await runDigestNotify(ownerId, sender, future); // dedup
   check("dedup: a second run in the same window doesn't re-ping", again.notified === 0);
@@ -101,6 +111,7 @@ console.log("\n# Live: a recent review resets the clock");
 
 await db.delete(activityEvents).where(inArray(activityEvents.subjectId, created));
 for (const id of [...created].reverse()) await db.delete(items).where(eq(items.id, id));
+await db.delete(notifications).where(eq(notifications.ownerId, ownerId));
 await db.delete(users).where(eq(users.id, ownerId));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

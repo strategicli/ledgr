@@ -1,10 +1,12 @@
-// The two things Claude Runs does (ADR-286): ping once when a run asks for it,
-// and move old runs to Trash. Deterministic, no model (Principle 3).
+// The two things Claude Runs does (ADR-286): notify once when a run asks for
+// it (retrying when nothing got through), and move old runs to Trash. Deterministic, no model (Principle 3).
 import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { items } from "@/db/schema";
+import { items, notifications } from "@/db/schema";
 import { softDeleteItem } from "@/lib/item-mutations";
 import { captureError } from "@/lib/log";
+import { countUnread, recordNotification } from "@/lib/notifications";
+import { notificationCenterOn } from "@/lib/notifications-enabled";
 import { sendToOwner } from "@/lib/push/notify";
 import { getWebPushSender } from "@/lib/push/web-push";
 
@@ -13,15 +15,34 @@ import { summaryLine } from "./summary";
 export const RUN_TYPE = "claude_run";
 export const RETENTION_DAYS = 60;
 
-// "Notify me" ticked and not yet pinged. Ledgr lowercases property keys, so the
-// checkbox is `notifyme`; the camel-case spelling the first release told Claude
-// to use is still honored so a run written that way pings too.
+// "Notify me" ticked and not yet delivered. Ledgr lowercases property keys, so
+// the checkbox is `notifyme`; the camel-case spelling the first release told
+// Claude to use is still honored so a run written that way notifies too.
 const pending = sql`(${items.properties}->>'notifyme' = 'true' or ${items.properties}->>'notifyMe' = 'true') and not (${items.properties} ? 'notifiedAt')`;
 
-// Ping the owner's phones once, the first time a run has "Notify me" ticked.
-// The claim (stamping notifiedAt only where it is absent) happens before the
-// send, so two saves racing can never ping twice. When push is not set up the
-// run is left unclaimed and the gap goes to Build -> Errors, never silent.
+// How many times one copy tries before it gives up and says so. The retry job
+// runs every 15 minutes, so this is roughly two hours of trying.
+export const MAX_NOTIFY_ATTEMPTS = 8;
+
+type RetryMark = { on: string; attempts: number };
+
+// This copy's own id, so a retry is only ever picked up by the copy whose send
+// failed. Every copy keeps its own push sign-ups and its own inbox, and the run
+// syncs everywhere, so a retry any copy could take would notify twice.
+async function thisCopy(): Promise<string> {
+  const { readLocalDeviceId } = await import("@/lib/sync/client");
+  return (await readLocalDeviceId()) ?? "this-copy";
+}
+
+// Notify once, the first time a run has "Notify me" ticked: a push to every
+// device and browser signed up on this copy, plus one entry in the
+// notification inbox while the Notification center module is on. The inbox is
+// only where notifications are reviewed, so it never counts as delivery: the
+// run is delivered when at least one device takes the push. The claim
+// (stamping notifiedAt only where it is absent) happens before sending, so two
+// saves racing can never notify twice. When no device took it, the claim is
+// released and the run is marked for this copy to retry
+// (retryPendingNotifications); a retry resends the push, never the inbox entry.
 export async function notifyIfAsked(ownerId: string, itemId: string): Promise<void> {
   const db = getDb();
   const where = and(
@@ -31,17 +52,6 @@ export async function notifyIfAsked(ownerId: string, itemId: string): Promise<vo
     isNull(items.deletedAt),
     pending
   );
-  const [row] = await db.select({ id: items.id }).from(items).where(where);
-  if (!row) return;
-  const sender = getWebPushSender();
-  if (!sender) {
-    await captureError(
-      "claude-runs",
-      new Error("a Claude Run asked to notify, but push is not set up on this copy (VAPID keys)"),
-      { detail: { itemId } }
-    );
-    return;
-  }
   const [hit] = await db
     .update(items)
     .set({
@@ -49,19 +59,90 @@ export async function notifyIfAsked(ownerId: string, itemId: string): Promise<vo
       updatedAt: sql`now()`,
     })
     .where(where)
-    .returning({ title: items.title, body: items.body });
+    .returning({ title: items.title, body: items.body, properties: items.properties });
   if (!hit) return;
-  const tally = await sendToOwner(ownerId, sender, {
-    title: hit.title || "Claude Run",
-    body: summaryLine(hit.body),
-    url: `/items/${itemId}`,
-    tag: `claude-run-${itemId}`,
-  });
-  if (tally.sent === 0) {
-    await captureError("claude-runs", new Error("a Claude Run notification reached no device"), {
-      detail: { itemId, ...tally },
+
+  const title = hit.title || "Claude Run";
+  const body = summaryLine(hit.body);
+  const url = `/items/${itemId}`;
+  const problems: string[] = [];
+
+  let inboxed = false;
+  if (await notificationCenterOn(ownerId)) {
+    const [already] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.ownerId, ownerId), eq(notifications.relatedItemId, itemId), eq(notifications.kind, "claude_run")))
+      .limit(1);
+    inboxed =
+      !!already ||
+      (await recordNotification(ownerId, { kind: "claude_run", title, body, url, relatedItemId: itemId })) !== null;
+  }
+
+  const sender = getWebPushSender();
+  let pushed = 0;
+  if (!sender) {
+    problems.push("push is not set up on this copy (VAPID keys)");
+  } else {
+    const tally = await sendToOwner(ownerId, sender, {
+      title,
+      body,
+      url,
+      tag: `claude-run-${itemId}`,
+      ...(inboxed ? { count: await countUnread(ownerId) } : {}),
+    });
+    pushed = tally.sent;
+    if (tally.sent === 0) problems.push(`the push reached no device (${JSON.stringify(tally)})`);
+  }
+
+  if (problems.length > 0) {
+    await captureError("claude-runs", new Error(`Claude Run notification: ${problems.join("; ")}`), {
+      detail: { itemId, inboxed, pushed },
     });
   }
+  if (pushed > 0) return;
+
+  // No device took it. Release the claim and queue a retry on this
+  // copy, or, past the attempt cap, leave it claimed and say it gave up.
+  const props = (hit.properties ?? {}) as Record<string, unknown>;
+  const prev = props.notifyRetry as RetryMark | undefined;
+  const attempts = (prev?.attempts ?? 0) + 1;
+  if (attempts >= MAX_NOTIFY_ATTEMPTS) {
+    await captureError(
+      "claude-runs",
+      new Error(`gave up notifying about a Claude Run after ${attempts} tries`),
+      { detail: { itemId } }
+    );
+    return;
+  }
+  const mark: RetryMark = { on: await thisCopy(), attempts };
+  await db
+    .update(items)
+    .set({
+      properties: sql`(coalesce(${items.properties}, '{}'::jsonb) - 'notifiedAt') || jsonb_build_object('notifyRetry', ${JSON.stringify(mark)}::jsonb)`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(items.id, itemId), eq(items.ownerId, ownerId)));
+}
+
+// Try again for every run whose notification failed on THIS copy. Called by
+// the claude-run-notify job every 15 minutes. Returns how many it retried.
+export async function retryPendingNotifications(ownerId: string): Promise<number> {
+  const me = await thisCopy();
+  const rows = await getDb()
+    .select({ id: items.id })
+    .from(items)
+    .where(
+      and(
+        eq(items.ownerId, ownerId),
+        eq(items.type, RUN_TYPE),
+        isNull(items.deletedAt),
+        pending,
+        sql`${items.properties} #>> '{notifyRetry,on}' = ${me}`
+      )
+    );
+  for (const { id } of rows) await notifyIfAsked(ownerId, id);
+  return rows.length;
 }
 
 // Move runs older than the retention window to Trash (which purges itself 30
