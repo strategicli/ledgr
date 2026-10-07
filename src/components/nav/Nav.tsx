@@ -158,6 +158,8 @@ export default async function Nav() {
       buildTypes={buildTypes.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
       offModules={offModuleIds(settings)}
       notificationsOn={notificationsOn}
+      alertStyles={settings.alertStyles}
+      alertSound={settings.alertSound}
       navPosition={settings.navPosition}
       railSize={settings.railSize}
       navDensity={settings.navDensity}
