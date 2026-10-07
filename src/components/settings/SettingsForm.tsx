@@ -16,6 +16,8 @@ import {
   ITEM_OPEN_MODES,
   NAV_POSITIONS,
   NOTIFICATION_KINDS,
+  alertStyleFor,
+  type AlertStyle,
   notificationEnabled,
   SECTION_STYLES,
   PAGE_WIDTHS,
@@ -818,6 +820,22 @@ export default function SettingsForm({
             <Card>
               {NOTIFICATION_KINDS.map(({ kind, label, help }) => (
                 <Row key={kind} label={label} help={help}>
+                  <select
+                    aria-label={`${label}: how it shows while Ledgr is open`}
+                    title="How it shows while Ledgr is open"
+                    value={alertStyleFor(settings.alertStyles, kind)}
+                    disabled={!notificationEnabled(settings.notificationPrefs, kind)}
+                    onChange={(e) =>
+                      void save({
+                        alertStyles: { ...settings.alertStyles, [kind]: e.target.value as AlertStyle },
+                      })
+                    }
+                    className={INPUT}
+                  >
+                    <option value="quiet">Quiet</option>
+                    <option value="toast">Pop-up</option>
+                    <option value="banner">Banner</option>
+                  </select>
                   <input
                     type="checkbox"
                     aria-label={label}
@@ -834,6 +852,20 @@ export default function SettingsForm({
                   />
                 </Row>
               ))}
+              <Row
+                label="Alerts while Ledgr is open"
+                help="Quiet shows only on the bell and the browser tab. Pop-up slides a card into the corner that fades after a few seconds. Banner stays across the top until you open, snooze, or dismiss it."
+              >
+                <label className="flex items-center gap-2 text-sm text-ink-muted">
+                  <input
+                    type="checkbox"
+                    checked={settings.alertSound}
+                    onChange={(e) => void save({ alertSound: e.target.checked })}
+                    className="ledgr-check"
+                  />
+                  Play a sound
+                </label>
+              </Row>
             </Card>
             <Card>
               <PushDevices />

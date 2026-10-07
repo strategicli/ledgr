@@ -430,6 +430,13 @@ export type UserSettings = {
   // An absent key defaults to on (see NOTIFICATION_KINDS / notificationEnabled),
   // so a new source is on until the owner turns it off. Additive, no migration.
   notificationPrefs: Record<string, boolean>;
+  // How each notification source shows inside an open Ledgr tab (ADR-292):
+  // "quiet" (bell + tab title only), "toast" (corner card that fades), or
+  // "banner" (stays until handled). An absent key uses that kind's default in
+  // alertStyleFor. Additive, no migration.
+  alertStyles: Record<string, AlertStyle>;
+  // Whether a toast or banner plays a short chime. Default on.
+  alertSound: boolean;
   // Where each arrival path lands (ADR-249). Keyed by source (see
   // INBOX_SOURCES in src/lib/inbox-sources.ts), value is ONE string: "inbox",
   // "filed", or a project's id. An absent key = that source's default route,
@@ -565,6 +572,29 @@ export const NOTIFICATION_KINDS = [
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
 
+// In-app alert loudness follows urgency (ADR-292): a summary stays quiet, a
+// time-bound reminder holds a banner, everything else gets a toast.
+export const ALERT_STYLES = ["quiet", "toast", "banner"] as const;
+export type AlertStyle = (typeof ALERT_STYLES)[number];
+const DEFAULT_ALERT_STYLE: Record<string, AlertStyle> = {
+  agenda: "quiet",
+  meeting_prep: "banner",
+  calendar_soon: "banner",
+};
+
+export function alertStyleFor(styles: Record<string, AlertStyle>, kind: string): AlertStyle {
+  return styles[kind] ?? DEFAULT_ALERT_STYLE[kind] ?? "toast";
+}
+
+function parseAlertStyles(raw: unknown): Record<string, AlertStyle> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, AlertStyle> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if ((ALERT_STYLES as readonly string[]).includes(v as string)) out[k] = v as AlertStyle;
+  }
+  return out;
+}
+
 // A source is enabled unless its toggle is explicitly false (default-on).
 export function notificationEnabled(
   prefs: Record<string, boolean>,
@@ -661,6 +691,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   tocPinnedItems: [],
   relatedLensChoices: {},
   notificationPrefs: {},
+  alertStyles: {},
+  alertSound: true,
   inboxRoutes: {},
   timezone: null,
   noteEditingPromptItemId: null,
@@ -1026,6 +1058,8 @@ export function parseSettings(raw: unknown): UserSettings {
   const tocPinnedItems = parseItemIdList(r.tocPinnedItems, TOC_PINNED_HARD_CAP);
   const relatedLensChoices = parseRelatedLensChoices(r.relatedLensChoices);
   const notificationPrefs = parseNotificationPrefs(r.notificationPrefs);
+  const alertStyles = parseAlertStyles(r.alertStyles);
+  const alertSound = typeof r.alertSound === "boolean" ? r.alertSound : DEFAULT_SETTINGS.alertSound;
   const inboxRoutes = parseInboxRoutes(r.inboxRoutes);
   const timezone =
     typeof r.timezone === "string" && isValidTimezone(r.timezone)
@@ -1083,6 +1117,8 @@ export function parseSettings(raw: unknown): UserSettings {
     tocPinnedItems,
     relatedLensChoices,
     notificationPrefs,
+    alertStyles,
+    alertSound,
     inboxRoutes,
     timezone,
     noteEditingPromptItemId,

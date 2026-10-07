@@ -46,6 +46,9 @@ import {
 import { useHoverPopover } from "@/components/nav/useHoverPopover";
 import AppBadgeSync from "@/components/pwa/AppBadgeSync";
 import PushPromptBanner from "@/components/pwa/PushPromptBanner";
+import InAppAlerts from "@/components/notifications/InAppAlerts";
+import TabUnread from "@/components/notifications/TabUnread";
+import type { AlertStyle } from "@/lib/settings";
 import CaptureModal from "@/components/capture/CaptureModal";
 import CommandPalette from "@/components/search/CommandPalette";
 import Launcher, { type LauncherTile } from "@/components/nav/Launcher";
@@ -153,6 +156,8 @@ export default function NavShell({
   buildTypes,
   offModules,
   notificationsOn,
+  alertStyles,
+  alertSound,
   navPosition,
   railSize: railSizeProp,
   navDensity: navDensityProp,
@@ -172,6 +177,8 @@ export default function NavShell({
   offModules: string[];
   // Notification center module on? Shows its menu link and app badge (ADR-130).
   notificationsOn: boolean;
+  alertStyles: Record<string, AlertStyle>;
+  alertSound: boolean;
   navPosition: NavPosition;
   railSize: RailSize;
   navDensity: NavDensity;
@@ -1033,6 +1040,9 @@ export default function NavShell({
       {notificationsOn && <AppBadgeSync count={serverUnreadCount} onCount={setLiveUnread} />}
       {/* Asks each browser once to sign up for push (ADR-290). */}
       {notificationsOn && <PushPromptBanner />}
+      {/* In-app alerts and the tab-title count (ADR-292). */}
+      {notificationsOn && <InAppAlerts unread={unreadCount} styles={alertStyles} sound={alertSound} />}
+      {notificationsOn && <TabUnread count={unreadCount} />}
       {inBuild && (
         <BuildSidebar
           types={buildTypes}
