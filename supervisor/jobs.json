@@ -187,15 +187,18 @@
   },
   "health-check": {
     "path": "/api/machine/health-check",
-    "label": "Weekly health check",
+    "label": "Health check-up",
     "at": "07:00",
     "shared": false,
-    "on": false,
-    "why": "Pushes to the owner's devices. Per-instance push subscriptions a local peer does not have, and it would double the alert where it does.",
-    "ownerLabel": "Weekly check-up",
-    "what": "Looks everything over once a week and notifies you only if something needs attention.",
-    "movable": false,
-    "blocked": "Moving this needs one check first: notifications are registered per machine, so it would reach different devices.",
-    "consequence": null
+    "on": true,
+    "why": "Pushes to the owner's devices, which are registered per machine, so exactly one copy runs it: the one the owner's devices are registered on.",
+    "notes": [
+      "Movable 2026-10-08. It was blocked because notification devices are per machine; that is the reason TO move it, since a check-up on a copy the owner no longer opens notifies devices nobody uses. Nothing it keeps needs handing over: its last findings are per machine, so a new owner's first run simply re-announces any standing problem once.",
+      "Daily here (the supervisor has no weekly schedule) and weekly on the cloud via health-check.yml. Either cadence is fine because a run notifies only about problems the previous run did not already report."
+    ],
+    "ownerLabel": "Health check-up",
+    "what": "Looks everything over and notifies you only when a new problem appears.",
+    "movable": true,
+    "consequence": "Notices go to the devices registered on the machine that runs it, so pick the copy you use. A machine that is off checks nothing until it wakes."
   }
 }

@@ -24,6 +24,8 @@ import { moduleOn } from "@/lib/modules/enabled";
 // Attaches each module's server-only healthCheck onto its manifest.
 import "@/lib/modules/server-slots";
 import { getSettings } from "@/lib/settings";
+import { jobPlacements, type JobPlacement } from "@/lib/job-owners-store";
+import type { MovableJob } from "@/lib/job-owners";
 import { getSchemaStatus, type SchemaStatus } from "@/lib/updates";
 import { createLogger, isDebugMode } from "@/lib/log";
 // not yet modules (step 4): push, sync, tasks adapter.
@@ -89,6 +91,9 @@ export type HealthReport = {
     schema: SchemaStatus;
     sync: SyncCanary;
     errors: ErrorsCheck;
+    // Which copy runs each audited job. A job another copy runs is judged by
+    // that copy's stamp, not by the stale last-run times above.
+    jobs?: Partial<Record<MovableJob, JobPlacement>>;
     // Each enabled module's own canaries, keyed by module id (ADR-272 step 3).
     // Present only when at least one module reported, so an instance with no
     // such module on returns exactly the shape it always did.
@@ -173,6 +178,16 @@ async function checkModules(ownerId: string): Promise<Record<string, Record<stri
 // integrations being unconfigured or stalled must never make the app itself
 // look unhealthy (Sunday-proof: the DB is what matters). The weekly health
 // check layers its own, stricter alerting on top of this snapshot.
+// The jobs the weekly check audits (its FRESHNESS rules), whose placement
+// decides whose last-run times count.
+const AUDITED_JOBS: readonly MovableJob[] = [
+  "export",
+  "calendar-sync",
+  "email-import",
+  "todoist-sync",
+  "notify-agenda",
+];
+
 export async function gatherHealth(): Promise<HealthReport> {
   const database = await checkDatabase();
 
@@ -180,6 +195,7 @@ export async function gatherHealth(): Promise<HealthReport> {
   let healthCheck: HealthCheckCanary = { lastRunAt: null, lastSuccessAt: null, lastAlertAt: null, alerts: [] };
   let errors: ErrorsCheck = null;
   let modules: Record<string, Record<string, unknown>> = {};
+  let jobs: Partial<Record<MovableJob, JobPlacement>> | undefined;
   // not yet modules (step 4): each read below moves onto its module's manifest.
   let push;
   if (database.ok) {
@@ -194,6 +210,7 @@ export async function gatherHealth(): Promise<HealthReport> {
     healthCheck = (await safe(getHealthCheckState)) ?? healthCheck;
     errors = await checkErrors();
     if (owner) modules = (await safe(() => checkModules(owner))) ?? {};
+    if (owner) jobs = await safe(() => jobPlacements(owner, AUDITED_JOBS));
   }
 
   // App-only Graph token grant (slice 21): a failed grant is the secret-expiry
@@ -265,6 +282,7 @@ export async function gatherHealth(): Promise<HealthReport> {
       schema,
       sync: syncCheck,
       errors,
+      ...(jobs ? { jobs } : {}),
       ...(Object.keys(modules).length > 0 ? { modules } : {}),
     },
     timestamp: new Date().toISOString(),

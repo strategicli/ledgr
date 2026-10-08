@@ -21,6 +21,7 @@ import { HOLD_GRACE_DAYS_DEFAULT } from "./peers";
 import { latestSchemaVer } from "./version";
 import type { SyncOp } from "./engine";
 import { createLogger } from "@/lib/log";
+import { watchDrift, type HubDriftLive } from "./drift-watch";
 
 const log = createLogger("sync-client");
 
@@ -205,6 +206,13 @@ export type HubRuntime = {
   // change-triggered exchange (ADR-240) so a burst of edits is one round
   // trip, not one per edit.
   lastExchangeAt: number;
+  // What the drift watch (drift.ts) reads: the last success seen by this
+  // process (0 = none), consecutive exchanges that ended with changes still
+  // waiting (null until one finishes), and refusals since the last check.
+  lastSuccessMs: number;
+  undrained: number | null;
+  parkedCount: number;
+  parkedFirst: string | null;
 };
 type SyncShared = {
   status: SyncStatus;
@@ -242,7 +250,7 @@ const shared: SyncShared = ((globalThis as { __ledgrSync?: SyncShared }).__ledgr
 const status = shared.status;
 
 function hubRuntime(url: string): HubRuntime {
-  return (shared.hubRuntime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 });
+  return (shared.hubRuntime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, lastSuccessMs: 0, undrained: null, parkedCount: 0, parkedFirst: null });
 }
 
 export function getSyncStatus(): SyncStatus {
@@ -990,7 +998,7 @@ export function pushSelectionForHub(
   url: string,
   opts: Omit<Parameters<typeof selectPushOps>[0], "firstPushDone" | "skewMs">
 ): PushSelection {
-  const rt = (runtime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 });
+  const rt = (runtime[url] ??= { firstPushDone: false, skewMs: null, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, lastSuccessMs: 0, undrained: null, parkedCount: 0, parkedFirst: null });
   const sel = selectPushOps({ ...opts, firstPushDone: rt.firstPushDone, skewMs: rt.skewMs });
   rt.firstPushDone = sel.firstPushDoneAfter;
   return sel;
@@ -1137,6 +1145,49 @@ async function pendingCount(afterSeq: number): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
+// When the oldest local change this hub has not received was made, or null.
+async function oldestWaitingAt(afterSeq: number): Promise<number | null> {
+  const rows = await getDb()
+    .select({ ms: sql<string | null>`(extract(epoch from min(${syncOps.at})) * 1000)::text` })
+    .from(syncOps)
+    .where(and(gt(syncOps.seq, afterSeq), isNull(syncOps.originDeviceId)));
+  const ms = rows[0]?.ms;
+  return ms ? Number(ms) : null;
+}
+
+// How often the drift watch looks. Cheap (a few indexed reads per hub), and a
+// problem it reports is measured in hours, so minutes of delay cost nothing.
+const DRIFT_CHECK_MS = 5 * 60_000;
+
+// Hand the loop's view of every hub to the drift watch (drift.ts). Refusals are
+// events, so they are counted down only once the watch has seen them.
+async function checkDrift(hubs: HubConfig[], guard: PushGuard, approval: FallbackApproval | null): Promise<void> {
+  const live: HubDriftLive[] = [];
+  for (const hub of hubs) {
+    const rt = hubRuntime(hub.url);
+    const cursor = await readCursor(hub.url);
+    live.push({
+      url: hub.url,
+      cadenceMs: cadenceIntervalMs(effectiveCadence(hub, approval), guard.continuousMs),
+      onChange: hubOnChange(hub),
+      livenessFloorMs: maxSafeGapMs(),
+      consecutiveFails: rt.consecutiveFails,
+      lastError: status.hubs.find((h) => h.url === hub.url)?.lastError ?? null,
+      parked: { count: rt.parkedCount, first: rt.parkedFirst },
+      oldestWaitingAt: guard.mode === "pull-only" ? null : await oldestWaitingAt(cursor.push),
+      pushing: guard.mode !== "pull-only",
+      liveSuccessAt: rt.lastSuccessMs || null,
+      liveUndrained: rt.undrained,
+    });
+  }
+  await watchDrift(live);
+  for (const hub of hubs) {
+    const rt = hubRuntime(hub.url);
+    rt.parkedCount = 0;
+    rt.parkedFirst = null;
+  }
+}
+
 type PushGuard = {
   mode: SyncMode;
   maxFirstPush: number;
@@ -1168,6 +1219,8 @@ type ExchangeResult = {
   // Changes this hub refused to apply and parked (ADR-241). Zero on a healthy
   // exchange; anything above it is a change that hub will never have.
   parkedOps: number;
+  // The first parked change, in words, for the owner's notification.
+  parkedFirst: string | null;
   pendingOps: number;
   holdReason: HoldReason | null;
   heldOpsCount: number | null;
@@ -1185,6 +1238,7 @@ async function exchangeWith(
   let cursor = await readCursor(hub.url);
   let drained = false;
   let parkedOps = 0;
+  let parkedFirst: string | null = null;
   let holdReason: HoldReason | null = null;
   let heldOpsCount: number | null = null;
   // Bounded loop: worst case both sides hold deep backlogs; each round moves
@@ -1288,6 +1342,8 @@ async function exchangeWith(
       // advance. It must still be impossible to miss, because a parked change
       // is one this hub will never have.
       parkedOps += data.parked.length;
+      const p = data.parked[0];
+      parkedFirst ??= `${p.kind} on ${p.table}: ${p.error}`;
       log.warn("hub could not apply some changes; they were parked, not re-sent", {
         hub: hub.url,
         parked: data.parked.length,
@@ -1326,6 +1382,7 @@ async function exchangeWith(
   return {
     drained,
     parkedOps,
+    parkedFirst,
     pendingOps: await pendingCount(cursor.push),
     holdReason,
     heldOpsCount,
@@ -1437,6 +1494,12 @@ async function exchange(
       const r = await exchangeWith(hub, deviceId, guard, { pull });
       rt.consecutiveFails = 0;
       rt.nextDueAt = nextDueAfter({ now, ok: true, cadenceMs, retryMs: guard.continuousMs });
+      rt.lastSuccessMs = Date.now();
+      rt.undrained = r.drained ? 0 : (rt.undrained ?? 0) + 1;
+      if (r.parkedOps > 0) {
+        rt.parkedFirst ??= r.parkedFirst;
+        rt.parkedCount += r.parkedOps;
+      }
       status.hubs[i] = {
         ...status.hubs[i],
         lastSyncAt: new Date().toISOString(),
@@ -1590,6 +1653,7 @@ export function startSyncLoop(): void {
   let deviceId: string | null = null;
   let lastSeenSeq = -1;
   let lastFullExchange = 0;
+  let lastDriftCheck = 0;
   let running = false;
 
   const tick = async () => {
@@ -1637,6 +1701,13 @@ export function startSyncLoop(): void {
         await writeStoredConfirmLargePush(false);
       }
       lastSeenSeq = maxSeq;
+      if (Date.now() - lastDriftCheck >= DRIFT_CHECK_MS) {
+        lastDriftCheck = Date.now();
+        // Never let the watch break the sync it is watching.
+        await checkDrift(hubs, guard, approval).catch((err) =>
+          log.warn("drift check failed", { error: err instanceof Error ? err.message : String(err) })
+        );
+      }
     } catch (err) {
       status.state = "offline";
       status.lastError = err instanceof Error ? err.message : String(err);

@@ -891,6 +891,7 @@ check(
         "claude-run-notify",
         "email-import",
         "export",
+        "health-check",
         "notify-agenda",
         "notify-digest",
         "notify-prep",
@@ -961,6 +962,7 @@ check(
     "notify-agenda": false,
     "notify-prep": false,
     "notify-digest": false,
+    "health-check": false,
   })
     .map((j) => j.name)
     .join(",") === "relatedness"
@@ -1105,6 +1107,7 @@ check(
     "notify-agenda": false,
     "notify-prep": false,
     "notify-digest": false,
+    "health-check": false,
   });
   const now = Date.now();
   const text = serializeCronState(
@@ -1588,11 +1591,11 @@ check(
     },
     "health-check": {
       "path": "/api/machine/health-check",
-      "label": "Weekly health check",
+      "label": "Health check-up",
       "at": "07:00",
       "shared": false,
-      "on": false,
-      "why": "Pushes to the owner's devices. Per-instance push subscriptions a local peer does not have, and it would double the alert where it does."
+      "on": true,
+      "why": "Pushes to the owner's devices, which are registered per machine, so exactly one copy runs it: the one the owner's devices are registered on."
     }
   };
   let localSame = true;
@@ -1640,11 +1643,10 @@ check(
       "consequence": null
     },
     "health-check": {
-      "label": "Weekly check-up",
-      "what": "Looks everything over once a week and notifies you only if something needs attention.",
-      "movable": false,
-      "blocked": "Moving this needs one check first: notifications are registered per machine, so it would reach different devices.",
-      "consequence": null
+      "label": "Health check-up",
+      "what": "Looks everything over and notifies you only when a new problem appears.",
+      "movable": true,
+      "consequence": "Notices go to the devices registered on the machine that runs it, so pick the copy you use. A machine that is off checks nothing until it wakes."
     },
     "youtube-transcript": {
       "label": "Video transcripts",

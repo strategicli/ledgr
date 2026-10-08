@@ -50,6 +50,8 @@ import {
   generateSyncToken,
   pullOnlyRejectsPush,
 } from "../src/lib/sync/peers";
+// The drift-watch fields every HubRuntime carries (drift.ts); idle here.
+const DRIFT0 = { lastSuccessMs: 0, undrained: null, parkedCount: 0, parkedFirst: null };
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -739,9 +741,9 @@ check(
   const ops = [{ seq: 1 }, { seq: 2 }] as never[];
   const runtime: Record<string, HubRuntime> = {
     // The healthy mirror has already pushed once this process.
-    "https://mirror": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
+    "https://mirror": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, ...DRIFT0 },
     // The emergency archive has not, and has a day of ops queued.
-    "https://archive": { firstPushDone: false, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
+    "https://archive": { firstPushDone: false, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, ...DRIFT0 },
   };
   const common = {
     mode: "full" as const,
@@ -781,8 +783,8 @@ check(
   // Same isolation for clock skew: a hub whose clock is wrong holds only its
   // own push.
   const runtime: Record<string, HubRuntime> = {
-    "https://good": { firstPushDone: true, skewMs: 200, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
-    "https://badclock": { firstPushDone: true, skewMs: 300_000, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
+    "https://good": { firstPushDone: true, skewMs: 200, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, ...DRIFT0 },
+    "https://badclock": { firstPushDone: true, skewMs: 300_000, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, ...DRIFT0 },
   };
   const common = {
     mode: "full" as const,
@@ -806,7 +808,7 @@ check(
 {
   // An unknown hub starts fresh rather than inheriting anyone's state.
   const runtime: Record<string, HubRuntime> = {
-    "https://old": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0 },
+    "https://old": { firstPushDone: true, skewMs: 0, nextDueAt: 0, consecutiveFails: 0, lastExchangeAt: 0, ...DRIFT0 },
   };
   const sel = pushSelectionForHub(runtime, "https://new", {
     mode: "full",

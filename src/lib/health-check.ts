@@ -10,9 +10,11 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
 import { notificationCenterOn } from "@/lib/notifications-enabled";
+import { recordNotification } from "@/lib/notifications";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
 import type { HealthReport } from "@/lib/health";
+import type { MovableJob } from "@/lib/job-owners";
 
 export const HEALTH_CHECK_JOB_KEY = "health:check";
 
@@ -47,6 +49,8 @@ type HealthCheckState = {
 // each job's cadence so a single missed poll doesn't page.
 type FreshnessRule = {
   code: string;
+  /** The scheduled job behind it, whose placement decides who is judged. */
+  job: MovableJob;
   label: string;
   success: keyof HealthReport["checks"];
   run: keyof HealthReport["checks"];
@@ -76,10 +80,10 @@ type FreshnessRule = {
 // 63h, so a 12h budget alerted with total certainty every single Monday.
 // If you retime either workflow, retime the matching budget here.
 const FRESHNESS: FreshnessRule[] = [
-  { code: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 },
-  { code: "calendar", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 36 },
-  { code: "todoist", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 },
-  { code: "email", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 72 },
+  { code: "export", job: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 },
+  { code: "calendar", job: "calendar-sync", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 36 },
+  { code: "todoist", job: "todoist-sync", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 },
+  { code: "email", job: "email-import", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 72 },
   // Morning agenda push — audited only while the notification center is live.
   // ADR-130 paused the agenda cron on 2026-06-29, which froze
   // lastAgendaNotifyAt at that date forever. The never-ran escape hatch above
@@ -91,6 +95,7 @@ const FRESHNESS: FreshnessRule[] = [
 ];
 const AGENDA_RULE: FreshnessRule = {
   code: "agenda",
+  job: "notify-agenda",
   label: "Morning agenda",
   success: "lastAgendaNotifyAt",
   run: "lastAgendaNotifyAt",
@@ -143,6 +148,17 @@ export function evaluateHealth(
   // 4. Stalled scheduled jobs — the §12 "GitHub Actions auto-disabled after 60
   // days of inactivity" failure mode, and any silently-wedged poll.
   for (const rule of notificationsOn ? [...FRESHNESS, AGENDA_RULE] : FRESHNESS) {
+    // Another copy runs it: this copy's own times are stale by design, so the
+    // owner's stamp is the judge (ownershipWarning: nobody, never ran, or
+    // silent for days). Without this the cloud reported the hub's jobs as
+    // stalled every week.
+    const placement = report.checks.jobs?.[rule.job];
+    if (placement && !placement.runsHere) {
+      if (placement.warning) {
+        alerts.push({ code: rule.code, severity: "warn", message: placement.warning });
+      }
+      continue;
+    }
     const ranBefore = report.checks[rule.run] as string | null;
     if (!ranBefore) continue; // never configured / never ran → quiet
     const lastSuccess = report.checks[rule.success] as string | null;
@@ -174,6 +190,32 @@ export function buildAlertMessage(alerts: HealthAlert[]) {
     url: "/",
     tag: "ledgr-health",
   } as const;
+}
+
+/** Alerts whose code the previous run did not report. Pure, verify-tested. */
+export function newAlerts(alerts: HealthAlert[], previous: HealthAlert[]): HealthAlert[] {
+  const seen = new Set(previous.map((a) => a.code));
+  return alerts.filter((a) => !seen.has(a.code));
+}
+
+// The notification list on this copy, then a push. The "Sync & system errors"
+// toggle silences both, like every other sender. With the notification center
+// off the push still goes, as it always has: the check-up predates the inbox.
+async function announce(
+  ownerId: string,
+  sender: PushSender | null,
+  message: ReturnType<typeof buildAlertMessage>
+): Promise<SendTally | null> {
+  if (await notificationCenterOn(ownerId)) {
+    const recorded = await recordNotification(ownerId, {
+      kind: "sync_error",
+      title: message.title,
+      body: message.body,
+      url: message.url,
+    });
+    if (recorded === null) return null;
+  }
+  return sender ? await sendToOwner(ownerId, sender, message) : null;
 }
 
 async function readState(): Promise<HealthCheckState> {
@@ -233,10 +275,13 @@ export async function runHealthCheck(
 
   let delivered: SendTally | null = null;
   if (alerts.length > 0) {
-    if (sender) {
-      delivered = await sendToOwner(ownerId, sender, buildAlertMessage(alerts));
-    }
     const prev = await readState();
+    // Announce only what the last run did not already report. A supervised
+    // hub runs this daily (the supervisor has no weekly schedule), and a
+    // standing problem re-pushed every morning is noise the owner learns to
+    // ignore. The full list is still recorded below and shown on /health.
+    const fresh = newAlerts(alerts, prev.alerts ?? []);
+    if (fresh.length > 0) delivered = await announce(ownerId, sender, buildAlertMessage(fresh));
     await writeState({ ...prev, lastRunAt: nowIso, lastAlertAt: nowIso, alerts });
   } else {
     const prev = await readState();
