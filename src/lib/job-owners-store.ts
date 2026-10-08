@@ -13,6 +13,7 @@ import {
   claimFor,
   MOVABLE_JOBS,
   ownershipOf,
+  ownershipWarning,
   shouldRunHere,
   type JobOwners,
   type MovableJob,
@@ -162,4 +163,55 @@ export async function setJobOwner(
     [job]: claimFor({ deviceId, label, now, previous }),
   };
   return { owners: (await updateSettings(ownerId, { jobOwners: next })).jobOwners };
+}
+
+/** Where a job runs, as a health report states it (`checks.jobs`). */
+export type JobPlacement = {
+  /** True when THIS copy runs it, so its own last-run times are the truth. */
+  runsHere: boolean;
+  /** "this copy", another copy's name, "the cloud copy", or "nowhere". */
+  runsOn: string;
+  /** The owner's own stamp of its last run, when another copy holds it. */
+  lastRunAt: string | null;
+  /** The one sentence to alert on, or null when the placement is healthy. */
+  warning: string | null;
+};
+
+/**
+ * Where each job runs, for /health and the weekly check.
+ *
+ * Before this, a copy judged every job by its OWN last-run times, so the cloud
+ * copy reported the calendar, email and export jobs as stalled for weeks while
+ * the hub ran them daily. The owner's stamp (`stampJobRun`) travels in synced
+ * settings, so any copy can read whether the real owner is keeping up.
+ */
+export async function jobPlacements(
+  ownerId: string,
+  jobs: readonly MovableJob[],
+  now = new Date()
+): Promise<Partial<Record<MovableJob, JobPlacement>>> {
+  const owners = await readJobOwners(ownerId);
+  const out: Partial<Record<MovableJob, JobPlacement>> = {};
+  for (const job of jobs) {
+    const verdict = await jobRunVerdict(ownerId, job);
+    const state = ownershipOf(owners, job);
+    const runsOn = verdict.run
+      ? "this copy"
+      : verdict.reason === "unset-standby"
+        ? "the cloud copy"
+        : verdict.reason === "not-owner"
+          ? (verdict.ownerLabel ?? "another copy")
+          : "nowhere";
+    out[job] = {
+      runsHere: verdict.run,
+      runsOn,
+      lastRunAt: state.state === "claimed" ? (state.claim.lastRunAt ?? null) : null,
+      // module-off is the owner's choice, never an alert.
+      warning:
+        verdict.run || verdict.reason === "module-off"
+          ? null
+          : (ownershipWarning({ owners, job, now })?.text ?? null),
+    };
+  }
+  return out;
 }

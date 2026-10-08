@@ -2155,6 +2155,15 @@ in the middle you get both in one line.
   waiting here, and changes made on another copy have not arrived yet. This is
   the button for when you do not want to wait for either — after moving a
   scheduled job to this machine, for instance.
+- **You are told when a copy really falls behind.** A copy on a slow schedule
+  is expected to lag; that is not a problem and nothing is said. A
+  notification (the **Sync & system errors** kind, which you can switch off in
+  Settings) arrives only when something is actually wrong: no successful sync
+  in twice the schedule, several failed tries in a row, the other copy refusing
+  a change it will never have, two syncs in a row ending with changes still
+  waiting, or a change waiting more than twice the schedule to go out. You get
+  one notice when it starts and one when it clears, never one per retry. It
+  opens this page.
 - **Your changes always go to every copy.** Sending a copy somewhere can never
   harm you, and a backup that stops receiving is not a backup, so every one
   gets your changes on its own schedule whatever its trust setting. Reading is

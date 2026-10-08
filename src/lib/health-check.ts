@@ -13,6 +13,7 @@ import { notificationCenterOn } from "@/lib/notifications-enabled";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
 import type { HealthReport } from "@/lib/health";
+import type { MovableJob } from "@/lib/job-owners";
 
 export const HEALTH_CHECK_JOB_KEY = "health:check";
 
@@ -47,6 +48,8 @@ type HealthCheckState = {
 // each job's cadence so a single missed poll doesn't page.
 type FreshnessRule = {
   code: string;
+  /** The scheduled job behind it, whose placement decides who is judged. */
+  job: MovableJob;
   label: string;
   success: keyof HealthReport["checks"];
   run: keyof HealthReport["checks"];
@@ -76,10 +79,10 @@ type FreshnessRule = {
 // 63h, so a 12h budget alerted with total certainty every single Monday.
 // If you retime either workflow, retime the matching budget here.
 const FRESHNESS: FreshnessRule[] = [
-  { code: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 },
-  { code: "calendar", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 36 },
-  { code: "todoist", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 },
-  { code: "email", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 72 },
+  { code: "export", job: "export", label: "OneDrive export", success: "lastExportAt", run: "lastExportRunAt", maxAgeHours: 48 },
+  { code: "calendar", job: "calendar-sync", label: "Calendar sync", success: "lastCalendarSyncAt", run: "lastCalendarRunAt", maxAgeHours: 36 },
+  { code: "todoist", job: "todoist-sync", label: "Todoist sync", success: "lastTodoistSyncAt", run: "lastTodoistRunAt", maxAgeHours: 24 },
+  { code: "email", job: "email-import", label: "Email import", success: "lastEmailImportAt", run: "lastEmailRunAt", maxAgeHours: 72 },
   // Morning agenda push — audited only while the notification center is live.
   // ADR-130 paused the agenda cron on 2026-06-29, which froze
   // lastAgendaNotifyAt at that date forever. The never-ran escape hatch above
@@ -91,6 +94,7 @@ const FRESHNESS: FreshnessRule[] = [
 ];
 const AGENDA_RULE: FreshnessRule = {
   code: "agenda",
+  job: "notify-agenda",
   label: "Morning agenda",
   success: "lastAgendaNotifyAt",
   run: "lastAgendaNotifyAt",
@@ -143,6 +147,17 @@ export function evaluateHealth(
   // 4. Stalled scheduled jobs — the §12 "GitHub Actions auto-disabled after 60
   // days of inactivity" failure mode, and any silently-wedged poll.
   for (const rule of notificationsOn ? [...FRESHNESS, AGENDA_RULE] : FRESHNESS) {
+    // Another copy runs it: this copy's own times are stale by design, so the
+    // owner's stamp is the judge (ownershipWarning: nobody, never ran, or
+    // silent for days). Without this the cloud reported the hub's jobs as
+    // stalled every week.
+    const placement = report.checks.jobs?.[rule.job];
+    if (placement && !placement.runsHere) {
+      if (placement.warning) {
+        alerts.push({ code: rule.code, severity: "warn", message: placement.warning });
+      }
+      continue;
+    }
     const ranBefore = report.checks[rule.run] as string | null;
     if (!ranBefore) continue; // never configured / never ran → quiet
     const lastSuccess = report.checks[rule.success] as string | null;
