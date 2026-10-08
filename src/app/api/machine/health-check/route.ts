@@ -7,11 +7,12 @@ import { resolveNotifyOwner } from "@/lib/push/owner";
 import { getWebPushSender } from "@/lib/push/web-push";
 import { captureError, createLogger } from "@/lib/log";
 
-// Weekly health check (slice 37, PRD §6.2). Weekly is sub-daily-frequency, so
+// Health check-up (slice 37, PRD §6.2; movable since 2026-10-08). On the cloud
 // it comes from GitHub Actions hitting this authenticated endpoint — the same
 // scheduler seam (§6.1) the calendar/email/Todoist/prep crons use, swappable
 // for a local cron in Phase 4. Cron-scoped machine token, the same door as the
-// other /api/machine jobs.
+// other /api/machine jobs. On a supervised hub that owns it, the supervisor
+// calls it daily at 07:00; every other copy stands down.
 //
 // Unlike the agenda push, an unset push sender (no VAPID keys, runbook §1e) is
 // NOT a 503 here: the check still runs and records its findings to job_state

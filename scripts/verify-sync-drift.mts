@@ -3,7 +3,7 @@
 // stamp, not this copy's stale times). Pure: no database, no network.
 // Run: npx tsx scripts/verify-sync-drift.mts
 const { evaluateDrift, decideDrift, MIN_WINDOW_MS } = await import("../src/lib/sync/drift");
-const { evaluateHealth } = await import("../src/lib/health-check");
+const { evaluateHealth, newAlerts } = await import("../src/lib/health-check");
 type HubDriftInput = import("../src/lib/sync/drift").HubDriftInput;
 type HealthReport = import("../src/lib/health").HealthReport;
 
@@ -137,6 +137,15 @@ check(
   "health: a job this copy runs is still judged by its own times",
   alertsFor(cloudReport({ export: { runsHere: true, runsOn: "this copy", lastRunAt: null, warning: null }, "calendar-sync": onHub, "email-import": onHub })) === "export"
 );
+
+// The check-up runs daily on a hub: a standing problem is announced once.
+const errorsA = { code: "errors", severity: "warn" as const, message: "2 errors captured in the last 7 days." };
+const errorsB = { ...errorsA, message: "3 errors captured in the last 7 days." };
+const cal = { code: "calendar", severity: "warn" as const, message: "Calendar sync hasn't completed cleanly in over 36h." };
+check("check-up: first sighting is announced", newAlerts([errorsA], []).length === 1);
+check("check-up: the same problem tomorrow is not, even if its count moved", newAlerts([errorsB], [errorsA]).length === 0);
+check("check-up: only the new problem is announced", newAlerts([errorsB, cal], [errorsA]).map((a) => a.code).join() === "calendar");
+check("check-up: a problem that cleared and came back is news again", newAlerts([cal], []).length === 1);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

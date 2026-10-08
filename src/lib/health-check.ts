@@ -10,6 +10,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { jobState } from "@/db/schema";
 import { notificationCenterOn } from "@/lib/notifications-enabled";
+import { recordNotification } from "@/lib/notifications";
 import { sendToOwner, type SendTally } from "@/lib/push/notify";
 import type { PushSender } from "@/lib/push/types";
 import type { HealthReport } from "@/lib/health";
@@ -191,6 +192,32 @@ export function buildAlertMessage(alerts: HealthAlert[]) {
   } as const;
 }
 
+/** Alerts whose code the previous run did not report. Pure, verify-tested. */
+export function newAlerts(alerts: HealthAlert[], previous: HealthAlert[]): HealthAlert[] {
+  const seen = new Set(previous.map((a) => a.code));
+  return alerts.filter((a) => !seen.has(a.code));
+}
+
+// The notification list on this copy, then a push. The "Sync & system errors"
+// toggle silences both, like every other sender. With the notification center
+// off the push still goes, as it always has: the check-up predates the inbox.
+async function announce(
+  ownerId: string,
+  sender: PushSender | null,
+  message: ReturnType<typeof buildAlertMessage>
+): Promise<SendTally | null> {
+  if (await notificationCenterOn(ownerId)) {
+    const recorded = await recordNotification(ownerId, {
+      kind: "sync_error",
+      title: message.title,
+      body: message.body,
+      url: message.url,
+    });
+    if (recorded === null) return null;
+  }
+  return sender ? await sendToOwner(ownerId, sender, message) : null;
+}
+
 async function readState(): Promise<HealthCheckState> {
   const rows = await getDb()
     .select({ value: jobState.value })
@@ -248,10 +275,13 @@ export async function runHealthCheck(
 
   let delivered: SendTally | null = null;
   if (alerts.length > 0) {
-    if (sender) {
-      delivered = await sendToOwner(ownerId, sender, buildAlertMessage(alerts));
-    }
     const prev = await readState();
+    // Announce only what the last run did not already report. A supervised
+    // hub runs this daily (the supervisor has no weekly schedule), and a
+    // standing problem re-pushed every morning is noise the owner learns to
+    // ignore. The full list is still recorded below and shown on /health.
+    const fresh = newAlerts(alerts, prev.alerts ?? []);
+    if (fresh.length > 0) delivered = await announce(ownerId, sender, buildAlertMessage(fresh));
     await writeState({ ...prev, lastRunAt: nowIso, lastAlertAt: nowIso, alerts });
   } else {
     const prev = await readState();

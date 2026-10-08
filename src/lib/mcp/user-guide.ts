@@ -2001,11 +2001,13 @@ the next time it checks in with your other copies. For these jobs that gap is
 harmless, because each one catches up on its next run. If you want it closed now,
 **Check in now** on that machine's Network page does it immediately.
 
-**Offline backup, Calendar sync, Email capture, Video transcripts and the three
-reminders (Morning agenda, Event prep reminders, Project check-ins) can be moved
-today.** Send the reminders to the copy you actually use: phone alerts go to the
-devices that turned on notifications on that copy, and the inbox entries land in
-that copy's inbox. Each one
+**Offline backup, Calendar sync, Email capture, Video transcripts, the Health
+check-up and the three reminders (Morning agenda, Event prep reminders, Project
+check-ins) can be moved today.** Send the reminders and the check-up to the copy
+you actually use: phone alerts go to the devices that turned on notifications on
+that copy, and the inbox entries land in that copy's inbox. The check-up looks
+everything over (once a day on your own machine, once a week in the cloud) and
+tells you only about a problem it has not already reported. Each one
 picks up cleanly wherever it left off, whichever machine takes it. A job that
 cannot be moved yet says so in its own row, with the reason, instead of offering a
 dropdown that would quietly lose track of something. Moving a job to a machine

@@ -102,6 +102,7 @@ ok("export, calendar sync, email capture, video transcripts and the reminders ar
     "calendar-sync",
     "email-import",
     "export",
+    "health-check",
     "notify-agenda",
     "notify-digest",
     "notify-prep",
