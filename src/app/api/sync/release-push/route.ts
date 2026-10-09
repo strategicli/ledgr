@@ -3,6 +3,7 @@ import { errorResponse, requireOwner } from "@/lib/api";
 import {
   getSyncStatus,
   readSyncHubs,
+  requestCheckIn,
   writeStoredConfirmLargePush,
 } from "@/lib/sync/client";
 
@@ -13,6 +14,11 @@ export const dynamic = "force-dynamic";
 // like /api/sync/mode. The flag is ONE-SHOT: the loop clears it as soon as
 // the push goes through, so it can never quietly release a future process's
 // held push (see client.ts).
+//
+// The release also asks for a check-in. The flag alone only takes effect on
+// the hub's next scheduled round, which on a once-a-day hub is up to a day
+// away: the owner pressed "Send anyway", nothing left, and the hold looked
+// stuck (2026-10-09). "Send anyway" means now.
 export async function POST() {
   const owner = await requireOwner();
   if (owner instanceof NextResponse) return owner;
@@ -28,6 +34,7 @@ export async function POST() {
       );
     }
     await writeStoredConfirmLargePush(true);
+    requestCheckIn();
     return NextResponse.json({ released: true });
   } catch (err) {
     return errorResponse(err);

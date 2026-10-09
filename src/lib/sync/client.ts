@@ -891,10 +891,12 @@ export type FirstPushCheck =
   | { hold: true; done: false; reason: string };
 
 /**
- * Decide whether the client's first-ever push attempt this process should be
- * held. `firstPushDone` makes this a one-shot gate: once a decision comes
- * back non-held, the caller must flip it permanently so a legitimately busy
- * spoke is never throttled again.
+ * Decide whether the client's first-ever push to a hub should be held.
+ * `firstPushDone` makes this a one-shot gate: once a decision comes back
+ * non-held, the caller must flip it permanently so a legitimately busy spoke
+ * is never throttled again. The caller also sets it from the hub's push
+ * cursor (exchangeWith), so a restart does not re-arm the gate for a hub that
+ * has already accepted a push.
  */
 export function checkFirstPush(opts: {
   firstPushDone: boolean;
@@ -1236,6 +1238,14 @@ async function exchangeWith(
   const rt = hubRuntime(hub.url);
   const schemaVer = latestSchemaVer();
   let cursor = await readCursor(hub.url);
+  // A first push is the first push TO THIS HUB, not the first since the
+  // process started. The flag lived only in memory, so every restart re-armed
+  // the size guard, and a hub on a daily cadence with a busy day queued behind
+  // it (over 500 changes) was held again after each auto-update: the owner
+  // released it, the next restart held it again (2026-10-09). The push cursor
+  // is the durable record that this hub has already accepted changes from this
+  // device, which is exactly what the guard asks.
+  if (cursor.push > 0) rt.firstPushDone = true;
   let drained = false;
   let parkedOps = 0;
   let parkedFirst: string | null = null;
