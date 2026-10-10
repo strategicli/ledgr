@@ -681,12 +681,18 @@ export default function FloatingToc({
         // Bottom of the visible box, not the top: at top-4 it landed on the item
         // chrome row's kebab on a phone (Brandon, 2026-07-31). box.h is the scroll
         // viewport's height, so this stays container-relative (ADR-167) — bottom
-        // of the panel in a Desk, bottom of the screen on a page. 6.25rem stacks
-        // it one slot above the Claude button (fixed 6rem up, the same as the
-        // docked nav's clearance) with a 0.75rem gap, so the two floating
-        // buttons read as one column instead of overlapping (Brandon, 2026-10-10).
-        style={{ top: `calc(${box.h}px - 6.25rem)` }}
-        className="pointer-events-auto absolute right-4 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-2/95 text-ink-muted shadow-lg backdrop-blur transition-colors hover:bg-surface-3 hover:text-ink"
+        // of the panel in a Desk, bottom of the screen on a page — and 3.75rem
+        // clears the button's own height plus a gap.
+        //
+        // On a phone (below sm) it instead stacks one slot above the Claude
+        // button, using Claude's own viewport-fixed bottom (including the lift
+        // over the open nav drawer) plus 3.5rem, so the two read as one column
+        // on a page and in the item sheet alike. Measuring from the scroll box
+        // couldn't do that: the sheet's box runs to the screen bottom, the page's
+        // stops at the nav (Brandon, 2026-10-10). With no Claude button (module
+        // off, or its panel open) it drops into Claude's slot.
+        style={{ top: `calc(${box.h}px - 3.75rem)` }}
+        className="pointer-events-auto absolute right-4 flex h-11 w-11 items-center justify-center rounded-full border border-line-strong bg-surface-2/95 text-ink-muted shadow-lg backdrop-blur transition-colors hover:bg-surface-3 hover:text-ink max-sm:fixed max-sm:top-auto! max-sm:bottom-[calc(max(6rem,calc(var(--launcher-h,0px)_+_0.75rem))_+_3.5rem)] max-sm:motion-safe:[transition:bottom_0.28s_cubic-bezier(0.2,0.9,0.3,1)] max-sm:[html:not(:has([aria-label='Open_Claude']))_&]:bottom-[max(6rem,calc(var(--launcher-h,0px)_+_0.75rem))]"
       >
         <svg
           width="20"
