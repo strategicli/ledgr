@@ -79,6 +79,7 @@ export default function ChatView({
   onNewChat,
   onOpenSide,
   onTitle,
+  onSent,
   initialQuestion,
 }: {
   sessionId: string;
@@ -87,6 +88,8 @@ export default function ChatView({
   onNewChat: () => void;
   onOpenSide: (question?: string) => void;
   onTitle?: (title: string) => void;
+  // Fires when a message goes out (the phone drawer rises to show the reply).
+  onSent?: () => void;
   // A side chat opened with "/btw <question>" asks it on open.
   initialQuestion?: string;
 }) {
@@ -96,6 +99,7 @@ export default function ChatView({
   const seq = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const selfScroll = useRef(false);
   // Whether a stream is attached right now, so a refocus only reattaches a
   // stream that actually dropped (two would double every word).
   const streaming = useRef(false);
@@ -233,12 +237,27 @@ export default function ChatView({
   }, [idle, sessionId, reattach]);
 
   // Keep the newest message in view unless the owner scrolled up to read.
+  // The scroll event from this jump is ours, not the owner's: skip it, or a
+  // box mid-resize (the phone drawer snapping between heights) reads as
+  // "scrolled up" and lets go of the newest line.
+  const pin = useCallback(() => {
+    const el = scroller.current;
+    if (!el || !stick.current || el.scrollTop >= el.scrollHeight - el.clientHeight) return;
+    selfScroll.current = true;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+  useEffect(pin);
+  // Stay pinned when the box itself resizes, not only when content arrives.
   useEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  });
+    if (!el) return;
+    const ro = new ResizeObserver(pin);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pin]);
 
   async function send(s: Submit, retry = false) {
+    onSent?.();
     seq.current = 0;
     setLive({ turnId: null, blocks: [], approvals: [], error: null });
     if (!retry) {
@@ -318,6 +337,10 @@ export default function ChatView({
       <div
         ref={scroller}
         onScroll={(e) => {
+          if (selfScroll.current) {
+            selfScroll.current = false;
+            return;
+          }
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}

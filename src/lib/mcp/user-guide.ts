@@ -1703,7 +1703,12 @@ week of use.
   and edit your items, and an edit to the open note appears in place while you
   watch. **Deleting and sharing always ask first** with an Allow / Deny card.
   Up to five chats sit in tabs; ☰ finds older ones, and ⋯ copies a chat, saves it
-  as a note, or archives it. Opening the sidebar in one browser tab leaves your
+  as a note, or archives it. **On a phone it is a drawer** that opens as a short
+  talk bar, so the item stays in view while you type or dictate. Sending rises it
+  to full height to read the reply; tapping the message box drops it back to the
+  talk bar. Drag the grab bar at its top between short, half, and full height,
+  tap the grab bar to flip between short and full, or drag it all the way down
+  to close. Opening the sidebar in one browser tab leaves your
   other tabs alone. Come back after half an hour or more and it starts a fresh
   chat about what you are viewing (the earlier one is still under ☰). Anything
   you have typed but not sent is kept as a draft for that chat, through a
