@@ -341,7 +341,8 @@ body {
    fixed bottom clearance; the docked top bar / side rail padding only applies
    at the sm+ breakpoint where those positions render. */
 body {
-  padding-bottom: 6rem;
+  /* --agent-h: the open Claude drawer (phone) covers the page bottom. */
+  padding-bottom: max(6rem, var(--agent-h, 0px));
 }
 @media (min-width: 640px) {
   body {

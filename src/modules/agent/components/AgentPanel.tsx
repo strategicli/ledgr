@@ -1,7 +1,7 @@
 // The Claude sidebar (ADR-271, Features 1 and 5). One global panel mounted by
 // the root layout when the agent is on: a resizable right-side panel on desktop
 // (it takes room beside the canvas through --agent-w rather than covering it),
-// a full-height bottom sheet on a phone. It follows whatever item is open and
+// a three-height bottom drawer on a phone. It follows whatever item is open and
 // whatever text is selected in it, and hosts up to five chat tabs plus one
 // temporary side chat per chat.
 //
@@ -26,6 +26,14 @@ const SEEN_KEY = "ledgr:agent-seen";
 const STALE_MS = 30 * 60 * 1000;
 const MAX_TABS = 5;
 const UUID = /^\/items\/([0-9a-f-]{36})/i;
+
+// The phone drawer's resting heights. dvh follows the keyboard, since the
+// root layout asks Android to resize the page above it (resizes-content).
+type Snap = "talk" | "half" | "full";
+const SNAPS: Snap[] = ["talk", "half", "full"];
+const TALK_PX = 256;
+const SNAP_CSS: Record<Snap, string> = { talk: `${TALK_PX}px`, half: "55dvh", full: "calc(100dvh - 2rem)" };
+const snapPx = (s: Snap) => (s === "talk" ? TALK_PX : s === "half" ? window.innerHeight * 0.55 : window.innerHeight - 32);
 
 type SessionRow = { id: string; title: string; updatedAt: string };
 type Tab = { id: string; title: string };
@@ -135,6 +143,54 @@ export default function AgentPanel() {
   const [renaming, setRenaming] = useState(false);
   const [detached, setDetached] = useState<Record<string, boolean>>({});
   const ctx = useCanvasContext();
+
+  // The phone drawer. It opens as a short talk bar so the item stays in view
+  // while the owner dictates, rises to full height when a message goes out,
+  // and drops back to the talk bar when the composer is tapped again. The grab
+  // bar drags between the three heights (or down past the talk bar to close)
+  // and a tap on it flips talk <-> full.
+  const [snap, setSnap] = useState<Snap>("talk");
+  const [dragH, setDragH] = useState<number | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const grab = useRef<{ y: number; h: number; moved: boolean } | null>(null);
+  const dragged = useRef(false);
+  // Publish the drawer's height as --agent-h so the page and the item sheet
+  // behind it pad their bottoms, and the last lines can scroll up into view.
+  useEffect(() => {
+    const el = sheet.current;
+    if (!el) return;
+    const s = document.body.style;
+    const ro = new ResizeObserver(() => s.setProperty("--agent-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      s.removeProperty("--agent-h");
+    };
+  }, [open, desktop]);
+  function grabDown(e: React.PointerEvent<HTMLElement>) {
+    grab.current = { y: e.clientY, h: sheet.current?.offsetHeight ?? 0, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function grabMove(e: React.PointerEvent<HTMLElement>) {
+    const g = grab.current;
+    if (!g) return;
+    const dy = g.y - e.clientY;
+    if (Math.abs(dy) > 6) g.moved = true;
+    if (g.moved) setDragH(Math.min(window.innerHeight - 32, Math.max(96, g.h + dy)));
+  }
+  function grabUp() {
+    const g = grab.current;
+    grab.current = null;
+    if (!g?.moved) return;
+    dragged.current = true;
+    const h = dragH ?? g.h;
+    setDragH(null);
+    if (h < TALK_PX * 0.6) {
+      setOpen(false);
+      return;
+    }
+    setSnap(SNAPS.reduce((a, b) => (Math.abs(snapPx(b) - h) < Math.abs(snapPx(a) - h) ? b : a)));
+  }
 
   // Restore the owner's panel state on this device.
   // After mount, not in the initial state: the server render has no storage,
@@ -349,7 +405,10 @@ export default function AgentPanel() {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setSnap("talk");
+          setOpen(true);
+        }}
         title="Claude (Ctrl/Cmd+J)"
         aria-label="Open Claude"
         // Lifts above the mobile nav drawer while it's open (--launcher-h, set
@@ -466,7 +525,23 @@ export default function AgentPanel() {
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {active && (
-          <ChatView key={active} sessionId={active} context={chatContext} onNewChat={() => void newChat()} onOpenSide={(qq) => void openSide(qq)} onTitle={setTitle} />
+          <ChatView
+            key={active}
+            sessionId={active}
+            context={chatContext}
+            onNewChat={() => void newChat()}
+            onOpenSide={(qq) => void openSide(qq)}
+            onTitle={setTitle}
+            // On a phone: rise to read the reply, and drop the keyboard so it doesn't cover it.
+            onSent={
+              desktop
+                ? undefined
+                : () => {
+                    setSnap("full");
+                    (document.activeElement as HTMLElement | null)?.blur();
+                  }
+            }
+          />
         )}
         {side && (
           <div className="absolute inset-x-0 bottom-0 flex h-2/3 flex-col border-t-2 border-sky-700 bg-sky-950/95 shadow-2xl">
@@ -491,8 +566,36 @@ export default function AgentPanel() {
 
   if (!desktop) {
     return (
-      <div role="dialog" aria-label="Claude" className="fixed inset-x-0 bottom-0 top-8 z-[66] flex flex-col rounded-t-2xl border-t border-line-strong bg-surface-2 shadow-2xl">
-        <div className="mx-auto mt-1.5 h-1 w-10 rounded-full bg-line-strong" aria-hidden />
+      <div
+        ref={sheet}
+        role="dialog"
+        aria-label="Claude"
+        // Tapping the composer to say something new drops back to the talk bar.
+        onFocusCapture={(e) => {
+          if (e.target instanceof HTMLTextAreaElement && !side) setSnap("talk");
+        }}
+        style={{ height: dragH ?? SNAP_CSS[snap] }}
+        className={`fixed inset-x-0 bottom-0 z-[66] flex flex-col rounded-t-2xl border-t border-line-strong bg-surface-2 shadow-2xl ${dragH === null ? "motion-safe:transition-[height] motion-safe:duration-200" : ""}`}
+      >
+        <button
+          type="button"
+          aria-label={snap === "talk" ? "Expand Claude" : "Shrink Claude to the talk bar"}
+          title="Drag to resize, or tap to expand or shrink"
+          onPointerDown={grabDown}
+          onPointerMove={grabMove}
+          onPointerUp={grabUp}
+          onPointerCancel={grabUp}
+          onClick={() => {
+            if (dragged.current) {
+              dragged.current = false;
+              return;
+            }
+            setSnap((s) => (s === "talk" ? "full" : "talk"));
+          }}
+          className="flex h-6 w-full shrink-0 touch-none items-center justify-center"
+        >
+          <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden />
+        </button>
         {chrome}
       </div>
     );
