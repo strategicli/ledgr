@@ -877,7 +877,7 @@ export default function SettingsForm({
           <Card>
             <Row
               label="AI features"
-              help="AI Memory, live editing context, the in-app agent and YouTube transcripts are turned on and off in Build → Modules. Their options stay here."
+              help="AI Memory, live editing context, the in-app agent and media transcripts are turned on and off in Build → Modules. Their options stay here."
             >
               <a href="/build/modules" className={BTN}>
                 Open Modules

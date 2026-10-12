@@ -389,7 +389,7 @@ export default async function ScheduledJobs() {
 
       {/* ── Video transcripts: is it on, and can this machine do it ──── */}
       <section className="mt-8">
-        <h2 className="ui-section-label">Video transcripts</h2>
+        <h2 className="ui-section-label">Media transcripts</h2>
         <Card>
           <p className="text-sm text-ink-muted">
             Save a YouTube video and a few minutes later that saved link holds
