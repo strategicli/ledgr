@@ -133,6 +133,20 @@ const { pointNoteDecorations } = await import("../src/components/markdown-editor
   check("styling leaves the markdown untouched", editor.getMarkdown() === md, editor.getMarkdown());
 }
 
+// --- formatting wrapped around a comment, another comment later on the line --
+// `<<}` … `{>>` looked like an HTML tag to marked's delimiter mask, hiding the
+// closing `**`; the body reloaded as literal asterisks and saved as `\*\*`.
+for (const md of [
+  "**{==a==}{>>n<<}** {==b==}{>>m<<}",
+  "**{==a==}{>>n<<}** b {>>point<<}",
+  "*{==a==}{>>n<<}* b {==c==}{>>m<<}",
+  "~~{==a==}{>>n<<}~~ b {==c==}{>>m<<}",
+  "**{==a==}{>>n<<}** `x<<}` **c** {>>m<<}",
+]) {
+  editor.commands.setContent(md, { contentType: "markdown" });
+  check(`wrapped comment round-trips: ${md}`, editor.getMarkdown() === md, editor.getMarkdown());
+}
+
 editor.destroy();
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);

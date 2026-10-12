@@ -40,6 +40,53 @@ type JsonMarked = { type?: string; marks?: { type: string; attrs?: { note?: unkn
 // that places the caret, or commented text can't be edited (Brandon, 2026-07-30).
 export const EDIT_COMMENT_EVENT = "ledgr-edit-comment"; // {from, note}
 
+// Bold/italic/strike around a comment, with another comment later on the line,
+// loaded as literal asterisks and saved back as `\*\*` (Brandon's decision-rights
+// playbook, 2026-10-11). marked finds closing delimiters in a MASKED copy of the
+// line, where anything shaped like an inline HTML tag, `<(?! )[^<>]*?>`, is
+// blanked out. A comment's `<<}` followed later by the next one's `{>>` is
+// exactly that shape, so `<}** {==next==}{>` was blanked, the closing `**` with
+// it, and the opening `**` fell through as text. The read view is unaffected:
+// renderComments turns the pairs into spans before markdown-it sees them.
+//
+// Fix: when the remaining source holds comment delimiters, rebuild the mask with
+// them swapped for same-length stand-ins no rule reacts to, replaying marked's
+// own masking steps (Lexer.inlineTokens), then hand it to the stock tokenizer.
+//
+// ponytail: skips marked's first masking step (reference-style link labels), so
+// a `*` inside a `[label][ref]` on a line that also holds a comment could be
+// seen as a delimiter. Reference links are near-absent here; replay it if not.
+type MarkedLike = { use?: (ext: unknown) => unknown };
+type InlineRules = { anyPunctuation: RegExp; blockSkip: RegExp };
+type Tok = { rules: { inline: InlineRules } } & Record<string, (...a: unknown[]) => unknown>;
+const FIXED = new WeakSet<object>();
+const STAND_IN = "\u0001";
+export function maskCommentDelimiters(rules: InlineRules, src: string, masked: string): string {
+  let s = src.replace(/<<\}/g, `${STAND_IN}${STAND_IN}}`).replace(/\{>>/g, `{${STAND_IN}${STAND_IN}`);
+  for (let r; (r = rules.anyPunctuation.exec(s)); )
+    s = s.slice(0, r.index) + "++" + s.slice(rules.anyPunctuation.lastIndex);
+  for (let r; (r = rules.blockSkip.exec(s)); ) {
+    const i = r[2] ? r[2].length : 0;
+    s = s.slice(0, r.index + i) + "[" + "a".repeat(r[0].length - i - 2) + "]" + s.slice(rules.blockSkip.lastIndex);
+  }
+  // Put the real characters back wherever a stand-in survived unmasked.
+  let tail = "";
+  for (let k = 0; k < s.length; k++) tail += s[k] === STAND_IN ? src[k] : s[k];
+  return masked.slice(0, masked.length - src.length) + tail;
+}
+function installDelimiterFix(marked: unknown) {
+  const m = marked as MarkedLike | undefined;
+  if (!m || typeof m.use !== "function" || FIXED.has(m)) return;
+  FIXED.add(m);
+  const wrap = (name: "emStrong" | "del") =>
+    function (this: Tok, src: string, masked: string, prev?: string) {
+      if (!src.includes("<<}") || !src.includes("{>>")) return false; // stock path
+      const stock = Object.getPrototypeOf(this)[name] as (...a: unknown[]) => unknown;
+      return stock.call(this, src, maskCommentDelimiters(this.rules.inline, src, masked), prev);
+    };
+  m.use({ tokenizer: { emStrong: wrap("emStrong"), del: wrap("del") } });
+}
+
 // The mark. Only the RANGED form is claimed here: a point comment ({>>note<<}
 // with nothing anchored) has no text to mark, so it stays literal text in the
 // editor and still renders correctly in the read view. It round-trips untouched
@@ -80,6 +127,7 @@ export const Comment = Mark.create({
     const serialize = mgr.serialize as ((...a: unknown[]) => string) | undefined;
     const encode = mgr.encodeTextForMarkdown as ((...a: unknown[]) => string) | undefined;
     if (typeof renderNode !== "function" || typeof serialize !== "function" || typeof encode !== "function") return;
+    installDelimiterFix(mgr.instance);
     const boundRender = renderNode.bind(mgr);
     const boundSerialize = serialize.bind(mgr);
     const boundEncode = encode.bind(mgr);
