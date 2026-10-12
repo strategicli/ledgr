@@ -218,14 +218,16 @@ module, so it can be switched off at \`/build/modules\`.
   marked \`inTrash\` with the date it was deleted, and \`restore_item\` brings it
   back.
 
-## Video transcripts
+## Media transcripts
 
-Save a YouTube video the way you save anything else and Ledgr can write the
-whole transcript into that link item, so the words are searchable, readable
-offline, and quotable without scrubbing through the video.
+Save a link to something people talk in, the way you save anything else, and
+Ledgr can write the whole transcript into that link item, so the words are
+searchable, readable offline, and quotable without scrubbing through the
+recording. It covers **YouTube videos** and **Pocket Casts podcast episodes**
+today; more kinds of media can join the same switch later.
 
-- **Switch it on** at \`/build/modules\` → **YouTube transcripts**. It is off
-  until you turn it on. \`/build/jobs\` → **Video transcripts** shows whether it
+- **Switch it on** at \`/build/modules\` → **Media transcripts**. It is off
+  until you turn it on. \`/build/jobs\` → **Media transcripts** shows whether it
   is on and whether this computer has the tools.
 - **It starts as soon as you save.** A video saved on the copy doing the work
   begins at once; anything else is picked up within ten minutes.
@@ -2012,7 +2014,7 @@ the next time it checks in with your other copies. For these jobs that gap is
 harmless, because each one catches up on its next run. If you want it closed now,
 **Check in now** on that machine's Network page does it immediately.
 
-**Offline backup, Calendar sync, Email capture, Video transcripts, the Health
+**Offline backup, Calendar sync, Email capture, Media transcripts, the Health
 check-up and the three reminders (Morning agenda, Event prep reminders, Project
 check-ins) can be moved today.** Send the reminders and the check-up to the copy
 you actually use: phone alerts go to the devices that turned on notifications on
@@ -2041,7 +2043,7 @@ machine: in the cloud it has to finish inside a one-minute limit, so it copies
 about 30 items a night, and on your own machine there is no limit and it clears
 the whole queue at once.
 
-**Video transcripts** are also covered on this page — see "Video transcripts"
+**Media transcripts** are also covered on this page — see "Media transcripts"
 under "Capturing things" above for what they do and how to switch them on.
 
 # Backups

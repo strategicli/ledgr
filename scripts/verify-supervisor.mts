@@ -1559,7 +1559,7 @@ check(
     },
     "youtube-transcript": {
       "path": "/api/machine/youtube-transcript",
-      "label": "Video transcripts",
+      "label": "Media transcripts",
       "everyMinutes": 10,
       "shared": false,
       "on": true,
@@ -1649,8 +1649,8 @@ check(
       "consequence": "Notices go to the devices registered on the machine that runs it, so pick the copy you use. A machine that is off checks nothing until it wakes."
     },
     "youtube-transcript": {
-      "label": "Video transcripts",
-      "what": "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
+      "label": "Media transcripts",
+      "what": "Writes the words spoken in a saved video or podcast episode into the saved link, so you can read and search them here.",
       "movable": true,
       "consequence": "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes."
     },
