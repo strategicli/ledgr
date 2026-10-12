@@ -241,6 +241,12 @@ offline, and quotable without scrubbing through the video.
 - **A video that cannot be transcribed says so in the item**, as one line giving
   the reason (private, removed, members only). Delete that line to have another
   go.
+- **Podcast episodes work the same way.** Share an episode from Pocket Casts
+  into Ledgr and the same switch fills that link with the episode's words. If
+  the show publishes its own transcript, that is used (seconds, names spelled
+  right); otherwise Whisper listens to the audio. A bare share address is
+  renamed to the episode and show. Share the episode, not the whole show: a
+  show link gets a one-line note saying so.
 
 ## Templates
 

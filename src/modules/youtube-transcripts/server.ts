@@ -15,10 +15,10 @@ if (m && !m.hooks) {
     onCreate: async ({ ownerId, type, url }) => {
       // The cheap half first, so creating a task or a note costs nothing more.
       if (type !== "link" || !url) return;
-      const { isYoutubeVideoUrl, runYoutubeTranscripts } = await import(
+      const { isTranscribableUrl, runYoutubeTranscripts } = await import(
         "@/modules/youtube-transcripts/lib/transcripts"
       );
-      if (!isYoutubeVideoUrl(url)) return;
+      if (!isTranscribableUrl(url)) return;
       // Only the machine named under Scheduled work does this, exactly as
       // the timer path checks.
       const { jobRunVerdict } = await import("@/lib/job-owners-store");

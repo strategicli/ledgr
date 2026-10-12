@@ -11,10 +11,16 @@ import { vttToText } from "../src/modules/youtube-transcripts/lib/fetch";
 import {
   VIDEO_URL_SQL_PATTERN,
   hasTranscriptMarker,
+  isTranscribableUrl,
   isYoutubeVideoUrl,
   withFailure,
   withTranscript,
 } from "../src/modules/youtube-transcripts/lib/transcripts";
+import {
+  PODCAST_URL_SQL_PATTERN,
+  episodeIds,
+  isPocketCastsUrl,
+} from "../src/modules/youtube-transcripts/lib/podcast";
 
 let pass = 0;
 let fail = 0;
@@ -188,6 +194,42 @@ check(
   sqlPattern.test("https://youtu.be/dQw4w9WgXcQ/extra") &&
     !isYoutubeVideoUrl("https://youtu.be/dQw4w9WgXcQ/extra")
 );
+
+// ── Pocket Casts ────────────────────────────────────────────────────────────
+// Real share addresses (2026-10-12). The query and the code must agree on
+// every one, for the same reason as the YouTube pair above.
+const podSql = new RegExp(PODCAST_URL_SQL_PATTERN, "i");
+const POD_YES = [
+  "https://pca.st/episode/c4fb02bd-f1b8-46e4-8ecb-6db3ab7d6f4a",
+  "https://pca.st/episode/8d234913-91f1-474d-993c-a5f327f60aea?t=1091",
+  "https://pca.st/k3jg060i",
+  "https://pocketcasts.com/podcast/the-disciple-makers-podcast/87e59380-12b6-0134-a447-13e6b3913b15/are-we-teaching-discipleship-the-wrong-way-moose-bright/c4fb02bd-f1b8-46e4-8ecb-6db3ab7d6f4a",
+  "https://play.pocketcasts.com/podcasts/87e59380-12b6-0134-a447-13e6b3913b15/episode/c4fb02bd-f1b8-46e4-8ecb-6db3ab7d6f4a",
+];
+const POD_NO = ["https://pca.st/", "https://pocketcasts.com", "https://notpca.st/abc", "https://example.com/pca.st/x"];
+for (const url of POD_YES) {
+  check(`a Pocket Casts link is work: ${url}`, isTranscribableUrl(url) && podSql.test(url));
+}
+for (const url of POD_NO) {
+  check(`not Pocket Casts work: ${url}`, !isPocketCastsUrl(url) && !podSql.test(url));
+}
+check(
+  "a full episode address yields both ids",
+  JSON.stringify(episodeIds(POD_YES[3])) ===
+    JSON.stringify({ podcast: "87e59380-12b6-0134-a447-13e6b3913b15", episode: "c4fb02bd-f1b8-46e4-8ecb-6db3ab7d6f4a" })
+);
+check("a share link names no episode until followed", episodeIds(POD_YES[0]) === null);
+check("a whole-show page is not an episode", episodeIds("https://pocketcasts.com/podcast/x/87e59380-12b6-0134-a447-13e6b3913b15") === null);
+// A show's own transcript is usually SRT, which vttToText must read as well.
+const SRT = `1
+00:00:00,000 --> 00:00:02,000
+Welcome back
+
+2
+00:00:02,100 --> 00:00:04,000
+to the show.
+`;
+check("reads an SRT transcript", vttToText(SRT) === "Welcome back to the show.");
 
 // ── The marker ──────────────────────────────────────────────────────────────
 check("finds the marker", hasTranscriptMarker("x\n<!-- transcript:captions 2026-08-30 -->\ny"));

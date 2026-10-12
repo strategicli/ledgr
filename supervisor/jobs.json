@@ -138,7 +138,7 @@
     "module": "youtube-transcripts",
     "why": "Writes the transcript into the saved link itself. Two machines transcribing the same video would both write the same body and then fight over whose copy wins, so the endpoint runs only on the copy named under Scheduled work, and stands down everywhere else. Scheduled here always so that naming this machine is all it takes (ADR-225).",
     "ownerLabel": "Video transcripts",
-    "what": "Writes the words spoken in a saved video into the saved link, so you can read and search them here.",
+    "what": "Writes the words spoken in a saved video or podcast episode into the saved link, so you can read and search them here.",
     "movable": true,
     "consequence": "A late run costs nothing. A video simply waits until the machine that does this picks it up, however long that takes.",
     "notes": [

@@ -27,7 +27,13 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-export type FetchedTranscript = { text: string; source: "captions" | "whisper" };
+export type FetchedTranscript = {
+  text: string;
+  /** "publisher" is a podcast's own transcript, listed in its feed. */
+  source: "captions" | "whisper" | "publisher";
+  /** The episode's real name, when the saved link only knows its address. */
+  title?: string;
+};
 
 // How Python is spelled here. Windows ships the `py` launcher and usually has
 // no `python3` on PATH; everywhere else it is the other way round. One place,
@@ -166,10 +172,21 @@ async function fetchWhisper(url: string, dir: string): Promise<string> {
   );
   const audio = (await readdir(dir)).find((f) => f.startsWith("audio."));
   if (!audio) throw new Error(whyYtDlpFailed(attempt));
+  return whisperFile(
+    join(dir, audio),
+    "this video has no captions and Whisper is not available on this machine"
+  );
+}
 
+/**
+ * One audio file already on disk, through Whisper. Shared with the podcast
+ * path, which downloads its audio without yt-dlp. `unavailable` is the
+ * sentence the owner reads when Whisper cannot run here.
+ */
+export async function whisperFile(audioPath: string, unavailable: string): Promise<string> {
   let stdout: string;
   try {
-    ({ stdout } = await run(python(), [whisperScript(), join(dir, audio)], {
+    ({ stdout } = await run(python(), [whisperScript(), audioPath], {
       timeout: WHISPER_TIMEOUT_MS,
       maxBuffer: MAX_OUTPUT,
       windowsHide: true,
@@ -178,12 +195,10 @@ async function fetchWhisper(url: string, dir: string): Promise<string> {
     // The script installs its own dependencies on first run, so a failure here
     // is usually no Python, no network for that install, or no room for the
     // model. The owner does not need which one to know what to do about it.
-    throw new Error(
-      "this video has no captions and Whisper is not available on this machine"
-    );
+    throw new Error(unavailable);
   }
   const text = stdout.trim();
-  if (!text) throw new Error("Whisper heard no speech in this video");
+  if (!text) throw new Error("Whisper heard no speech in this recording");
   return text;
 }
 

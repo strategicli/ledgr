@@ -24,6 +24,11 @@ import { updateItem } from "@/lib/item-mutations";
 import { captureError, createLogger } from "@/lib/log";
 import { moduleOnFor } from "@/lib/modules/enabled";
 import { fetchTranscript, ytDlpVersion } from "@/modules/youtube-transcripts/lib/fetch";
+import {
+  PODCAST_URL_SQL_PATTERN,
+  fetchPodcastTranscript,
+  isPocketCastsUrl,
+} from "@/modules/youtube-transcripts/lib/podcast";
 
 // The hosts a YouTube video can be saved from. youtu.be is the share-sheet form,
 // which is what the phone actually sends, so leaving it out would miss the most
@@ -71,6 +76,11 @@ export function isYoutubeVideoUrl(url: string | null | undefined): boolean {
   }
   if (path === "/watch") return !!parsed.searchParams.get("v");
   return /^\/(shorts|live|embed|v)\/[\w-]{6,}/.test(path);
+}
+
+/** Is this a saved link the job works on: a YouTube video or a Pocket Casts episode? */
+export function isTranscribableUrl(url: string | null | undefined): boolean {
+  return isYoutubeVideoUrl(url) || isPocketCastsUrl(url);
 }
 
 /** Has this body already been through the job, either way? */
@@ -155,7 +165,7 @@ function pendingWhere(ownerId: string) {
     eq(items.ownerId, ownerId),
     eq(items.type, "link"),
     isNull(items.deletedAt),
-    sql`${items.url} ~* ${VIDEO_URL_SQL_PATTERN}`,
+    sql`(${items.url} ~* ${VIDEO_URL_SQL_PATTERN} or ${items.url} ~* ${PODCAST_URL_SQL_PATTERN})`,
     sql`coalesce(${items.body}->>'text', '') not like '%<!-- transcript:%'`
   );
 }
@@ -174,7 +184,7 @@ export async function pendingVideoCount(ownerId: string): Promise<number> {
     .select({ url: items.url })
     .from(items)
     .where(pendingWhere(ownerId));
-  return rows.filter((r) => isYoutubeVideoUrl(r.url)).length;
+  return rows.filter((r) => isTranscribableUrl(r.url)).length;
 }
 
 export type TranscriptRun = {
@@ -327,7 +337,7 @@ async function transcribePass(
   // if it happens anyway, say which addresses did it. A day and a half of
   // "youtube transcripts started, ok" with nothing transcribed is what the
   // absence of this line cost (2026-09-02).
-  if (rows.length > 0 && !rows.some((r) => isYoutubeVideoUrl(r.url))) {
+  if (rows.length > 0 && !rows.some((r) => isTranscribableUrl(r.url))) {
     log.warn("youtube transcript queue is jammed: no candidate is a video", {
       urls: rows.map((r) => r.url),
     });
@@ -336,7 +346,7 @@ async function transcribePass(
   const date = today();
   const result: TranscriptRun = { scanned: 0, done: 0, failed: 0 };
   for (const row of rows) {
-    if (!isYoutubeVideoUrl(row.url)) continue; // stricter than the query, by design
+    if (!isTranscribableUrl(row.url)) continue; // stricter than the query, by design
     result.scanned++;
     let existing = "";
     try {
@@ -345,10 +355,16 @@ async function transcribePass(
       // are about to rewrite anyway. Inside the try because an item can be
       // deleted between the scan and this read, and one vanished video must not
       // take down the pass around it.
-      existing = bodyMarkdown((await getItem(ownerId, row.id)).body);
-      const t = await fetchTranscript(row.url as string);
+      const item = await getItem(ownerId, row.id);
+      existing = bodyMarkdown(item.body);
+      const url = row.url as string;
+      const t = isPocketCastsUrl(url) ? await fetchPodcastTranscript(url) : await fetchTranscript(url);
       await updateItem(ownerId, row.id, {
         body: makeMarkdownBody(withTranscript(existing, { ...t, date })),
+        // A share that arrived as a bare address gets the episode's real name.
+        ...(t.title && (!item.title?.trim() || /^https?:\/\//.test(item.title))
+          ? { title: t.title }
+          : {}),
       });
       result.done++;
     } catch (err) {

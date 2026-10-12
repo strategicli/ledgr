@@ -7,7 +7,7 @@ export const youtubeTranscriptsModule: ModuleManifest = {
   id: "youtube-transcripts",
   label: "YouTube transcripts",
   description:
-    "Saved YouTube links fill their body with the video's transcript, using captions or Whisper on this computer.",
+    "Saved YouTube and Pocket Casts links fill their body with the transcript, using captions, the show's own transcript, or Whisper on this computer.",
   enabledByDefault: false,
   types: [],
   exporters: [],
