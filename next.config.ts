@@ -30,6 +30,9 @@ const nextConfig: NextConfig = {
   // wins. (Paired with an explicit `color-scheme: dark` on :root in globals.css.)
   experimental: {
     cssChunking: "strict",
+    // The dev server's on-disk cache (.next/dev) is never pruned: on the hub
+    // machine it reached 22 GB. Dev starts a little slower without it.
+    turbopackFileSystemCacheForDev: false,
   },
   // The in-app agent's SDK (ADR-271) locates its bundled Claude Code executable
   // relative to its own package on disk, so it must load from node_modules, not
