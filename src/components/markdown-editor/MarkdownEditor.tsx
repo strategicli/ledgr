@@ -391,14 +391,12 @@ function SwatchControl({
   onPick,
   open,
   onToggle,
-  isDesktop,
 }: {
   kind: "color" | "highlight";
   current: string;
   onPick: (c: HighlightColor | null) => void;
   open: boolean;
   onToggle: () => void;
-  isDesktop: boolean;
 }) {
   const { anchorRef, coords } = useAnchoredPanel<HTMLButtonElement>(
     open,
@@ -407,31 +405,13 @@ function SwatchControl({
   );
   const title = kind === "color" ? "Text color" : "Highlight";
 
-  // Mobile: the formatting bar is a horizontally-scrolling strip pinned above
-  // the keyboard, so an absolutely-positioned popover would be clipped by the
-  // scroll container (overflow-x:auto forces overflow-y:auto) and would open
-  // down into the keyboard. Fall back to a native <select> — the OS picker is
-  // unclipped, keyboard-safe, and idiomatic on touch. Desktop gets the swatch
-  // popover below.
-  if (!isDesktop) {
-    return (
-      <select
-        title={title}
-        aria-label={title}
-        className="h-7 rounded-md bg-surface-2 px-1 text-sm text-ink-muted"
-        value={current}
-        onChange={(e) => onPick((e.target.value || null) as HighlightColor | null)}
-      >
-        <option value="">{title}</option>
-        {COLOR_NAMES.map((c) => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-        {kind === "highlight" && (
-          <option value={ACCENT_HIGHLIGHT}>my highlight</option>
-        )}
-      </select>
-    );
-  }
+  // One picker for every screen size. Mobile used to fall back to a native
+  // <select>, but a <select> takes focus: tapping it blurred the editor, which
+  // hid the keyboard and the keyboard-pinned bar (and the <select> with it)
+  // before a color could be chosen. The swatch row is portaled and fixed, so
+  // the scroll-clipping that motivated the fallback no longer applies, and
+  // useAnchoredPanel measures the visual viewport so it flips above the
+  // keyboard instead of opening into it.
 
   const pick = (c: HighlightColor | null) => {
     onPick(c);
@@ -1605,7 +1585,6 @@ export default function MarkdownEditor({
                     onPick={setColor}
                     open={openSwatch === "color"}
                     onToggle={() => setOpenSwatch(openSwatch === "color" ? null : "color")}
-                    isDesktop={isDesktop}
                   />
                 )}
                 {showHighlight && (
@@ -1615,7 +1594,6 @@ export default function MarkdownEditor({
                     onPick={setHighlight}
                     open={openSwatch === "highlight"}
                     onToggle={() => setOpenSwatch(openSwatch === "highlight" ? null : "highlight")}
-                    isDesktop={isDesktop}
                   />
                 )}
                 {showSlide && (

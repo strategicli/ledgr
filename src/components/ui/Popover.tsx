@@ -53,7 +53,13 @@ export function useAnchoredPanel<T extends HTMLElement>(
       align === "right"
         ? Math.max(margin, Math.min(r.right - w, vw - w - margin))
         : Math.max(margin, Math.min(r.left, vw - w - margin));
-    const spaceBelow = vh - r.bottom - margin;
+    // Room below is measured against the VISUAL viewport: with a software
+    // keyboard up, innerHeight still counts the area under the keyboard, and a
+    // panel placed there is invisible. `bottom:` stays in layout-viewport terms
+    // because that's what position:fixed resolves against.
+    const vv = window.visualViewport;
+    const visibleBottom = vv ? vv.height + vv.offsetTop : vh;
+    const spaceBelow = visibleBottom - r.bottom - margin;
     const spaceAbove = r.top - margin;
     // Prefer opening downward; flip up only when below is cramped and above
     // genuinely has more room.
