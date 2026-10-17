@@ -735,6 +735,9 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
         JSON.stringify({ accent: "#2563eb", jobOwners: {} }),
         OWNER,
       ]);
+      // Separate the setup writes from the assignment by a clear margin: stamps are
+      // millisecond-grained, and a same-ms tie is settled by random device id.
+      await sleep(50);
       const before = await opCount(A);
       await A.query(`update users set settings = $1 where id = $2`, [
         JSON.stringify({ accent: "#2563eb", jobOwners }),
