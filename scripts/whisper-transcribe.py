@@ -79,9 +79,13 @@ def enable_cuda_libs():
             pip_install(pip_name)
     import nvidia  # noqa: E402
 
-    base = os.path.dirname(nvidia.__file__)
-    for sub in ("cublas", "cudnn"):
-        libdir = os.path.join(base, sub, "bin" if os.name == "nt" else "lib")
+    # nvidia is a namespace package in current wheels, so it has no __file__;
+    # __path__ lists every folder it lives in.
+    for libdir in (
+        os.path.join(base, sub, "bin" if os.name == "nt" else "lib")
+        for base in nvidia.__path__
+        for sub in ("cublas", "cudnn")
+    ):
         if os.path.isdir(libdir):
             if os.name == "nt":
                 os.add_dll_directory(libdir)

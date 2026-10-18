@@ -191,10 +191,15 @@ export async function whisperFile(audioPath: string, unavailable: string): Promi
       maxBuffer: MAX_OUTPUT,
       windowsHide: true,
     }));
-  } catch {
-    // The script installs its own dependencies on first run, so a failure here
-    // is usually no Python, no network for that install, or no room for the
-    // model. The owner does not need which one to know what to do about it.
+  } catch (e) {
+    // A timeout is not "unavailable": Whisper ran, the recording was just too
+    // long for it (usually a GPU that fell back to the CPU).
+    if ((e as { killed?: boolean }).killed) {
+      throw new Error(`Whisper ran for ${WHISPER_TIMEOUT_MS / 60_000} minutes without finishing this recording`);
+    }
+    // Otherwise the script installs its own dependencies on first run, so a
+    // failure here is usually no Python, no network for that install, or no
+    // room for the model. The owner does not need which one to know what to do.
     throw new Error(unavailable);
   }
   const text = stdout.trim();
