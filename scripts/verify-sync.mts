@@ -154,12 +154,14 @@ function applyToRow(row: Record<string, unknown>, actions: WriteAction[]): Recor
   );
 }
 
-// (5) a plain forward body edit from the SAME device is no conflict
+// (5) a plain forward body edit from the SAME device is no conflict (and,
+// with a revision under 5 minutes old, takes no pre-overwrite snapshot)
 {
   const state = freshState(
     { id: ITEM, body: { format: "markdown", text: "v1" }, properties: {} },
     { body: { at: "2026-08-22T10:00:01+00:00", deviceId: DEV_A } }
   );
+  state.rows.get(`items:${ITEM}`)!.latestRevisionAt = "2026-08-22T09:58:00+00:00";
   const { actions } = mergeOps(
     [op({ tbl: "items", rowId: ITEM, kind: "update", changed: { body: { format: "markdown", text: "v2" } }, deviceId: DEV_A, at: "2026-08-22T10:00:02+00:00" })],
     state
@@ -167,6 +169,65 @@ function applyToRow(row: Record<string, unknown>, actions: WriteAction[]): Recor
   check(
     "same-device body edit applies with no snapshot and no flag",
     actions.length === 1 && actions[0].kind === "update" && !("properties" in (actions[0] as { fields: object }).fields)
+  );
+}
+
+// (5b) the 2026-10-19 echo: a peer serves back this device's own OLD body
+// edit, logged at the peer's apply time. It must lose to the newer local save
+// and must not drag updated_at backwards.
+{
+  const bodyNew = { format: "markdown", text: "11:55 save" };
+  const bodyOld = { format: "markdown", text: "yesterday's body" };
+  const state = freshState(
+    { id: ITEM, body: bodyNew, updated_at: "2026-10-19T16:55:09.589+00:00", properties: {} },
+    {
+      body: { at: "2026-10-19T16:55:09.590+00:00", deviceId: DEV_A },
+      updated_at: { at: "2026-10-19T16:55:09.590+00:00", deviceId: DEV_A },
+    }
+  );
+  const { actions } = mergeOps(
+    [
+      op({
+        tbl: "items",
+        rowId: ITEM,
+        kind: "update",
+        changed: { body: bodyOld, updated_at: "2026-10-18T19:15:34.611+00:00" },
+        deviceId: DEV_B,
+        originDeviceId: DEV_A,
+        at: "2026-10-19T17:28:57.051+00:00",
+      }),
+    ],
+    state
+  );
+  check("an echoed old edit does not overwrite a newer save", actions.length === 0, JSON.stringify(actions.map((a) => a.kind)));
+}
+
+// (5c) a newer remote body that DOES win snapshots the body it replaces once
+// the last revision is 5+ minutes old, and only once per batch.
+{
+  const bodyLocal = { format: "markdown", text: "local work" };
+  const state = freshState(
+    { id: ITEM, body: bodyLocal, properties: {} },
+    { body: { at: "2026-08-22T10:00:01+00:00", deviceId: DEV_A } }
+  );
+  state.rows.get(`items:${ITEM}`)!.latestRevisionAt = "2026-08-22T09:00:00+00:00";
+  const { actions } = mergeOps(
+    [
+      op({ tbl: "items", rowId: ITEM, kind: "update", changed: { body: { format: "markdown", text: "v2" } }, deviceId: DEV_A, at: "2026-08-22T10:00:02+00:00" }),
+      op({ tbl: "items", rowId: ITEM, kind: "update", changed: { body: { format: "markdown", text: "v3" } }, deviceId: DEV_A, at: "2026-08-22T10:00:03+00:00" }),
+    ],
+    state
+  );
+  const snaps = actions.filter((a) => a.kind === "snapshot_revision");
+  check(
+    "a sync overwrite snapshots the replaced body first, once",
+    snaps.length === 1 && stableStringify((snaps[0] as { body: unknown }).body) === stableStringify(bodyLocal),
+    `${snaps.length} snapshot(s)`
+  );
+  const upd = actions.filter((a) => a.kind === "update");
+  check(
+    "and still applies the newer bodies without a conflict flag",
+    upd.length === 2 && upd.every((a) => !("properties" in (a as { fields: object }).fields))
   );
 }
 
@@ -847,9 +908,11 @@ async function runIntegration(urlA: string, urlB: string): Promise<void> {
                 (select properties ->> 'syncBodyMerged' from items where id = $1) as flag`,
         [N]
       );
+      // One revision is expected now: the first overwrite snapshots the body it
+      // replaces, and the 5-minute debounce holds the rest back (2026-10-19).
       check(
         "sequential edits on one device leave no phantom conflict behind",
-        Number(noise.rows[0].revs) === 0 && noise.rows[0].flag === null,
+        Number(noise.rows[0].revs) <= 1 && noise.rows[0].flag === null,
         `revisions=${noise.rows[0].revs} syncBodyMerged=${noise.rows[0].flag}`
       );
       const body = await B.query(`select body ->> 'text' as t from items where id = $1`, [N]);

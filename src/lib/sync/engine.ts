@@ -53,7 +53,17 @@ export type LocalRow = {
   // items only: canonical-JSON strings of bodies already in revisions for this
   // item, so a losing body is never snapshotted twice (double-apply no-op).
   revisionBodies?: string[];
+  // items only: created_at of the item's newest revision, for the pre-overwrite
+  // snapshot's debounce (see SYNC_SNAPSHOT_DEBOUNCE_MS).
+  latestRevisionAt?: string;
 };
+
+// A sync write that replaces a body snapshots the body it replaces first, at
+// most once per this window per item: the same 5 minutes an ordinary save
+// waits (item-mutations.ts REVISION_DEBOUNCE_MS), so a stream of remote edits
+// can't flood revisions the way phantom conflicts once did (ADR-248). Measured
+// against the op's own time, which keeps the merge pure.
+export const SYNC_SNAPSHOT_DEBOUNCE_MS = 5 * 60 * 1000;
 
 export type LocalState = {
   // The instance's owner set (users.id values). Ops outside it are refused.
@@ -179,8 +189,23 @@ function opDevice(op: SyncOp): string {
   return op.originDeviceId ?? op.deviceId;
 }
 
+// An items op is stamped with when the edit was MADE, not when it was logged.
+// A relaying peer logs every op it applies at its own now(), so an old edit
+// that comes back around (2026-10-19: the cloud served a hub its own day-old
+// body edits, logged at 12:28 that afternoon) would otherwise outrank a newer
+// local save. The row's updated_at inside `changed` is the edit's own time, so
+// the earlier of the two wins the comparison.
+// ponytail: trusts the writer's clock; a device whose clock runs hours slow
+// loses its genuinely-newer edits. An HLC is the upgrade if that is ever seen.
+// Shared with apply's reading of the LOCAL oplog, so both sides of the
+// comparison measure time the same way.
+export function madeAt(tbl: string, changed: Record<string, unknown>, at: string): string {
+  const made = tbl === "items" ? changed.updated_at : undefined;
+  return typeof made === "string" && Date.parse(made) < Date.parse(at) ? made : at;
+}
+
 function opStamp(op: SyncOp): FieldStamp {
-  return { at: op.at, deviceId: opDevice(op) };
+  return { at: madeAt(op.tbl, op.changed, op.at), deviceId: opDevice(op) };
 }
 
 function stateKey(tbl: string, rowId: string): string {
@@ -283,21 +308,32 @@ export function mergeOps(ops: SyncOp[], state: LocalState): MergeResult {
         // is one extra revision + an advisory flag, which is the safe side.
         const conflict = cur != null && stamp != null && stamp.deviceId !== opDevice(op);
         const loser = wins ? cur : value;
-        if (conflict) {
-          const loserJson = stableStringify(loser);
+        // What goes to revisions: the losing side of a true conflict (always),
+        // or else the body this write is about to replace, debounced. The
+        // second case is what a same-device overwrite never had, so a body
+        // replaced by sync existed nowhere but the hourly backup (2026-10-19).
+        const lastRev = local.latestRevisionAt ? Date.parse(local.latestRevisionAt) : -Infinity;
+        const snap = conflict
+          ? loser
+          : wins && cur != null && Date.parse(op.at) - lastRev >= SYNC_SNAPSHOT_DEBOUNCE_MS
+            ? cur
+            : null;
+        if (snap != null) {
+          const snapJson = stableStringify(snap);
           const seen = local.revisionBodies ?? [];
-          if (!seen.includes(loserJson)) {
+          if (!seen.includes(snapJson)) {
             actions.push({
               kind: "snapshot_revision",
               ownerId: op.ownerId,
               origin: opDevice(op),
               itemId: op.rowId,
-              body: loser,
+              body: snap,
             });
-            local.revisionBodies = [...seen, loserJson];
+            local.revisionBodies = [...seen, snapJson];
+            local.latestRevisionAt = op.at;
           }
-          bodyConflict = true;
         }
+        if (conflict) bodyConflict = true;
         if (!wins) continue;
         fields[field] = value;
         local.fields[field] = opStamp(op);
