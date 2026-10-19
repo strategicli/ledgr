@@ -5,6 +5,8 @@
 import { sql, type SQL } from "drizzle-orm";
 import { getDb, dbSupportsTransactions } from "@/db";
 import {
+  cmpStamp,
+  madeAt,
   mergeOps,
   opFieldKeys,
   SYNCED_TABLES,
@@ -115,8 +117,13 @@ async function readLocalState(db: SyncDb, ops: SyncOp[]): Promise<LocalState> {
       };
       const local = state.rows.get(`${tbl}:${o.row_id}`);
       if (!local) continue;
-      const stamp = { at: o.at, deviceId: o.origin_device_id ?? o.device_id };
-      for (const f of opFieldKeys(tbl, o.changed)) local.fields[f] = stamp;
+      // The newest write per field by when it was made (madeAt), not the last
+      // one logged: a replayed old edit sits late in seq order but early in time.
+      const stamp = { at: madeAt(tbl, o.changed, o.at), deviceId: o.origin_device_id ?? o.device_id };
+      for (const f of opFieldKeys(tbl, o.changed)) {
+        const prev = local.fields[f];
+        if (!prev || cmpStamp(stamp, prev) > 0) local.fields[f] = stamp;
+      }
     }
   }
 
@@ -150,17 +157,20 @@ async function readLocalState(db: SyncDb, ops: SyncOp[]): Promise<LocalState> {
   ];
   if (bodyItemIds.length > 0) {
     const revs = await db.execute(
-      sql`select item_id::text as item_id, body from revisions where item_id = any(${uuidArray(bodyItemIds)}::uuid[])`
+      sql`select item_id::text as item_id, body, created_at from revisions where item_id = any(${uuidArray(bodyItemIds)}::uuid[])`
     );
-    const byItem = new Map<string, string[]>();
+    const byItem = new Map<string, { bodies: string[]; latest: number }>();
     for (const r of revs.rows) {
-      const list = byItem.get(String(r.item_id)) ?? [];
-      list.push(stableStringify(r.body));
-      byItem.set(String(r.item_id), list);
+      const entry = byItem.get(String(r.item_id)) ?? { bodies: [], latest: -Infinity };
+      entry.bodies.push(stableStringify(r.body));
+      entry.latest = Math.max(entry.latest, new Date(r.created_at as string).getTime());
+      byItem.set(String(r.item_id), entry);
     }
-    for (const [itemId, bodies] of byItem) {
-      const local = state.rows.get(`items:${itemId}`);
-      if (local) (local as LocalRow).revisionBodies = bodies;
+    for (const [itemId, { bodies, latest }] of byItem) {
+      const local = state.rows.get(`items:${itemId}`) as LocalRow | undefined;
+      if (!local) continue;
+      local.revisionBodies = bodies;
+      local.latestRevisionAt = new Date(latest).toISOString();
     }
   }
 
