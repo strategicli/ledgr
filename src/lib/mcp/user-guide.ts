@@ -331,7 +331,8 @@ Four separate channels, so they can all sit on the same words at once.
   that reader's ordinary highlight; the Save Offline and PDF copies keep your
   colour.)
 - **Slide mark** — "put this on the screen". Shows as a blue rule bracketing the
-  span, and drives the presentation export.
+  span, and drives the presentation export. Click an image and press it to make a
+  full-screen picture slide; in the note it then shrinks to a thumbnail.
 - **Comment** — a private note to yourself, anchored to the selected text.
 
 ## Comments

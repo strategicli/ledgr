@@ -84,7 +84,8 @@ const SLIDE_CSS = `
 ins.slide{text-decoration:none;padding:0 .375rem;
   border-left:3px solid ${BLOCKNOTE_COLORS.blue.text};
   border-right:3px solid ${BLOCKNOTE_COLORS.blue.text};
-  background:rgba(96,165,250,0.08)}`;
+  background:rgba(96,165,250,0.08)}
+ins.slide img{max-width:16rem;max-height:9rem;width:auto;height:auto;object-fit:contain;vertical-align:middle;border-radius:4px}`;
 
 // The document's four looks (settings.ts THEMES), as one variable set each. The
 // data-theme on <html> picks one; the Appearance control on the page switches it

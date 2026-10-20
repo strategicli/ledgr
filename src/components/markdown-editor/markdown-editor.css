@@ -828,6 +828,20 @@
   background: var(--slide-tint, rgba(96, 165, 250, 0.08));
   padding: 0 0.375rem;
 }
+/* An image slide (<ins class="slide">![…](…)</ins>) shows as a thumbnail in the
+   note: it is full-screen in the presentation player, and at full width in the
+   manuscript it swamped the prose around it (Brandon, 2026-10-20). The blue
+   brackets above still frame it, so it reads as "this is a slide." Mirrored in
+   print-html.ts SLIDE_CSS. */
+.ledgr-prose .slide img {
+  max-width: 16rem;
+  max-height: 9rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  vertical-align: middle;
+  border-radius: 4px;
+}
 
 .cmt {
   text-decoration: underline;
