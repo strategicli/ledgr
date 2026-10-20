@@ -12,6 +12,12 @@ export const CORNERS = ["tl", "tr", "bl", "br"] as const;
 export const EFFECTS = ["none", "fade", "fade-black", "fade-up", "fade-down", "wipe-up", "wipe-down", "grow"] as const;
 export type Effect = (typeof EFFECTS)[number];
 export const SPEEDS = ["fast", "normal", "slow"] as const;
+// How a picture-only slide sizes its picture inside the 1600x900 frame.
+// fit = whole picture, as large as it goes; fill = cover the frame, edges
+// cropped; stretch = cover the frame, distorted; original = its own size,
+// shrunk only if bigger than the frame.
+export const IMAGE_FITS = ["fit", "fill", "stretch", "original"] as const;
+export type ImageFit = (typeof IMAGE_FITS)[number];
 
 export type PresentationDesign = {
   theme: DesignTheme;
@@ -21,6 +27,7 @@ export type PresentationDesign = {
   background: { color: string | null; image: string | null; darken: number; fullBrightness: string };
   titleBar: { enabled: boolean; text: string; position: "top" | "bottom"; size: Size; margin: Size; skip: string };
   transition: { effect: Effect; speed: (typeof SPEEDS)[number] };
+  imageFit: ImageFit;
 };
 
 // Each theme's slide colors, keyed to Ledgr's own app themes (settings.ts THEMES).
@@ -45,6 +52,7 @@ export const DEFAULT_DESIGN: PresentationDesign = {
   background: { color: null, image: null, darken: 40, fullBrightness: "" },
   titleBar: { enabled: false, text: "", position: "top", size: "m", margin: "m", skip: "" },
   transition: { effect: "fade", speed: "normal" },
+  imageFit: "fit",
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -94,6 +102,7 @@ export function parseDesign(raw: unknown, base: PresentationDesign = DEFAULT_DES
       effect: pick(x.effect, EFFECTS, base.transition.effect),
       speed: pick(x.speed, SPEEDS, base.transition.speed),
     },
+    imageFit: pick(r.imageFit, IMAGE_FITS, base.imageFit),
   };
 }
 

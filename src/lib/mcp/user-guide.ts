@@ -1332,7 +1332,12 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   on every slide, and the transition between slides (Fade, Fade out then in,
   Fade up or down, Wipe up or down, Grow). "Fade out, then in" fades only the
   words; the background stays put. Pictures come from images attached
-  to the item. "Hide on slides" and "Full brightness on slides" take slide
+  to the item. **Picture slides** sets how a slide that is only a picture
+  sizes it: Fit (the whole picture, as large as it goes), Fill (covers the
+  slide, edges cropped), Stretch (covers the slide, distorted), or Actual size
+  (a small picture stays small; a big one shrinks to fit). Slides keep one
+  fixed shape and scale as a whole, so resizing the window never changes the
+  layout. "Hide on slides" and "Full brightness on slides" take slide
   numbers like \`1, 5-7\`. Changes save automatically about a second after you
   make them, and reach a live link right away. **Save as my default** starts new
   presentations with this look.
