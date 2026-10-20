@@ -288,7 +288,13 @@ export const SlideMark = Mark.create({
   parseMarkdown(token, helpers) {
     // tokenizeInline is always present at runtime; the type marks it optional.
     const inner = helpers.parseInline(helpers.tokenizeInline?.(token.inner) ?? []);
-    return helpers.applyMark("slide", inner);
+    // Not helpers.applyMark: @tiptap/markdown 3.26 puts a mark only on TEXT nodes
+    // and silently skips inline atoms, so <ins class="slide">![…](…)</ins> (a
+    // full-screen image slide) lost its mark on load. Mark every inline leaf
+    // ourselves; LedgrImage.renderMarkdown writes it back out on save.
+    return inner.map((n) =>
+      n.content ? n : { ...n, marks: [...(n.marks ?? []), { type: "slide" }] }
+    );
   },
 });
 
@@ -772,12 +778,19 @@ export const LedgrImage = Image.extend({
   group: "inline",
 
   renderMarkdown(node) {
-    const a = (node as { attrs?: Record<string, unknown> }).attrs ?? {};
-    return imageToMarkdown({
+    const n = node as { attrs?: Record<string, unknown>; marks?: { type?: string }[] };
+    const a = n.attrs ?? {};
+    const md = imageToMarkdown({
       src: typeof a.src === "string" ? a.src : "",
       alt: typeof a.alt === "string" ? a.alt : "",
       title: typeof a.title === "string" ? a.title : null,
     });
+    // An image slide (ADR-176). @tiptap/markdown 3.26 serializes marks only on
+    // text nodes, so the slide mark on an image has to be written here or every
+    // save strips it. ponytail: an image sharing ONE slide with text comes out as
+    // separate adjacent <ins> runs (the library closes text marks around any
+    // non-text node); fine while image slides stand alone, as the deck expects.
+    return n.marks?.some((m) => m.type === "slide") ? `<ins class="slide">${md}</ins>` : md;
   },
 
   parseMarkdown(token, helpers) {
