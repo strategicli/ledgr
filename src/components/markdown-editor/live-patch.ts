@@ -11,6 +11,7 @@
 // saves) and addToHistory:false (so Ctrl+Z undoes the owner's own edits, not
 // the incoming change).
 import { Extension, createDocument, type Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
@@ -72,13 +73,13 @@ export type PatchResult = {
   reveal: () => void;
 } | null;
 
-// Apply `markdown` to the editor in place. Returns null when nothing changed.
-export function patchMarkdown(editor: Editor, markdown: string): PatchResult {
-  const mgr = (editor as unknown as { markdown?: { parse(md: string): unknown } }).markdown;
-  if (!mgr) return null;
-  const next = createDocument(mgr.parse(markdown) as never, editor.schema, {}, { errorOnInvalidContent: false });
-  const cur = editor.state.doc;
-  const start = cur.content.findDiffStart(next.content);
+// The changed range between two docs, widened to whole top-level blocks: from
+// `start` to `endA` in `cur` is replaced by `start` to `endB` in `next`. The raw
+// diff can start deep inside one block (a table cell) and end at another depth
+// (after the table); replacing that open-ended slice makes ProseMirror's fitter
+// nest everything after it inside the cell. Whole blocks always fit cleanly.
+export function blockDiffRange(cur: PMNode, next: PMNode): { start: number; endA: number; endB: number } | null {
+  let start = cur.content.findDiffStart(next.content);
   if (start == null) return null;
   let { a: endA, b: endB } = cur.content.findDiffEnd(next.content)!;
   // findDiffEnd can overlap findDiffStart on repeated text; the standard fix.
@@ -87,6 +88,26 @@ export function patchMarkdown(editor: Editor, markdown: string): PatchResult {
     endA += overlap;
     endB += overlap;
   }
+  const $s = cur.resolve(start);
+  const $a = cur.resolve(endA);
+  const $b = next.resolve(endB);
+  // The prefix up to `start` and the suffixes after endA/endB are identical, so
+  // each block boundary lands at the same spot in both documents.
+  start = $s.depth ? $s.before(1) : start;
+  endA = $a.depth ? $a.after(1) : endA;
+  endB = $b.depth ? $b.after(1) : endB;
+  return { start, endA, endB };
+}
+
+// Apply `markdown` to the editor in place. Returns null when nothing changed.
+export function patchMarkdown(editor: Editor, markdown: string): PatchResult {
+  const mgr = (editor as unknown as { markdown?: { parse(md: string): unknown } }).markdown;
+  if (!mgr) return null;
+  const next = createDocument(mgr.parse(markdown) as never, editor.schema, {}, { errorOnInvalidContent: false });
+  const cur = editor.state.doc;
+  const range = blockDiffRange(cur, next);
+  if (!range) return null;
+  const { start, endA, endB } = range;
 
   const dom = editor.view.dom as HTMLElement;
   const sc = scroller(dom);
