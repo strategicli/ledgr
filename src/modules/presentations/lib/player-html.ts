@@ -22,6 +22,7 @@ import { escapeHtml } from "@/lib/print-html";
 import {
   CORNERS,
   EFFECTS,
+  IMAGE_FITS,
   SIZES,
   SPEEDS,
   THEMES,
@@ -32,6 +33,7 @@ import {
   SPEED_MS,
   type DesignTheme,
   type Effect,
+  type ImageFit,
   type PresentationDesign,
 } from "@/modules/presentations/lib/design";
 
@@ -73,6 +75,12 @@ const EFFECT_LABELS: Record<Effect, string> = {
   "wipe-down": "Wipe down",
   grow: "Grow",
 };
+const IMAGE_FIT_LABELS: Record<ImageFit, string> = {
+  fit: "Fit (whole picture)",
+  fill: "Fill (crop edges)",
+  stretch: "Stretch",
+  original: "Actual size",
+};
 const SPEED_LABELS: Record<(typeof SPEEDS)[number], string> = { fast: "Fast", normal: "Normal", slow: "Slow" };
 
 function optionTags(values: readonly string[], labels: Record<string, string>): string {
@@ -83,6 +91,7 @@ const SIZE_OPTS = optionTags(SIZES, SIZE_LABELS);
 const CORNER_OPTS = optionTags(CORNERS, CORNER_LABELS);
 const EFFECT_OPTS = optionTags(EFFECTS, EFFECT_LABELS);
 const SPEED_OPTS = optionTags(SPEEDS, SPEED_LABELS);
+const IMAGE_FIT_OPTS = optionTags(IMAGE_FITS, IMAGE_FIT_LABELS);
 
 // Every stage (audience layers, presenter current/next, print pages, image
 // export) shares this skeleton: background image, darken overlay, the real
@@ -103,7 +112,12 @@ html[data-role="audience"] #presenter{display:none}
 .stage{position:absolute;top:50%;left:50%;width:1600px;height:900px;background:#000;color:#f5f5f5;transform-origin:center center}
 .stage-inner{position:absolute;inset:0;padding:80px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;line-height:1.3}
 .stage.layout-image .stage-inner{padding:0;align-items:center;justify-content:center}
-.stage.layout-image img{max-width:100%;max-height:100%;object-fit:contain;margin:auto;display:block}
+/* The image fills the fixed 1600x900 stage itself. Sized against its <p>, it
+   collapsed to one line of the previous slide's text size instead. */
+.stage.layout-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage.fit-fill.layout-image img{object-fit:cover}
+.stage.fit-stretch.layout-image img{object-fit:fill}
+.stage.fit-original.layout-image img{object-fit:scale-down}
 .stage.layout-video .stage-inner{padding:0}
 .slide-video{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
 .slide-video iframe{width:100%;height:100%;border:0;display:block}
@@ -303,6 +317,8 @@ export function renderPlayer(opts: PlayerOptions): string {
           <div class="d-row"><label>Size</label><select id="d-tb-size">${SIZE_OPTS}</select></div>
           <div class="d-row"><label>Margin</label><select id="d-tb-margin">${SIZE_OPTS}</select></div>
           <div class="d-row"><label>Hide on slides</label><input type="text" id="d-tb-skip" placeholder="e.g. 1, 5-7"></div>
+          <div class="d-group-label">Pictures</div>
+          <div class="d-row"><label>Picture slides</label><select id="d-img-fit">${IMAGE_FIT_OPTS}</select></div>
           <div class="d-group-label">Transition</div>
           <div class="d-row"><label>Effect</label><select id="d-tr-effect">${EFFECT_OPTS}</select></div>
           <div class="d-row"><label>Speed</label><select id="d-tr-speed">${SPEED_OPTS}</select></div>
@@ -391,6 +407,8 @@ function applyDesignToStage(stageEl, design, slideNumber) {
   var tbar = stageEl.querySelector(".stage-titlebar");
   var isImageLayout = stageEl.classList.contains("layout-image") || stageEl.classList.contains("layout-video");
 
+  ["fit", "fill", "stretch", "original"].forEach(function (f) { stageEl.classList.remove("fit-" + f); });
+  stageEl.classList.add("fit-" + design.imageFit);
   stageEl.style.background = colors.bg;
   inner.style.color = colors.text;
   inner.style.setProperty("--heading-color", colors.heading);
@@ -507,6 +525,7 @@ function mountStage(stageEl, html, step, live) {
   if (lis.length && typeof step === "number") {
     lis.forEach(function (li, idx) { li.classList.toggle("build-hidden", idx > step); });
   }
+  inner.style.fontSize = "";
   if (layout !== "image" && layout !== "video") {
     var startSize = layout === "big" ? 120 : layout === "quote" ? 72 : 56;
     fitText(inner, startSize, 14);
@@ -919,6 +938,7 @@ function fieldsFromDesign(d) {
   $("d-tb-skip").value = d.titleBar.skip;
   $("d-tr-effect").value = d.transition.effect;
   $("d-tr-speed").value = d.transition.speed;
+  $("d-img-fit").value = d.imageFit;
 }
 // Every design change previews at once and saves itself a second after the
 // last one, so the item (and a live link) always has what's on screen.
@@ -1011,6 +1031,7 @@ function bindDesignPanel() {
   $("d-tb-margin").addEventListener("change", function () { DECK.design.titleBar.margin = this.value; applyDesignChange(); });
   $("d-tb-skip").addEventListener("input", function () { DECK.design.titleBar.skip = this.value; applyDesignChange(); });
   $("d-tr-effect").addEventListener("change", function () { DECK.design.transition.effect = this.value; applyDesignChange(); });
+  $("d-img-fit").addEventListener("change", function () { DECK.design.imageFit = this.value; applyDesignChange(); });
   $("d-tr-speed").addEventListener("change", function () { DECK.design.transition.speed = this.value; applyDesignChange(); });
   $("d-save-default").addEventListener("click", function () { saveDesign(true); });
   fieldsFromDesign(DECK.design);

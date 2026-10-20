@@ -129,7 +129,11 @@ export async function buildPptx(ownerId: string, source: PptxDeckSource): Promis
       const img = blocks[0] as Extract<SlideBlock, { kind: "image" }>;
       const data = await dataUriFor(ownerId, img.src);
       if (data) {
-        slide.addImage({ data, x: 0.5, y: 0.5, w: SLIDE_W_IN - 1, h: SLIDE_H_IN - 1, sizing: { type: "contain", w: SLIDE_W_IN - 1, h: SLIDE_H_IN - 1 } });
+        // ponytail: "original" exports as fit; true actual size needs the image's pixel dimensions.
+        const box = { x: 0.5, y: 0.5, w: SLIDE_W_IN - 1, h: SLIDE_H_IN - 1 };
+        const sizing = design.imageFit === "stretch" ? undefined
+          : { type: design.imageFit === "fill" ? ("cover" as const) : ("contain" as const), w: box.w, h: box.h };
+        slide.addImage({ data, ...box, ...(sizing ? { sizing } : {}) });
       }
     } else {
       let y = 1.0;

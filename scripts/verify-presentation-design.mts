@@ -6,7 +6,8 @@ import { DEFAULT_DESIGN, designColors, inSlideList, parseDesign } from "@/module
 
 // junk in → defaults out
 assert.deepEqual(parseDesign(null), DEFAULT_DESIGN);
-assert.deepEqual(parseDesign({ theme: "neon", logo: "x", transition: { effect: "swirl" } }), DEFAULT_DESIGN);
+assert.deepEqual(parseDesign({ theme: "neon", logo: "x", transition: { effect: "swirl" }, imageFit: "zoom" }), DEFAULT_DESIGN);
+assert.equal(parseDesign({ imageFit: "fill" }).imageFit, "fill");
 
 // valid values survive, invalid ones are dropped or clamped
 const d = parseDesign({
