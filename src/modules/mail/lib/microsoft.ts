@@ -3,7 +3,7 @@
 // ALWAYS with the mail module's own hub-only app registration (graph-auth.ts),
 // never the shared GRAPH_* one. Graph shapes stop at this file.
 import { graphFetch, GraphError, type GraphCredentials } from "@/modules/microsoft/lib/client";
-import { getMailGraphCredentials, getMailUpn } from "./graph-auth";
+import { getMailGraphConnection, getMailUpn } from "./graph-auth";
 import {
   MailProviderError,
   type CalendarAttendee,
@@ -139,8 +139,17 @@ class GraphBase {
   constructor(
     protected upn: string,
     private creds: GraphCredentials,
-    private prefer: string
+    private prefer: string,
+    // False while Outlook borrows Ledgr's shared connection, which must never send
+    // mail or change the calendar: those rights live only in the hub-only app.
+    private ownApp = true
   ) {}
+
+  protected needOwnApp(what: string): void {
+    if (!this.ownApp) {
+      throw new MailProviderError(`${what} needs the Outlook mail app set up on this computer (runbook §1w)`, "not_configured");
+    }
+  }
 
   protected get base() {
     return `${GRAPH}v1.0/users/${encodeURIComponent(this.upn)}`;
@@ -194,8 +203,8 @@ const mid = (id: string) => encodeURIComponent(id);
 export class GraphMailProvider extends GraphBase implements MailProvider {
   readonly account = "microsoft" as const;
 
-  constructor(upn: string, creds: GraphCredentials) {
-    super(upn, creds, 'IdType="ImmutableId"');
+  constructor(upn: string, creds: GraphCredentials, ownApp = true) {
+    super(upn, creds, 'IdType="ImmutableId"', ownApp);
   }
 
   async listFolders(): Promise<MailFolder[]> {
@@ -422,8 +431,9 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
     return this.send(`/messages/${mid(id)}`, "DELETE");
   }
 
-  sendDraft(id: string): Promise<void> {
-    return this.send(`/messages/${mid(id)}/send`, "POST");
+  async sendDraft(id: string): Promise<void> {
+    this.needOwnApp("Sending mail");
+    await this.send(`/messages/${mid(id)}/send`, "POST");
   }
 }
 
@@ -437,8 +447,8 @@ type GFolder = {
 export class GraphCalendarProvider extends GraphBase implements CalendarProvider {
   readonly account = "microsoft" as const;
 
-  constructor(upn: string, creds: GraphCredentials) {
-    super(upn, creds, 'IdType="ImmutableId", outlook.timezone="UTC"');
+  constructor(upn: string, creds: GraphCredentials, ownApp = true) {
+    super(upn, creds, 'IdType="ImmutableId", outlook.timezone="UTC"', ownApp);
   }
 
   private event(e: GEvent): MailCalendarEvent {
@@ -506,32 +516,36 @@ export class GraphCalendarProvider extends GraphBase implements CalendarProvider
   }
 
   async createEvent(input: EventInput): Promise<MailCalendarEvent> {
+    this.needOwnApp("Creating events");
     return this.event(await this.json<GEvent>("/events", "POST", this.payload(input)));
   }
 
   async updateEvent(id: string, input: Partial<EventInput>): Promise<MailCalendarEvent> {
+    this.needOwnApp("Changing events");
     return this.event(await this.json<GEvent>(`/events/${mid(id)}`, "PATCH", this.payload(input)));
   }
 
-  deleteEvent(id: string): Promise<void> {
-    return this.send(`/events/${mid(id)}`, "DELETE");
+  async deleteEvent(id: string): Promise<void> {
+    this.needOwnApp("Deleting events");
+    await this.send(`/events/${mid(id)}`, "DELETE");
   }
 
-  respond(id: string, answer: "accept" | "decline" | "tentative", comment?: string): Promise<void> {
+  async respond(id: string, answer: "accept" | "decline" | "tentative", comment?: string): Promise<void> {
+    this.needOwnApp("Answering invites");
     const verb = answer === "tentative" ? "tentativelyAccept" : answer;
-    return this.send(`/events/${mid(id)}/${verb}`, "POST", { comment: comment ?? "", sendResponse: true });
+    await this.send(`/events/${mid(id)}/${verb}`, "POST", { comment: comment ?? "", sendResponse: true });
   }
 }
 
-// Null until the mail registration and the mailbox UPN are both resolvable.
+// Null until a Microsoft connection and the mailbox UPN are both resolvable.
 export function getMicrosoftMail(): GraphMailProvider | null {
-  const creds = getMailGraphCredentials();
+  const c = getMailGraphConnection();
   const upn = getMailUpn();
-  return creds && upn ? new GraphMailProvider(upn, creds) : null;
+  return c && upn ? new GraphMailProvider(upn, c.creds, c.ownApp) : null;
 }
 
 export function getMicrosoftCalendar(): GraphCalendarProvider | null {
-  const creds = getMailGraphCredentials();
+  const c = getMailGraphConnection();
   const upn = getMailUpn();
-  return creds && upn ? new GraphCalendarProvider(upn, creds) : null;
+  return c && upn ? new GraphCalendarProvider(upn, c.creds, c.ownApp) : null;
 }

@@ -18,18 +18,24 @@ export default function MailSettingsPanel() {
     <div className="space-y-4">
       <section className="space-y-2">
         <p className="ui-section-label text-ink-subtle">Outlook</p>
-        {s.microsoft.configured ? (
+        {s.microsoft.ownApp ? (
           <p>
-            Set up for <span className="text-ink">{s.microsoft.mailbox ?? "your mailbox"}</span>.{" "}
+            Set up for <span className="text-ink">{s.microsoft.mailbox ?? "your mailbox"}</span>, including sending.{" "}
             <ForgetButton account="microsoft" label="Remove" />
           </p>
-        ) : (
-          <p className="text-ink-muted">
-            Needs its own Microsoft app, separate from the one Ledgr already uses, because this one can send mail.
-            The steps are in the runbook, section 1w.
+        ) : s.microsoft.configured ? (
+          <p>
+            Reading and filing <span className="text-ink">{s.microsoft.mailbox ?? "your mailbox"}</span> through
+            Ledgr&apos;s existing Microsoft connection. Nothing to set up yet.{" "}
+            <span className="text-ink-muted">
+              Sending mail and changing your calendar will need a separate Microsoft app on this computer (runbook,
+              section 1w), because the existing connection is also used by the cloud copy.
+            </span>
           </p>
+        ) : (
+          <p className="text-ink-muted">Ledgr&apos;s Microsoft connection isn&apos;t set up on this computer.</p>
         )}
-        <MicrosoftForm replacing={s.microsoft.configured} />
+        <MicrosoftForm replacing={s.microsoft.configured} ownApp={s.microsoft.ownApp} />
       </section>
 
       <section className="space-y-2 border-t border-line pt-3">

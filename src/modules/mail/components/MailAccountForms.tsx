@@ -23,10 +23,12 @@ function AppForm({
   fields,
   save,
   replacing,
+  closedLabel = "Replace the app details",
 }: {
   fields: { key: string; label: string; secret?: boolean; optional?: boolean }[];
   save: (values: Record<string, string>) => unknown;
   replacing: boolean;
+  closedLabel?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(!replacing);
@@ -35,7 +37,7 @@ function AppForm({
   if (!open) {
     return (
       <button type="button" className="ui-meta text-ink-subtle underline" onClick={() => setOpen(true)}>
-        Replace the app details
+        {closedLabel}
       </button>
     );
   }
@@ -72,10 +74,11 @@ function AppForm({
   );
 }
 
-export function MicrosoftForm({ replacing }: { replacing: boolean }) {
+export function MicrosoftForm({ replacing, ownApp }: { replacing: boolean; ownApp: boolean }) {
   return (
     <AppForm
       replacing={replacing}
+      closedLabel={ownApp ? undefined : "Set up the sending app now (optional)"}
       fields={[
         { key: "clientId", label: "Application (client) ID" },
         { key: "clientSecret", label: "Client secret value", secret: true },

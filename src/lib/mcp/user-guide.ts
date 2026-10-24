@@ -2253,9 +2253,10 @@ its own.
 
 **Mail & Calendar (being built).** On a Ledgr installed on your own computer,
 turn on **Mail & Calendar** at \`/build/modules\` and open its **Options**. It
-connects two accounts: **Outlook** (paste the ID and secret of a Microsoft app
-made just for this, separate from the one Ledgr already uses, because this one
-can send mail) and **Gmail** (paste your Google app's ID and secret, then
+connects two accounts: **Outlook** (nothing to set up: it reads through the
+Microsoft connection Ledgr already has; sending mail and changing your calendar
+will need a Microsoft app made just for this, added later in the same Options)
+and **Gmail** (paste your Google app's ID and secret, then
 **Connect Gmail** and allow access on Google's page). **Test the connections**
 only reads your folder list to show each account works; nothing is sent or
 changed. The sign-ins stay on this computer and never reach the cloud copy, so

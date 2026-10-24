@@ -20,6 +20,7 @@ const { MailProviderError } = await import("../src/modules/mail/lib/types");
 type Call = { url: URL; method: string; headers: Record<string, string>; body: unknown };
 let calls: Call[] = [];
 let tokenHits = 0;
+let expectedClient = "mail-client-id";
 // Next-response router: first matching [method, substring] wins.
 let routes: [string, string, unknown, number?][] = [];
 const realFetch = globalThis.fetch;
@@ -29,8 +30,9 @@ globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestIni
   if (url.host === "login.microsoftonline.com") {
     tokenHits += 1;
     const sent = String(init?.body);
-    if (!sent.includes("client_id=mail-client-id")) throw new Error("wrong client at token endpoint");
-    return Response.json({ access_token: "tok", expires_in: 3600 });
+    const client = /client_id=([^&]+)/.exec(sent)?.[1];
+    if (client !== expectedClient) throw new Error(`wrong client at token endpoint: ${client}`);
+    return Response.json({ access_token: `tok-${client}`, expires_in: 3600 });
   }
   const headers = Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>));
   calls.push({ url, method, headers, body: init?.body ? JSON.parse(String(init.body)) : undefined });
@@ -62,7 +64,7 @@ try {
   reset([["GET", "/messages", { value: [msg()] }]]);
   const page = await mail.listMessages({});
   check("mail request carries Prefer ImmutableId", last().headers.Prefer === 'IdType="ImmutableId"', last().headers.Prefer);
-  check("request used the mail app's token (stub checks client_id)", tokenHits >= 1 && last().headers.authorization === "Bearer tok");
+  check("request used the mail app's token (stub checks client_id)", tokenHits >= 1 && last().headers.authorization === "Bearer tok-mail-client-id");
   check("requests go to the mailbox UPN", decoded(last().url).startsWith("/v1.0/users/boss@example.org/messages"));
   check("default order is receivedDateTime desc", last().url.searchParams.get("$orderby") === "receivedDateTime desc");
   check("summary mapping", page.messages[0].flagged && !page.messages[0].read && page.messages[0].tags[0] === "Red" && page.messages[0].folderIds[0] === "f1" && page.messages[0].from?.email === "ann@x.org");
@@ -223,6 +225,28 @@ try {
   await cal.deleteEvent("e1");
   check("respond verbs + sendResponse", calls.slice(0, 3).map((c) => c.url.pathname.split("/").pop()).join() === "accept,tentativelyAccept,decline" && (calls[0].body as { sendResponse: boolean; comment: string }).sendResponse === true && (calls[0].body as { comment: string }).comment === "yes");
   check("deleteEvent is DELETE", last().method === "DELETE");
+
+  // --- no own app: borrow the shared connection, read only -----------------
+  delete process.env.MAIL_GRAPH_CLIENT_ID;
+  delete process.env.MAIL_GRAPH_CLIENT_SECRET;
+  process.env.GRAPH_TENANT_ID = "tenant-1";
+  process.env.GRAPH_CLIENT_ID = "shared-client-id";
+  process.env.GRAPH_CLIENT_SECRET = "shared-secret";
+  expectedClient = "shared-client-id";
+  const roMail = getMicrosoftMail()!;
+  const roCal = getMicrosoftCalendar()!;
+  check("without the own app, Outlook falls back to the shared connection", !!roMail && !!roCal);
+  reset([["GET", "/messages", { value: [] }]]);
+  await roMail.listMessages({});
+  check("reading signs in with the shared app", calls.length === 1 && calls[0].headers.authorization === "Bearer tok-shared-client-id");
+  reset();
+  const refused = async (p: Promise<unknown>) => p.then(() => false, (e) => e instanceof MailProviderError && e.kind === "not_configured");
+  check("sending refused on the shared connection", await refused(roMail.sendDraft("d1")));
+  check("creating events refused", await refused(roCal.createEvent({ title: "x", start: "2026-10-26T15:00:00.000Z", end: "2026-10-26T16:00:00.000Z" })));
+  check("changing events refused", await refused(roCal.updateEvent("e1", { title: "y" })));
+  check("deleting events refused", await refused(roCal.deleteEvent("e1")));
+  check("answering invites refused", await refused(roCal.respond("e1", "accept")));
+  check("no request reached Microsoft for any refused action", calls.length === 0);
 
   // --- not configured -----------------------------------------------------
   delete process.env.GRAPH_MAILBOX_UPN;

@@ -2,7 +2,7 @@
 // read-only test of each (list the folders, count the inbox). Never returns a
 // secret, only whether one is saved.
 import { errorMessage } from "@/lib/log";
-import { getMailGraphCredentials, getMailUpn } from "./graph-auth";
+import { getMailGraphConnection, getMailUpn } from "./graph-auth";
 import { googleClient } from "./google-auth";
 import { getGmail } from "./gmail";
 import { getMicrosoftMail } from "./microsoft";
@@ -10,14 +10,16 @@ import { readMailStore } from "./store";
 import type { MailProvider } from "./types";
 
 export type AccountStatus = {
-  microsoft: { configured: boolean; mailbox: string | null };
+  // ownApp: the hub-only app that may send; false = borrowing the shared connection.
+  microsoft: { configured: boolean; ownApp: boolean; mailbox: string | null };
   gmail: { appConfigured: boolean; connected: boolean; email: string | null };
 };
 
 export function accountStatus(): AccountStatus {
   const g = readMailStore().google;
+  const ms = getMailGraphConnection();
   return {
-    microsoft: { configured: !!getMailGraphCredentials(), mailbox: getMailUpn() },
+    microsoft: { configured: !!ms, ownApp: !!ms?.ownApp, mailbox: getMailUpn() },
     gmail: { appConfigured: !!googleClient(), connected: !!g?.refreshToken, email: g?.email ?? null },
   };
 }
