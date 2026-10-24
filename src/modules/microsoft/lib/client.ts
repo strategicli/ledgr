@@ -59,19 +59,24 @@ export function getGraphMailboxUpn(): string | null {
   return process.env.GRAPH_MAILBOX_UPN || process.env.ONEDRIVE_EXPORT_UPN || null;
 }
 
-let cachedToken: { token: string; expiresAt: number } | null = null;
+// One cached token per app registration: the mail module signs in with its own
+// hub-only registration (src/modules/mail/lib/graph-auth.ts) beside this one.
+const cachedTokens = new Map<string, { token: string; expiresAt: number }>();
 
 // Acquires (and caches) an app-only access token via client credentials.
 // A successful grant proves the client secret is valid and unexpired — that
-// is exactly the canary checkGraphAuth() surfaces on /health.
-export async function getAppToken(): Promise<string> {
-  const cfg = getGraphCredentials();
+// is exactly the canary checkGraphAuth() surfaces on /health. `cfg` defaults to
+// the shared GRAPH_* registration.
+export async function getAppToken(
+  cfg: GraphCredentials | null = getGraphCredentials()
+): Promise<string> {
   if (!cfg) {
     throw new GraphError(
       "Microsoft Graph not configured (GRAPH_* env unset)",
       "not_configured"
     );
   }
+  const cachedToken = cachedTokens.get(cfg.clientId);
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
     return cachedToken.token;
   }
@@ -109,18 +114,22 @@ export async function getAppToken(): Promise<string> {
     throw new GraphError(`Graph token request failed: ${res.status}${code}`, "auth", res.status);
   }
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  cachedToken = {
+  cachedTokens.set(cfg.clientId, {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
-  };
-  return cachedToken.token;
+  });
+  return data.access_token;
 }
 
 // Authenticated Graph fetch with one throttle retry (429/503 honoring
 // Retry-After, capped at 15s so a long throttle fails the call into error_log
 // and the next run retries). The single chokepoint every Graph caller uses.
-export async function graphFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getAppToken();
+export async function graphFetch(
+  url: string,
+  init: RequestInit = {},
+  cfg: GraphCredentials | null = getGraphCredentials()
+): Promise<Response> {
+  const token = await getAppToken(cfg);
   const withAuth = () =>
     fetch(url, {
       ...init,
@@ -175,5 +184,5 @@ export async function checkGraphAuth(): Promise<GraphHealth> {
 // Test seam: forces the next getAppToken() to re-acquire. Not used in app code
 // (lambdas are short-lived); the verification script uses it to prove caching.
 export function _resetTokenCacheForTests(): void {
-  cachedToken = null;
+  cachedTokens.clear();
 }

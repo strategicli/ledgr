@@ -55,6 +55,7 @@
     "@tiptap/suggestion": "^3.26.1",
     "aws4fetch": "^1.0.20",
     "docx": "^9.7.1",
+    "dompurify": "^3.4.17",
     "drizzle-orm": "0.45.2",
     "embedded-postgres": "^18.4.0-beta.17",
     "linkedom": "^0.18.12",
@@ -71,6 +72,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsdom": "^30.0.0",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
@@ -81,6 +83,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5"

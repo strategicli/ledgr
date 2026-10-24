@@ -755,6 +755,29 @@ for (const r of sharingRoutes) {
     new RegExp(`MODULE_SETTINGS_PANELS[\\s\\S]*?tailscale:\\s*TailscaleSettingsPanel`).test(panelsSrc)
   );
 
+  // Mail & Calendar is hub-only: the very same availability check as
+  // Tailscale, off by default, and every route behind the hub gate.
+  const { mailModule } = await import("../src/modules/mail/manifest");
+  const { tailscaleModule } = await import("../src/modules/tailscale/manifest");
+  check("the mail settingsPanel id resolves in module-panels.tsx", new RegExp(`MODULE_SETTINGS_PANELS[\\s\\S]*?mail:\\s*MailSettingsPanel`).test(panelsSrc));
+  check("mail uses the tailscale availability check", !!mailModule.available && mailModule.available === tailscaleModule.available);
+  check("mail is off by default", mailModule.enabledByDefault === false);
+  for (const r of mailModule.routes ?? []) {
+    const src = existsSync(new URL(`../${r}`, import.meta.url)) ? read(r) : "";
+    check(`mail route exists and opens with mailGate: ${r}`, /from "@\/modules\/mail\/lib\/gate"/.test(src) && /await mailGate\(\)/.test(src));
+  }
+  const prevVercel = process.env.VERCEL;
+  const prevDir = process.env.LEDGR_SUPERVISOR_DIR;
+  process.env.LEDGR_SUPERVISOR_DIR = "/hub";
+  process.env.VERCEL = "1";
+  check("mail is unavailable on Vercel", mailModule.available!() === false);
+  delete process.env.VERCEL;
+  check("mail is available on a supervised install", mailModule.available!() === true);
+  delete process.env.LEDGR_SUPERVISOR_DIR;
+  check("mail is unavailable without a supervisor folder", mailModule.available!() === false);
+  if (prevVercel !== undefined) process.env.VERCEL = prevVercel;
+  if (prevDir !== undefined) process.env.LEDGR_SUPERVISOR_DIR = prevDir;
+
   check(
     "snapshots declares a perInstallNote",
     !!snapshotsModule.perInstallNote?.text && !!snapshotsModule.perInstallNote?.href
@@ -766,7 +789,7 @@ for (const r of sharingRoutes) {
     existsSync(new URL(`../${routeFile}`, import.meta.url))
   );
 
-  const SETTINGS_PANEL_MODULES = ["agent", "tailscale"];
+  const SETTINGS_PANEL_MODULES = ["agent", "tailscale", "mail"];
   const PER_INSTALL_NOTE_MODULES = ["snapshots"];
   check(
     "no other module declares settingsPanel",

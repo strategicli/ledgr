@@ -60,6 +60,7 @@ export function ModuleItemPage({ id, ...props }: PageProps & { id: string }) {
 // Tailscale its Connect / address / Disconnect controls.
 import AgentSettingsPanel from "@/modules/agent/components/AgentSettingsPanel";
 import TailscaleSettingsPanel from "@/modules/tailscale/components/TailscaleSettingsPanel";
+import MailSettingsPanel from "@/modules/mail/components/MailSettingsPanel";
 
 type SettingsPanelProps = { ownerId: string };
 
@@ -69,6 +70,7 @@ const MODULE_SETTINGS_PANELS: Record<
 > = {
   agent: AgentSettingsPanel,
   tailscale: TailscaleSettingsPanel,
+  mail: MailSettingsPanel,
 };
 
 export function ModuleSettingsPanel({
