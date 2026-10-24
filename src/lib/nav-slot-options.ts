@@ -44,6 +44,8 @@ export const BUILTIN_DESTS: DestOption[] = [
   // destination picker so the owner can add it to their own Work nav (ADR-063
   // opt-in posture); it's not a default slot. A module (ADR-272 step 4).
   { group: "Built-in", kind: "builtin", href: "/desk", label: "Desk", icon: "grid", badgeEligible: false, moduleId: "desk" },
+  // Mail & Calendar (plan note a06242d3): hub-only, so offModuleIds drops it on Vercel.
+  { group: "Built-in", kind: "builtin", href: "/mail", label: "Mail", icon: "inbox", badgeEligible: false, moduleId: "mail" },
   { group: "Built-in", kind: "builtin", href: "/favorites", label: "Favorites", icon: "starred", badgeEligible: false },
   // ONE Search destination (ADR-182). It used to be listed as "Advanced search"
   // to distinguish the PAGE from the ⌘K palette that every layout hardcoded a

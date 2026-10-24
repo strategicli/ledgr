@@ -2260,8 +2260,38 @@ and **Gmail** (paste your Google app's ID and secret, then
 **Connect Gmail** and allow access on Google's page). **Test the connections**
 only reads your folder list to show each account works; nothing is sent or
 changed. The sign-ins stay on this computer and never reach the cloud copy, so
-the module never appears there. Reading, filing and answering mail inside
-Ledgr arrive in later phases.
+the module never appears there.
+
+**Reading mail.** Open **Mail** at \`/mail\` (add it to your nav from the
+destination picker, or find it with ⌘K). Pick **Outlook**, **Gmail**, or
+**All** for one combined inbox, where a small colored dot marks each message's
+account. Folders (Outlook) or labels (Gmail) are on the left with unread
+counts, the messages in the middle, and the whole conversation on the right.
+Search covers the account you're in, or both under All, and **Unread only**
+narrows the list. Mail is shown live from Microsoft and Google, nothing is
+copied into Ledgr. Opening a message marks it read, as Outlook and Gmail do.
+Pictures from the internet stay hidden until you click **Show pictures**;
+attachments download rather than open in Ledgr. Keys: j and k move, Enter
+opens, / searches.
+
+**Filing mail.** The bar above an open message, or **Select** above the list
+for several at once, offers **Archive**, **Delete**, **Move to…**, **Mark
+read**/**unread**, **Flag** and **Tags…** (your Outlook categories or Gmail
+labels, same names and colors). Archive does each account's own archive.
+Delete moves to the trash, never deletes for good. Every action shows an
+**Undo**. Moving and tagging need messages from one account at a time.
+
+**Mail into tasks, notes and meetings.** Above an open message, **Make task**,
+**Make note** or **Make meeting** files it in Ledgr in one click: the subject
+becomes the title, the sender is linked to their person record if you have
+one, and the item gets a **View email in Mail** link back (it opens on this
+computer, not on the cloud copy). A note brings the email's text along; a task
+or meeting keeps a short preview and points at the live email. Making a task
+flags the email, and finishing the task clears the flag within a few minutes,
+wherever you finish it. Linked emails show a small task, note or meeting icon in
+the list, and one email can have several items. **Save to item** next to an
+attachment copies it into a linked item. If the email is deleted later, the item
+keeps the sender, subject and preview, and the link says the email is gone.
 
 **Public access (Tailscale Funnel).** Once connected, the same panel can make
 that address work from the public internet too: **Make this reachable from the

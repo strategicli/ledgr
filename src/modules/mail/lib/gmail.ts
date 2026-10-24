@@ -10,6 +10,7 @@ import { readMailStore } from "./store";
 import {
   MailProviderError,
   type FullMessage,
+  type InlineImage,
   type ListMessagesQuery,
   type MailAddress,
   type MailAttachmentMeta,
@@ -151,8 +152,12 @@ function toSummary(m: GMessage): MessageSummary {
 
 // Depth-first walk of the MIME tree: first html, first plain text, every
 // attachment (a part with a filename and an attachmentId).
-function walk(p: Part, out: { html: string | null; text: string | null; atts: MailAttachmentMeta[] }) {
+function walk(
+  p: Part,
+  out: { html: string | null; text: string | null; atts: MailAttachmentMeta[]; imgs?: Part[] }
+) {
   const type = (p.mimeType ?? "").toLowerCase();
+  if (out.imgs && type.startsWith("image/") && header(p, "Content-ID")) out.imgs.push(p);
   if (p.filename && p.body?.attachmentId) {
     const disp = header(p, "Content-Disposition") ?? "";
     const cid = header(p, "Content-ID")?.replace(/^<|>$/g, "") ?? null;
@@ -296,6 +301,29 @@ export class GmailProvider implements MailProvider {
     return (t.messages ?? []).map(toFull);
   }
 
+  async getInlineImages(messageId: string): Promise<InlineImage[]> {
+    const m = await gmail<GMessage>(`/messages/${messageId}?format=full`);
+    const found = { html: null as string | null, text: null as string | null, atts: [] as MailAttachmentMeta[], imgs: [] as Part[] };
+    if (m.payload) walk(m.payload, found);
+    // ponytail: cap of 20 pictures per message, same as the Outlook side.
+    const out: InlineImage[] = [];
+    for (const p of found.imgs.slice(0, 20)) {
+      let data = p.body?.data;
+      if (!data && p.body?.attachmentId) {
+        data = (await gmail<{ data?: string }>(`/messages/${messageId}/attachments/${p.body.attachmentId}`)).data;
+      }
+      const contentId = header(p, "Content-ID")?.trim().replace(/^<|>$/g, "");
+      if (!data || !contentId) continue;
+      // Gmail sends base64url; the data: URL needs standard base64.
+      out.push({
+        contentId,
+        contentType: p.mimeType ?? "application/octet-stream",
+        base64: Buffer.from(data, "base64url").toString("base64"),
+      });
+    }
+    return out;
+  }
+
   async getAttachment(messageId: string, attachmentId: string) {
     const [att, msg] = await Promise.all([
       gmail<{ data?: string }>(`/messages/${messageId}/attachments/${attachmentId}`),
@@ -325,7 +353,15 @@ export class GmailProvider implements MailProvider {
   }
 
   async move(ids: string[], folderId: string): Promise<void> {
+    // The synthetic Archive folder and Trash are states, not labels to add.
+    if (folderId === ARCHIVE_ID) return this.archive(ids);
+    if (folderId === "TRASH") return this.trash(ids);
     await this.batch(ids, [folderId], folderId === "INBOX" ? [] : ["INBOX"]);
+  }
+
+  // Undo of trash: Gmail's untrash puts back the labels the message had.
+  async restore(ids: string[]): Promise<void> {
+    for (const id of ids) await post(`/messages/${id}/untrash`, {});
   }
 
   async archive(ids: string[]): Promise<void> {

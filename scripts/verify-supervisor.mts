@@ -892,6 +892,7 @@ check(
         "email-import",
         "export",
         "health-check",
+        "mail-flags",
         "notify-agenda",
         "notify-digest",
         "notify-prep",
@@ -959,6 +960,7 @@ check(
     "email-import": false,
     "youtube-transcript": false,
     "claude-run-notify": false,
+    "mail-flags": false,
     "notify-agenda": false,
     "notify-prep": false,
     "notify-digest": false,
@@ -1104,6 +1106,7 @@ check(
     "email-import": false,
     "youtube-transcript": false,
     "claude-run-notify": false,
+    "mail-flags": false,
     "notify-agenda": false,
     "notify-prep": false,
     "notify-digest": false,
@@ -1507,6 +1510,14 @@ check(
       "shared": true,
       "on": true,
       "why": "Retries a Claude Run notification that reached nobody. Safe on every peer: a failed run is marked with the id of the copy that tried, and only that copy retries it, because push sign-ups and the inbox are per machine."
+    },
+    "mail-flags": {
+      "path": "/api/machine/mail-flags",
+      "label": "Mail flags",
+      "everyMinutes": 5,
+      "shared": true,
+      "on": true,
+      "why": "Unflags the email behind a task once the task is done. Safe on every peer: only the hub has the mail sign-ins, so every other copy answers with a clean skip, and clearing a flag twice changes nothing."
     },
     "snapshot": {
       "path": "/api/machine/snapshot",

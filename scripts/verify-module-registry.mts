@@ -764,13 +764,22 @@ for (const r of sharingRoutes) {
   check("mail is off by default", mailModule.enabledByDefault === false);
   for (const r of mailModule.routes ?? []) {
     const src = existsSync(new URL(`../${r}`, import.meta.url)) ? read(r) : "";
+    if (r.includes("/api/machine/")) {
+      // Scheduled jobs come in through the machine-token door, not sign-in.
+      check(`mail job route refuses off the hub and while the module is off: ${r}`, /verifyMachineRequest/.test(src) && /mailAvailable\(\)/.test(src) && /moduleIsOn\(ownerId, "mail"\)/.test(src));
+      continue;
+    }
     check(`mail route exists and opens with mailGate: ${r}`, /from "@\/modules\/mail\/lib\/gate"/.test(src) && /await mailGate\(\)/.test(src));
   }
+  const mailPage = read("src/app/mail/page.tsx");
+  check("the /mail page refuses off the hub and while the module is off", /if \(!mailAvailable\(\)\) notFound\(\)/.test(mailPage) && /pageGate\(owner\.id, "mail"\)/.test(mailPage));
   const prevVercel = process.env.VERCEL;
   const prevDir = process.env.LEDGR_SUPERVISOR_DIR;
   process.env.LEDGR_SUPERVISOR_DIR = "/hub";
   process.env.VERCEL = "1";
   check("mail is unavailable on Vercel", mailModule.available!() === false);
+  const { offModuleIds } = await import("../src/lib/modules/enabled");
+  check("an unavailable module counts as off even when switched on (menus hide /mail on Vercel)", offModuleIds({ modules: { mail: true } }).includes("mail"));
   delete process.env.VERCEL;
   check("mail is available on a supervised install", mailModule.available!() === true);
   delete process.env.LEDGR_SUPERVISOR_DIR;

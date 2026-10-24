@@ -8,8 +8,9 @@
 // live in the hub's data folder (lib/store.ts), so even code reached on
 // Vercel would have nothing to sign in with.
 //
-// Phase 1 (foundation) is the two sign-ins, the provider action list
-// (lib/types.ts) and the safe mail viewer. Screens arrive in later phases.
+// Phase 1 (foundation): the two sign-ins, the provider action list
+// (lib/types.ts) and the safe mail viewer. Phase 2 (reading): the /mail page
+// (src/app/mail/page.tsx, gated by pageGate + mailAvailable) over lib/reading.ts.
 import type { ModuleManifest } from "@/lib/modules";
 import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 
@@ -30,5 +31,10 @@ export const mailModule: ModuleManifest = {
     "src/app/api/mail/accounts/route.ts",
     "src/app/api/mail/google/start/route.ts",
     "src/app/api/mail/google/callback/route.ts",
+    "src/app/api/mail/read/route.ts",
+    "src/app/api/mail/attachment/route.ts",
+    "src/app/api/mail/act/route.ts",
+    "src/app/api/mail/link/route.ts",
+    "src/app/api/machine/mail-flags/route.ts",
   ],
 };
