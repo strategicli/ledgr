@@ -119,6 +119,9 @@ export interface MailProvider {
   // "remove INBOX".
   archive(ids: string[]): Promise<void>;
   trash(ids: string[]): Promise<void>;
+  // Undo of trash. Outlook moves back to `folderId` (immutable ids survive the
+  // round trip); Gmail untrashes, which restores the message's own labels.
+  restore(ids: string[], folderId: string): Promise<void>;
   // Drafts are the only way mail leaves: create, then send by id. That keeps
   // undo-send (phase 5) a matter of delaying sendDraft, and every outgoing
   // message visible in the provider's own Drafts folder until it goes.

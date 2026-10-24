@@ -211,6 +211,24 @@ await gm.archive(["a"]);
 await gm.trash(["a", "b"]);
 check("trash posts per message", calls.slice(5).map((c) => c.url.replace(G, "")).join() === "/messages/a/trash,/messages/b/trash");
 
+reset();
+on("POST", "/messages/batchModify", 200, null);
+on("POST", "/trash", 200, {});
+on("POST", "/untrash", 200, {});
+await gm.move(["a", "b"], "ARCHIVE");
+{
+  const b = calls[0].body as { addLabelIds: string[]; removeLabelIds: string[] };
+  check("move to ARCHIVE only removes INBOX (no ARCHIVE label added)", calls.length === 1 && b.addLabelIds.length === 0 && b.removeLabelIds.join() === "INBOX");
+}
+reset();
+on("POST", "/trash", 200, {});
+await gm.move(["a", "b"], "TRASH");
+check("move to TRASH uses the trash endpoint per id", calls.map((c) => c.url.replace(G, "")).join() === "/messages/a/trash,/messages/b/trash" && !calls.some((c) => c.url.includes("batchModify")));
+reset();
+on("POST", "/untrash", 200, {});
+await gm.restore(["a", "b"]);
+check("restore calls untrash per id", calls.map((c) => c.method + " " + c.url.replace(G, "")).join() === "POST /messages/a/untrash,POST /messages/b/untrash");
+
 // --- createDraft -----------------------------------------------------------
 function decodeRaw(raw: string) {
   const text = Buffer.from(raw, "base64url").toString("utf8");

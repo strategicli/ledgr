@@ -1,13 +1,16 @@
 "use client";
 
-// The Mail screen (phase 2, read only): folders, message list and reading pane,
-// all fed live by /api/mail/read. Nothing here marks, moves or sends.
+// The Mail screen (phases 2 and 3): folders, message list and reading pane, fed
+// live by /api/mail/read, plus acting (archive, delete, move, read, flag, tags)
+// through /api/mail/act with optimistic updates and an Undo toast. Never sends.
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { showToast } from "@/components/ui/ActionToast";
 import { badgeCount, formatBytes } from "@/lib/format-count";
-import type { AccountId, FullMessage, MailAddress, MailFolder, MessageSummary } from "@/modules/mail/lib/types";
+import type { MailAction, MailRef } from "@/modules/mail/lib/acting";
+import type { AccountId, FullMessage, MailAddress, MailFolder, MailTag, MessageSummary } from "@/modules/mail/lib/types";
 
 const SafeMailBody = dynamic(() => import("@/modules/mail/components/SafeMailBody"), { ssr: false });
 
@@ -38,6 +41,90 @@ async function getJson<T>(params: Record<string, string | undefined>, signal: Ab
 
 function msg(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+
+const selKey = (r: MessageSummary) => `${r.account}:${r.id}`;
+const refOf = (r: MessageSummary): MailRef => ({ account: r.account, id: r.id });
+const MULTI_TIP = "Pick messages from one account to move or tag them";
+const BTN = "rounded-card border border-line bg-surface-1 px-2 py-1 ui-row text-ink hover:bg-surface-2 disabled:opacity-50";
+
+// POST one action. Never throws: a failed request counts as every account failing.
+async function post(items: MailRef[], action: MailAction): Promise<{ account: AccountId; error: string }[]> {
+  try {
+    const res = await fetch("/api/mail/act", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, action }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body?.error === "string" ? body.error : `Request failed (${res.status})`);
+    return Array.isArray(body.errors) ? body.errors : [];
+  } catch (e) {
+    return [...new Set(items.map((i) => i.account))].map((account) => ({ account, error: msg(e) }));
+  }
+}
+
+// What a row looks like right after an in-place action (archive/move/trash remove it instead).
+function applyAction(r: MessageSummary, a: MailAction): MessageSummary {
+  switch (a.kind) {
+    case "read":
+      return { ...r, read: a.value };
+    case "flag":
+      return { ...r, flagged: a.value };
+    case "tags": {
+      const kept = r.tags.filter((t) => !a.remove.includes(t));
+      return { ...r, tags: [...kept, ...a.add.filter((t) => !kept.includes(t))] };
+    }
+    default:
+      return r;
+  }
+}
+
+function toastText(a: MailAction, n: number): string {
+  const s = `${n} message${n === 1 ? "" : "s"}`;
+  switch (a.kind) {
+    case "archive":
+      return `Archived ${s}`;
+    case "trash":
+      return `Deleted ${s}`;
+    case "move":
+      return `Moved ${s}`;
+    case "read":
+      return `Marked ${s} ${a.value ? "read" : "unread"}`;
+    case "flag":
+      return `${a.value ? "Flagged" : "Unflagged"} ${s}`;
+    case "tags":
+      return `Updated tags on ${s}`;
+    default:
+      return `Updated ${s}`;
+  }
+}
+
+// The calls that put things back, from each message's state BEFORE the action.
+function undoGroups(ok: MessageSummary[], a: MailAction): { items: MailRef[]; action: MailAction }[] {
+  const group = (key: (r: MessageSummary) => string | undefined, mk: (k: string) => MailAction) => {
+    const g = new Map<string, MessageSummary[]>();
+    for (const r of ok) {
+      const k = key(r);
+      if (k) g.set(k, [...(g.get(k) ?? []), r]);
+    }
+    return [...g].map(([k, rs]) => ({ items: rs.map(refOf), action: mk(k) }));
+  };
+  switch (a.kind) {
+    case "archive":
+    case "move":
+      return group((r) => r.folderIds[0], (folderId) => ({ kind: "move", folderId }));
+    case "trash":
+      return group((r) => r.folderIds[0], (folderId) => ({ kind: "restore", folderId }));
+    case "read":
+      return group((r) => String(r.read), (k) => ({ kind: "read", value: k === "true" }));
+    case "flag":
+      return group((r) => String(r.flagged), (k) => ({ kind: "flag", value: k === "true" }));
+    case "tags":
+      return [{ items: ok.map(refOf), action: { kind: "tags", add: a.remove, remove: a.add } }];
+    default:
+      return [];
+  }
 }
 
 function sameDay(a: Date, b: Date) {
@@ -234,6 +321,121 @@ function MailScreen() {
   const rows = useMemo(() => list?.messages ?? [], [list]);
   const rowKey = (r: MessageSummary) => `${r.account}:${r.threadId}`;
 
+  // ---- acting (phase 3)
+  const [actError, setActError] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tagsBy, setTagsBy] = useState<Partial<Record<AccountId, MailTag[]>>>({});
+  const tagReq = useRef(new Set<AccountId>());
+  const autoRead = useRef(new Set<string>());
+  const paramsRef = useRef({ key: listKey, account, folder, q, unread });
+  useEffect(() => {
+    paramsRef.current = { key: listKey, account, folder, q, unread };
+  });
+
+  // Tags are fetched once per account, only when a list shows that account.
+  useEffect(() => {
+    for (const a of new Set(rows.map((r) => r.account))) {
+      if (tagReq.current.has(a)) continue;
+      tagReq.current.add(a);
+      getJson<{ tags: MailTag[] }>({ view: "tags", account: a }, new AbortController().signal)
+        .then((d) => setTagsBy((p) => ({ ...p, [a]: d.tags })))
+        .catch(() => setTagsBy((p) => ({ ...p, [a]: [] })));
+    }
+  }, [rows]);
+
+  function refetch() {
+    const p = paramsRef.current;
+    if (!p.account) return;
+    getJson<ListData>(
+      { view: "messages", account: p.account, folder: p.folder, q: p.q || undefined, unread: p.unread ? "1" : undefined },
+      new AbortController().signal
+    )
+      .then((d) => {
+        if (paramsRef.current.key === p.key) {
+          setList(d);
+          setListError(null);
+        }
+      })
+      .catch((e) => setActError(msg(e)));
+  }
+
+  const errText = (errs: { account: AccountId; error: string }[]) =>
+    errs.map((e) => `${ACCOUNT_NAME[e.account]}: ${e.error}`).join(" ");
+
+  async function undo(groups: { items: MailRef[]; action: MailAction }[]) {
+    const errs: { account: AccountId; error: string }[] = [];
+    for (const g of groups) errs.push(...(await post(g.items, g.action)));
+    if (errs.length) setActError(errText(errs));
+    refetch();
+  }
+
+  async function doAct(targets: MessageSummary[], action: MailAction, silent = false) {
+    if (!targets.length) return;
+    setActError(null);
+    const keys = new Set(targets.map(selKey));
+    const order = new Map(rows.map((r, i) => [selKey(r), i]));
+    const removing = action.kind === "move" || action.kind === "archive" || action.kind === "trash";
+    setList((prev) =>
+      prev && {
+        ...prev,
+        messages: removing
+          ? prev.messages.filter((r) => !keys.has(selKey(r)))
+          : prev.messages.map((r) => (keys.has(selKey(r)) ? applyAction(r, action) : r)),
+      }
+    );
+    if (removing && m && targets.some((r) => rowKey(r) === m)) setParams({ m: null });
+    const errors = await post(targets.map(refOf), action);
+    const bad = new Set(errors.map((e) => e.account));
+    if (bad.size) {
+      const back = targets.filter((r) => bad.has(r.account));
+      setList((prev) => {
+        if (!prev) return prev;
+        const byKey = new Map(back.map((r) => [selKey(r), r]));
+        const have = new Set(prev.messages.map(selKey));
+        const msgs = prev.messages.map((r) => byKey.get(selKey(r)) ?? r);
+        for (const r of back) if (!have.has(selKey(r))) msgs.push(r);
+        msgs.sort((a, b) => (order.get(selKey(a)) ?? 1e9) - (order.get(selKey(b)) ?? 1e9));
+        return { ...prev, messages: msgs };
+      });
+      setActError(errText(errors));
+    }
+    const ok = targets.filter((r) => !bad.has(r.account));
+    if (!ok.length || silent) return;
+    const groups = undoGroups(ok, action);
+    showToast(toastText(action, ok.length), groups.length ? () => void undo(groups) : undefined);
+  }
+
+  // Opening an unread message marks it read (once per message, no toast).
+  useEffect(() => {
+    const r = m ? rows.find((x) => rowKey(x) === m) : undefined;
+    if (!r || r.read || autoRead.current.has(selKey(r))) return;
+    autoRead.current.add(selKey(r));
+    void doAct([r], { kind: "read", value: true }, true);
+    // doAct is a plain function over refs and setters; m and rows are the real triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m, rows]);
+
+  function endSelect() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
+  useEffect(() => {
+    if (!selecting) return;
+    const onEsc = (e: KeyboardEvent) => {
+      // A popover that handled Esc has already called preventDefault.
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        setSelecting(false);
+        setSelected(new Set());
+      }
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [selecting]);
+
+  const selectedRows = rows.filter((r) => selected.has(selKey(r)));
+  const openedRow = m ? rows.find((r) => rowKey(r) === m) : undefined;
+
   // ---- keyboard cursor (j/k move, Enter opens)
   const [cursor, setCursor] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -301,6 +503,24 @@ function MailScreen() {
         <Notice key={e.account} text={`${ACCOUNT_NAME[e.account]} couldn't be reached: ${e.error}`} slim />
       ))}
       {listError && <Notice text={listError} slim />}
+      {actError && <Notice text={actError} slim />}
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1">
+        {selecting ? (
+          <button type="button" onClick={() => setSelected(new Set(rows.map(selKey)))} className={BTN}>
+            Select all on this page
+          </button>
+        ) : (
+          <span />
+        )}
+        <button
+          type="button"
+          aria-pressed={selecting}
+          onClick={() => (selecting ? endSelect() : setSelecting(true))}
+          className={BTN}
+        >
+          {selecting ? "Done" : "Select"}
+        </button>
+      </div>
       <div className={`min-h-0 flex-1 overflow-y-auto ${listLoading ? "opacity-70" : ""}`} aria-busy={listLoading}>
         {!list && listLoading && <p className="p-4 ui-meta text-ink-muted">Loading…</p>}
         {list && rows.length === 0 && !listLoading && <p className="p-4 ui-meta text-ink-muted">No messages</p>}
@@ -308,15 +528,35 @@ function MailScreen() {
           {rows.map((r) => {
             const key = rowKey(r);
             const opened = key === m;
+            const chips = r.tags
+              .map((id) => tagsBy[r.account]?.find((t) => t.id === id))
+              .filter((t): t is MailTag => !!t);
             return (
-              <li key={r.account + r.id} id={`mail-row-${key}`} role="option" aria-selected={opened}>
+              <li key={r.account + r.id} id={`mail-row-${key}`} role="option" aria-selected={opened} className="flex items-stretch">
+                {selecting && (
+                  <label className="flex items-center pl-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select message from ${who(r.from)}: ${r.subject || "(no subject)"}`}
+                      checked={selected.has(selKey(r))}
+                      onChange={(e) =>
+                        setSelected((s) => {
+                          const n = new Set(s);
+                          if (e.target.checked) n.add(selKey(r));
+                          else n.delete(selKey(r));
+                          return n;
+                        })
+                      }
+                    />
+                  </label>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     setCursor(key);
                     open(key);
                   }}
-                  className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink-muted ${
+                  className={`flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink-muted ${
                     opened ? "bg-surface-3" : cursor === key ? "bg-surface-2" : "hover:bg-surface-1"
                   }`}
                 >
@@ -352,6 +592,17 @@ function MailScreen() {
                     {r.subject || "(no subject)"}
                   </span>
                   <span className="truncate ui-meta text-ink-subtle">{r.preview}</span>
+                  {chips.length > 0 && (
+                    <span className="flex flex-wrap items-center gap-1">
+                      {chips.slice(0, 2).map((t) => (
+                        <span key={t.id} className="inline-flex items-center gap-1 rounded-full border border-line px-1.5 ui-meta text-ink-muted">
+                          <TagDot color={t.color} />
+                          {t.name}
+                        </span>
+                      ))}
+                      {chips.length > 2 && <span className="ui-meta text-ink-subtle">+{chips.length - 2}</span>}
+                    </span>
+                  )}
                 </button>
               </li>
             );
@@ -378,6 +629,18 @@ function MailScreen() {
       selection={m}
       rows={rows}
       onBack={tier === 1 ? () => open(null) : undefined}
+      toolbar={
+        openedRow && (
+          <ActionBar
+            label="Message actions"
+            targets={[openedRow]}
+            onAct={(a) => void doAct([openedRow], a)}
+            folder={folder}
+            folders={folderList}
+            tags={tagsBy}
+          />
+        )
+      }
     />
   );
 
@@ -434,6 +697,25 @@ function MailScreen() {
         )}
         {showReading && !(tier === 1 && showFolders) && <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{readPane}</div>}
       </div>
+      {selecting && selectedRows.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-16 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-card border border-line-strong bg-surface-3 px-3 py-2 shadow-xl shadow-black/50">
+            <span className="ui-row text-ink">{selectedRows.length} selected</span>
+            <ActionBar
+              label="Bulk actions"
+              targets={selectedRows}
+              onAct={(a) => void doAct(selectedRows, a)}
+              folder={folder}
+              folders={folderList}
+              tags={tagsBy}
+              up
+            />
+            <button type="button" onClick={endSelect} className={BTN}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -475,6 +757,256 @@ function SearchBox({
           ×
         </button>
       )}
+    </div>
+  );
+}
+
+function TagDot({ color }: { color: string | null }) {
+  return (
+    <span
+      aria-hidden
+      className={`h-2.5 w-2.5 shrink-0 rounded-full ${color ? "" : "bg-ink-faint"}`}
+      style={color ? { backgroundColor: color } : undefined}
+    />
+  );
+}
+
+// The actions for one message or a selection. Move and Tags need a single account.
+function ActionBar({
+  label,
+  targets,
+  onAct,
+  folder,
+  folders,
+  tags,
+  up,
+}: {
+  label: string;
+  targets: MessageSummary[];
+  onAct: (a: MailAction) => void;
+  folder: string | undefined;
+  folders: MailFolder[] | null;
+  tags: Partial<Record<AccountId, MailTag[]>>;
+  up?: boolean;
+}) {
+  const accts = [...new Set(targets.map((t) => t.account))];
+  const single = accts.length === 1 ? accts[0] : null;
+  const allRead = targets.every((t) => t.read);
+  const allFlagged = targets.every((t) => t.flagged);
+  const preloaded = single && folders && folders.length && folders[0].account === single ? folders : undefined;
+  return (
+    <div role="toolbar" aria-label={label} className="flex flex-wrap items-center gap-1.5">
+      <button type="button" className={BTN} onClick={() => onAct({ kind: "archive" })}>
+        Archive
+      </button>
+      <button type="button" className={BTN} onClick={() => onAct({ kind: "trash" })}>
+        Delete
+      </button>
+      <Popover label="Move to…" up={up} disabledTip={single ? undefined : MULTI_TIP}>
+        {(close) =>
+          single && (
+            <MovePicker
+              account={single}
+              current={folder}
+              preloaded={preloaded}
+              onPick={(folderId) => {
+                close();
+                onAct({ kind: "move", folderId });
+              }}
+            />
+          )
+        }
+      </Popover>
+      <button type="button" className={BTN} onClick={() => onAct({ kind: "read", value: !allRead })}>
+        {allRead ? "Mark unread" : "Mark read"}
+      </button>
+      <button type="button" className={BTN} onClick={() => onAct({ kind: "flag", value: !allFlagged })}>
+        {allFlagged ? "Unflag" : "Flag"}
+      </button>
+      <Popover label="Tags…" up={up} disabledTip={single ? undefined : MULTI_TIP}>
+        {(close) =>
+          single && (
+            <TagPicker
+              targets={targets}
+              tags={tags[single]}
+              onApply={(add, remove) => {
+                close();
+                onAct({ kind: "tags", add, remove });
+              }}
+            />
+          )
+        }
+      </Popover>
+    </div>
+  );
+}
+
+// A button that opens a small panel; closes on Esc and outside click. With
+// `disabledTip` it is a disabled button with a CSS hover tooltip (the app standard).
+function Popover({
+  label,
+  disabledTip,
+  up,
+  children,
+}: {
+  label: string;
+  disabledTip?: string;
+  up?: boolean;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const side = up ? "bottom-full mb-1" : "top-full mt-1";
+  if (disabledTip) {
+    return (
+      <span className="group relative cursor-help">
+        <button type="button" disabled className={`${BTN} underline decoration-dotted decoration-neutral-600 underline-offset-2`}>
+          {label}
+        </button>
+        <span
+          role="tooltip"
+          className={`pointer-events-none absolute left-0 z-20 ${side} w-56 rounded-card border border-neutral-700 bg-neutral-900 px-2 py-1 ui-meta normal-case text-ink opacity-0 shadow-lg transition-opacity group-hover:opacity-100`}
+        >
+          {disabledTip}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={BTN}>
+        {label}
+      </button>
+      {open && (
+        <div className={`absolute left-0 z-30 ${side} min-w-48 max-w-72 rounded-card border border-line-strong bg-surface-3 shadow-xl shadow-black/50`}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MovePicker({
+  account,
+  current,
+  preloaded,
+  onPick,
+}: {
+  account: AccountId;
+  current: string | undefined;
+  preloaded: MailFolder[] | undefined;
+  onPick: (folderId: string) => void;
+}) {
+  const [fetched, setFetched] = useState<MailFolder[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (preloaded) return;
+    const ac = new AbortController();
+    getJson<{ folders: MailFolder[] }>({ view: "folders", account }, ac.signal)
+      .then((d) => setFetched(d.folders))
+      .catch((e) => {
+        if (!ac.signal.aborted) setErr(msg(e));
+      });
+    return () => ac.abort();
+  }, [account, preloaded]);
+  // `current` is a folder id, or a role name in the combined view.
+  const list = (preloaded ?? fetched)?.filter((f) => f.id !== current && f.role !== current);
+  return (
+    <div className="max-h-64 overflow-y-auto py-1">
+      {err && <p className="px-3 py-1 ui-meta text-ink-muted">{err}</p>}
+      {!list && !err && <p className="px-3 py-1 ui-meta text-ink-muted">Loading…</p>}
+      {list && list.length === 0 && <p className="px-3 py-1 ui-meta text-ink-muted">No other folders</p>}
+      <ul role="menu">
+        {list?.map((f) => (
+          <li key={f.id} role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => onPick(f.id)}
+              className="block w-full truncate px-3 py-1.5 text-left ui-row text-ink hover:bg-surface-2"
+            >
+              {f.role ? ROLE_LABEL[f.role] : f.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+type TagState = "all" | "some" | "none";
+
+function TagPicker({
+  targets,
+  tags,
+  onApply,
+}: {
+  targets: MessageSummary[];
+  tags: MailTag[] | undefined;
+  onApply: (add: string[], remove: string[]) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, TagState>>({});
+  const initial = (t: MailTag): TagState => {
+    const n = targets.filter((r) => r.tags.includes(t.id)).length;
+    return n === targets.length ? "all" : n ? "some" : "none";
+  };
+  const now = (t: MailTag) => draft[t.id] ?? initial(t);
+  const add = (tags ?? []).filter((t) => now(t) === "all" && initial(t) !== "all").map((t) => t.id);
+  const remove = (tags ?? []).filter((t) => now(t) === "none" && initial(t) !== "none").map((t) => t.id);
+  return (
+    <div className="py-1">
+      {!tags && <p className="px-3 py-1 ui-meta text-ink-muted">Loading…</p>}
+      {tags?.length === 0 && <p className="px-3 py-1 ui-meta text-ink-muted">No tags available</p>}
+      <ul className="max-h-64 overflow-y-auto">
+        {tags?.map((t) => {
+          const st = now(t);
+          return (
+            <li key={t.id}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={st === "all" ? true : st === "some" ? "mixed" : false}
+                onClick={() => setDraft((d) => ({ ...d, [t.id]: st === "all" ? "none" : "all" }))}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left ui-row text-ink hover:bg-surface-2"
+              >
+                <span aria-hidden className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-line-strong ui-meta">
+                  {st === "all" ? "✓" : st === "some" ? "–" : ""}
+                </span>
+                <TagDot color={t.color} />
+                <span className="truncate">{t.name}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="border-t border-line p-2">
+        <button
+          type="button"
+          disabled={!add.length && !remove.length}
+          onClick={() => onApply(add, remove)}
+          className={`${BTN} w-full`}
+        >
+          Apply
+        </button>
+      </div>
     </div>
   );
 }
@@ -536,10 +1068,12 @@ function ReadingPane({
   selection,
   rows,
   onBack,
+  toolbar,
 }: {
   selection: string | null;
   rows: MessageSummary[];
   onBack?: () => void;
+  toolbar?: React.ReactNode;
 }) {
   const [thread, setThread] = useState<{ key: string; messages: FullMessage[] } | null>(null);
   const [error, setError] = useState<{ key: string; text: string } | null>(null);
@@ -592,6 +1126,7 @@ function ReadingPane({
           ← Back
         </button>
       )}
+      {toolbar}
       {err && <Notice text={err} />}
       {!current && !err && <p className="ui-meta text-ink-muted">Loading…</p>}
       {current && (

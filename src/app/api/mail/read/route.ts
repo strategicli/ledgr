@@ -6,6 +6,7 @@ import {
   isAccount,
   listFolders,
   listMessages,
+  provider,
   readMessage,
   readThread,
 } from "@/modules/mail/lib/reading";
@@ -16,6 +17,7 @@ import { MailProviderError } from "@/modules/mail/lib/types";
 //
 //   ?view=accounts                                  which accounts are connected
 //   ?view=folders&account=microsoft|gmail           folders/labels with unread counts
+//   ?view=tags&account=microsoft|gmail              Outlook categories / Gmail user labels
 //   ?view=messages&account=…|all[&folder][&q][&unread=1][&page]
 //                                                   one page of the list ("all" = combined)
 //   ?view=message&account=…&id=…                    one message, inline pictures resolved
@@ -40,6 +42,9 @@ export async function GET(req: Request) {
       case "folders":
         if (!isAccount(account)) return bad("account must be microsoft or gmail");
         return NextResponse.json({ folders: await listFolders(account) });
+      case "tags":
+        if (!isAccount(account)) return bad("account must be microsoft or gmail");
+        return NextResponse.json({ tags: await provider(account).listTags() });
       case "messages": {
         if (account !== "all" && !isAccount(account)) return bad("account must be microsoft, gmail or all");
         const q = sp.get("q")?.trim().slice(0, 500);

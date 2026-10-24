@@ -2269,10 +2269,18 @@ account. Folders (Outlook) or labels (Gmail) are on the left with unread
 counts, the messages in the middle, and the whole conversation on the right.
 Search covers the account you're in, or both under All, and **Unread only**
 narrows the list. Mail is shown live from Microsoft and Google, nothing is
-copied into Ledgr, and reading here doesn't mark anything read. Pictures from
-the internet stay hidden until you click **Show pictures**; attachments
-download rather than open in Ledgr. Keys: j and k move, Enter opens, / searches.
-Filing, flags and turning mail into tasks come next.
+copied into Ledgr. Opening a message marks it read, as Outlook and Gmail do.
+Pictures from the internet stay hidden until you click **Show pictures**;
+attachments download rather than open in Ledgr. Keys: j and k move, Enter
+opens, / searches.
+
+**Filing mail.** The bar above an open message, or **Select** above the list
+for several at once, offers **Archive**, **Delete**, **Move to…**, **Mark
+read**/**unread**, **Flag** and **Tags…** (your Outlook categories or Gmail
+labels, same names and colors). Archive does each account's own archive.
+Delete moves to the trash, never deletes for good. Every action shows an
+**Undo**. Moving and tagging need messages from one account at a time. Turning
+mail into tasks and notes comes next.
 
 **Public access (Tailscale Funnel).** Once connected, the same panel can make
 that address work from the public internet too: **Make this reachable from the

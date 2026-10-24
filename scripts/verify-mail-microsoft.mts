@@ -111,6 +111,10 @@ try {
   await mail.move(["m3"], "folderX");
   check("move uses the given folder id", (last().body as { destinationId: string }).destinationId === "folderX");
 
+  reset([["POST", "/move", {}]]);
+  await mail.restore(["m4"], "inbox");
+  check("restore posts move with destinationId inbox", last().method === "POST" && last().url.pathname.endsWith("/m4/move") && (last().body as { destinationId: string }).destinationId === "inbox");
+
   // --- createDraft: reply path --------------------------------------------
   reset([
     ["POST", "/messages/orig/createReply", { id: "d1" }],

@@ -353,7 +353,15 @@ export class GmailProvider implements MailProvider {
   }
 
   async move(ids: string[], folderId: string): Promise<void> {
+    // The synthetic Archive folder and Trash are states, not labels to add.
+    if (folderId === ARCHIVE_ID) return this.archive(ids);
+    if (folderId === "TRASH") return this.trash(ids);
     await this.batch(ids, [folderId], folderId === "INBOX" ? [] : ["INBOX"]);
+  }
+
+  // Undo of trash: Gmail's untrash puts back the labels the message had.
+  async restore(ids: string[]): Promise<void> {
+    for (const id of ids) await post(`/messages/${id}/untrash`, {});
   }
 
   async archive(ids: string[]): Promise<void> {

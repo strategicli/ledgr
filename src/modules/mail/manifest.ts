@@ -33,5 +33,6 @@ export const mailModule: ModuleManifest = {
     "src/app/api/mail/google/callback/route.ts",
     "src/app/api/mail/read/route.ts",
     "src/app/api/mail/attachment/route.ts",
+    "src/app/api/mail/act/route.ts",
   ],
 };

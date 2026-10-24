@@ -413,6 +413,10 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
     return this.move(ids, "deleteditems");
   }
 
+  restore(ids: string[], folderId: string): Promise<void> {
+    return this.move(ids, folderId);
+  }
+
   async createDraft(msg: OutgoingMessage): Promise<{ id: string }> {
     const content = {
       subject: msg.subject,
