@@ -33,6 +33,7 @@ import { meetingTranscriptsModule } from "@/modules/meeting-transcripts/manifest
 import { triageModule } from "@/modules/triage/manifest";
 import { listenModule } from "@/modules/listen/manifest";
 import { tailscaleModule } from "@/modules/tailscale/manifest";
+import { mailModule } from "@/modules/mail/manifest";
 import { presentationsModule } from "@/modules/presentations/manifest";
 import { websitePagesModule } from "@/modules/website-pages/manifest";
 import { claudeRunsModule } from "@/modules/claude-runs/manifest";
@@ -65,6 +66,7 @@ const WORKFLOW_MODULES: ModuleManifest[] = [
   triageModule,
   listenModule,
   tailscaleModule,
+  mailModule,
   presentationsModule,
   websitePagesModule,
   claudeRunsModule,

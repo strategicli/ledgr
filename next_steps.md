@@ -6,6 +6,10 @@ Anything that stops being live moves to `next_steps_archive.md`, which holds the
 
 ---
 
+## 🟢 IN FLIGHT — Mail & Calendar module (Ledgr plan note a06242d3; branch `ledgr-mail`, prod-brandon only, never `main`)
+
+Phase 1 (foundation) built 2026-10-24: hub-only module (Tailscale's `available`), its own Outlook app registration and Gmail OAuth sign-in kept in `<dataDir>/mail-accounts.json`, the provider action list (`src/modules/mail/lib/types.ts`) with Graph and Gmail/Google Calendar behind it, the sandboxed mail viewer. Brandon's one-time setup: runbook §1w. Next: phase 2 (reading screens).
+
 ## 🟡 NEXT — Claude Runs: switch it on and repoint the scheduled tasks (ADR-286, built 2026-09-30 on branch `claude-runs`)
 
 Built and verified on the dev database, not yet merged. After it ships to the hub:

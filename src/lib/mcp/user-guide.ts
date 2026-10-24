@@ -531,10 +531,11 @@ Build your own kinds of item at \`/build/types\`.
   notes and existing transcripts stay), **Triage mode** (on by default:
   switched off, the Inbox stops showing its Triage button) and **Listen** (on
   by default: switched off, the Listen menu entry and its per-type switches
-  are hidden, and each type keeps its setting for when you turn it back on)
-  and **Private access (Tailscale)** (off by default, and only on a Ledgr
+  are hidden, and each type keeps its setting for when you turn it back on),
+  **Private access (Tailscale)** (off by default, and only on a Ledgr
   installed on your own computer: see "Private access with Tailscale" under
-  the sync network).
+  the sync network) and **Mail & Calendar** (off by default, same rule: see
+  "Mail & Calendar" under the sync network).
   A module that is off is gone, as if it had never been built: its Build page
   leaves the sidebar, the Navigation destination picker, the command palette
   and an assistant's workspace overview; a nav button you pinned to it is
@@ -2249,6 +2250,17 @@ Ledgr is deleted. Tailscale keeps listing it as an offline device until you
 remove it in the Tailscale admin console (Machines); remove it before
 connecting again if you want the same name back. The switch is per computer: each computer running Ledgr connects on
 its own.
+
+**Mail & Calendar (being built).** On a Ledgr installed on your own computer,
+turn on **Mail & Calendar** at \`/build/modules\` and open its **Options**. It
+connects two accounts: **Outlook** (paste the ID and secret of a Microsoft app
+made just for this, separate from the one Ledgr already uses, because this one
+can send mail) and **Gmail** (paste your Google app's ID and secret, then
+**Connect Gmail** and allow access on Google's page). **Test the connections**
+only reads your folder list to show each account works; nothing is sent or
+changed. The sign-ins stay on this computer and never reach the cloud copy, so
+the module never appears there. Reading, filing and answering mail inside
+Ledgr arrive in later phases.
 
 **Public access (Tailscale Funnel).** Once connected, the same panel can make
 that address work from the public internet too: **Make this reachable from the

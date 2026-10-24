@@ -508,6 +508,31 @@ One shell script that puts a ready-made package (§1s) on a Mac or a Linux compu
 - **Fonts** are self-hosted in `public/fonts/pages/` (latin, variable, OFL; see its README); the static-file matcher in `src/proxy.ts` already serves them without sign-in. YouTube/Vimeo embeds go through youtube-nocookie / Vimeo's player; the page's `Referrer-Policy: no-referrer` is overridden per iframe so YouTube accepts the embed.
 - **Machine API:** `/api/machine/website-pages` (GET/POST), `/api/machine/website-pages/<id>` (PATCH), `/api/machine/items/<id>/publish` (POST/DELETE), `api` scope; documented on `/build/api`. MCP tools and the `ledgr://guide/website-pages` resource come from the module's `server.ts`.
 
+## 1w. Mail & Calendar: the two sign-ins (hub only; plan note a06242d3)
+
+- **Where it runs:** only on a Ledgr the supervisor started, never on Vercel. The module's `available` is the Tailscale module's own function (`!VERCEL && LEDGR_SUPERVISOR_DIR`), so on Vercel it is missing from Build → Modules and every `/api/mail/*` route answers 400 before it checks sign-in. Code: `src/modules/mail/`; branch `prod-brandon` only, never `main`.
+- **Where the sign-ins live:** `<dataDir>/mail-accounts.json` on the hub (owner-only file, written by the module's options). Not the database, because the database syncs to the cloud copy. **Never put any of these in Vercel env vars.** Env overrides exist for testing only: `MAIL_GRAPH_CLIENT_ID`, `MAIL_GRAPH_CLIENT_SECRET`, `MAIL_GRAPH_TENANT_ID`, `MAIL_GRAPH_UPN`, `MAIL_GOOGLE_CLIENT_ID`, `MAIL_GOOGLE_CLIENT_SECRET`.
+- **Outlook, one time (Brandon):** a NEW Azure app registration, not `ledgr-export`, because this one can send. The old one's secret also sits on Vercel; this one's must not.
+  1. Azure portal → App registrations → New registration → name `ledgr-mail-hub`, single tenant, no redirect URI.
+  2. API permissions → Microsoft Graph → **Application permissions**: `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, `MailboxSettings.ReadWrite` → **Grant admin consent**.
+  3. Restrict it to Brandon's mailbox with the same scope group as §1c:
+     ```powershell
+     New-ApplicationAccessPolicy -AppId <new app's client id> -PolicyScopeGroupId ledgr-mailbox-scope@edgewoodcommunity.org `
+       -AccessRight RestrictAccess -Description "ledgr-mail-hub: Brandon only"
+     Test-ApplicationAccessPolicy -AppId <client id> -Identity brandoncollins@edgewoodcommunity.org   # AccessCheckResult: Granted
+     Test-ApplicationAccessPolicy -AppId <client id> -Identity <any other staff address>              # AccessCheckResult: Denied
+     ```
+  4. Certificates & secrets → New client secret. On the hub: Build → Modules → **Mail & Calendar** → Options → Outlook → paste the application ID and the secret value → **Save on this computer** → **Test the connections**.
+  - Undo: Options → Outlook → **Remove**, then delete the registration in Azure.
+- **Gmail, one time (Brandon):** a Google Cloud app of your own, **published** (left unverified). Left in "Testing", Google drops the sign-in every 7 days.
+  1. console.cloud.google.com → new project `ledgr-mail` → enable **Gmail API** and **Google Calendar API**.
+  2. OAuth consent screen → External → add scopes `gmail.modify` and `calendar.events` → **Publish app** (skip verification; it only costs a warning screen).
+  3. Credentials → Create OAuth client ID → Web application → Authorized redirect URI: `<the address you open the hub at>/api/mail/google/callback`, e.g. the Tailscale `https://<machine>.<tailnet>.ts.net/api/mail/google/callback` (add `http://localhost:<port>/...` too if you also connect from the hub itself).
+  4. Options → Gmail → paste client ID and secret → Save → **Connect Gmail** → Google warns "unverified" → Advanced → continue → allow.
+  - Undo: Options → Gmail → **Disconnect**, and remove the app at myaccount.google.com → Security → Third-party access.
+- **"Gmail stopped working" / Test says `invalid_grant`:** the sign-in was revoked or the app is back in Testing mode. Publish it, then Connect Gmail again.
+- **Outlook Test says 403:** admin consent or the Application Access Policy is missing (steps 2 and 3). Policy changes can take up to an hour to apply.
+
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)
 
 On a **local peer only**, an hourly `pg_dump` of its own cluster into `<dataDir>/snapshots/`, thinned into a tiered spread (dense recent, sparse old) so a fixed file count covers weeks. It fills the gap between `revisions` (one item's body history) and the weekly OneDrive dump (§4 — exact, but weekly); the nightly markdown export stays the lossy Sunday-proof fire escape, not a restore path.
