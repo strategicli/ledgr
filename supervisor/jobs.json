@@ -43,6 +43,15 @@
     "module": "claude-runs",
     "why": "Retries a Claude Run notification that reached nobody. Safe on every peer: a failed run is marked with the id of the copy that tried, and only that copy retries it, because push sign-ups and the inbox are per machine."
   },
+  "mail-flags": {
+    "path": "/api/machine/mail-flags",
+    "label": "Mail flags",
+    "everyMinutes": 5,
+    "shared": true,
+    "on": true,
+    "module": "mail",
+    "why": "Unflags the email behind a task once the task is done. Safe on every peer: only the hub has the mail sign-ins, so every other copy answers with a clean skip, and clearing a flag twice changes nothing."
+  },
   "snapshot": {
     "path": "/api/machine/snapshot",
     "label": "Local snapshots (restore points)",

@@ -34,5 +34,7 @@ export const mailModule: ModuleManifest = {
     "src/app/api/mail/read/route.ts",
     "src/app/api/mail/attachment/route.ts",
     "src/app/api/mail/act/route.ts",
+    "src/app/api/mail/link/route.ts",
+    "src/app/api/machine/mail-flags/route.ts",
   ],
 };

@@ -532,6 +532,7 @@ One shell script that puts a ready-made package (§1s) on a Mac or a Linux compu
   4. Options → Gmail → paste client ID and secret → Save → **Connect Gmail** → Google warns "unverified" → Advanced → continue → allow.
   - Undo: Options → Gmail → **Disconnect**, and remove the app at myaccount.google.com → Security → Third-party access.
 - **"Gmail stopped working" / Test says `invalid_grant`:** the sign-in was revoked or the app is back in Testing mode. Publish it, then Connect Gmail again.
+- **Email ↔ item links:** stored on the item as `properties.email` (the key email capture already uses; Mail adds `account`, `threadId`, `subject`, `preview`, `flagCleared`). Matched by `internetMessageId`, then provider id. **Flags:** the `mail-flags` job (shared, every 5 min, `/api/machine/mail-flags`) unflags the email of each finished task once (`flagCleared: true`); every non-hub copy skips cleanly. A task reopened after that stays unflagged.
 - **Outlook Test says 403:** admin consent or the Application Access Policy is missing (steps 2 and 3). Policy changes can take up to an hour to apply.
 
 ## 1m. Local snapshots: the everyday recovery mechanism (ADR-217)

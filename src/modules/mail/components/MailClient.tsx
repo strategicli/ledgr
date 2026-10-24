@@ -1,14 +1,16 @@
 "use client";
 
-// The Mail screen (phases 2 and 3): folders, message list and reading pane, fed
+// The Mail screen (phases 2, 3 and 4): folders, message list and reading pane, fed
 // live by /api/mail/read, plus acting (archive, delete, move, read, flag, tags)
-// through /api/mail/act with optimistic updates and an Undo toast. Never sends.
+// through /api/mail/act with optimistic updates and an Undo toast, and Ledgr links
+// (linked-item icons, Make task/note/meeting, Save to item) through /api/mail/link. Never sends.
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { showToast } from "@/components/ui/ActionToast";
 import { badgeCount, formatBytes } from "@/lib/format-count";
+import type { LinkedItem, LinkType } from "@/modules/mail/lib/links";
 import type { MailAction, MailRef } from "@/modules/mail/lib/acting";
 import type { AccountId, FullMessage, MailAddress, MailFolder, MailTag, MessageSummary } from "@/modules/mail/lib/types";
 
@@ -35,12 +37,34 @@ async function getJson<T>(params: Record<string, string | undefined>, signal: Ab
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const res = await fetch(`/api/mail/read?${sp}`, { signal });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body?.error === "string" ? body.error : `Request failed (${res.status})`);
+  if (!res.ok) {
+    throw Object.assign(new Error(typeof body?.error === "string" ? body.error : `Request failed (${res.status})`), { status: res.status });
+  }
   return body as T;
 }
 
 function msg(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+
+const LINK_TYPES: LinkType[] = ["task", "note", "event"];
+const TYPE_NOUN: Record<LinkType, string> = { task: "task", note: "note", event: "meeting" };
+const TYPE_PLURAL: Record<LinkType, string> = { task: "tasks", note: "notes", event: "meetings" };
+const TYPE_ICON: Record<LinkType, string> = { task: "☑", note: "📝", event: "📅" };
+const TYPE_CAP: Record<LinkType, string> = { task: "Task", note: "Note", event: "Meeting" };
+const GONE = "This email is no longer in your mailbox.";
+const isDone = (i: LinkedItem) => /^(done|complete|completed|closed)$/i.test(i.status ?? "");
+
+// POST /api/mail/link. Throws an Error carrying the server's message.
+async function linkPost<T>(payload: Record<string, unknown>): Promise<T> {
+  const res = await fetch("/api/mail/link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body?.error === "string" ? body.error : `Request failed (${res.status})`);
+  return body as T;
 }
 
 const selKey = (r: MessageSummary) => `${r.account}:${r.id}`;
@@ -328,10 +352,61 @@ function MailScreen() {
   const [tagsBy, setTagsBy] = useState<Partial<Record<AccountId, MailTag[]>>>({});
   const tagReq = useRef(new Set<AccountId>());
   const autoRead = useRef(new Set<string>());
+
+  // ---- Ledgr links (phase 4): cached by message id, looked up once per message.
+  const [links, setLinks] = useState<Record<string, LinkedItem[]>>({});
+  const [creating, setCreating] = useState<Set<string>>(new Set());
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const looked = useRef(new Set<string>());
+  const lookup = useCallback((ms: { id: string; internetMessageId: string | null }[]) => {
+    const fresh = ms.filter((x) => !looked.current.has(x.id));
+    for (const x of fresh) looked.current.add(x.id);
+    for (let i = 0; i < fresh.length; i += 100) {
+      const batch = fresh.slice(i, i + 100);
+      linkPost<{ links: Record<string, LinkedItem[]> }>({
+        op: "lookup",
+        emails: batch.map((x) => ({ id: x.id, internetMessageId: x.internetMessageId })),
+      })
+        .then((d) =>
+          setLinks((p) => {
+            const n = { ...p };
+            for (const x of batch) n[x.id] = d.links?.[x.id] ?? [];
+            return n;
+          })
+        )
+        // A failed lookup just shows no icons; let a later load retry it.
+        .catch(() => batch.forEach((x) => looked.current.delete(x.id)));
+    }
+  }, []);
+
+  async function makeItem(r: MessageSummary, type: LinkType) {
+    const k = `${r.id}:${type}`;
+    setLinkError(null);
+    setCreating((s) => new Set(s).add(k));
+    try {
+      const { item } = await linkPost<{ item: LinkedItem }>({ op: "create", account: r.account, id: r.id, type });
+      setLinks((p) => ({ ...p, [r.id]: [...(p[r.id] ?? []), item] }));
+      // The server flagged the email for a task; mirror it on the row.
+      if (type === "task") {
+        setList((prev) => prev && { ...prev, messages: prev.messages.map((x) => (selKey(x) === selKey(r) ? { ...x, flagged: true } : x)) });
+      }
+      showToast(`${TYPE_CAP[type]} created`, undefined, { link: { label: "Open", href: `/items/${item.id}` } });
+    } catch (e) {
+      setLinkError(msg(e));
+    } finally {
+      setCreating((s) => {
+        const n = new Set(s);
+        n.delete(k);
+        return n;
+      });
+    }
+  }
   const paramsRef = useRef({ key: listKey, account, folder, q, unread });
   useEffect(() => {
     paramsRef.current = { key: listKey, account, folder, q, unread };
   });
+
+  useEffect(() => lookup(rows), [rows, lookup]);
 
   // Tags are fetched once per account, only when a list shows that account.
   useEffect(() => {
@@ -460,7 +535,7 @@ function MailScreen() {
         const next = keys[Math.max(0, Math.min(keys.length - 1, at + (e.key === "j" ? 1 : -1)))];
         setCursor(next);
         document.getElementById(`mail-row-${next}`)?.scrollIntoView({ block: "nearest" });
-      } else if (e.key === "Enter" && at >= 0 && t?.tagName !== "BUTTON") {
+      } else if (e.key === "Enter" && at >= 0 && t?.tagName !== "BUTTON" && t?.tagName !== "A") {
         open(keys[at]);
       }
     }
@@ -604,6 +679,7 @@ function MailScreen() {
                     </span>
                   )}
                 </button>
+                {links[r.id]?.length ? <LinkIcons items={links[r.id]} /> : null}
               </li>
             );
           })}
@@ -628,17 +704,35 @@ function MailScreen() {
     <ReadingPane
       selection={m}
       rows={rows}
+      links={links}
+      onLoaded={lookup}
       onBack={tier === 1 ? () => open(null) : undefined}
       toolbar={
         openedRow && (
-          <ActionBar
-            label="Message actions"
-            targets={[openedRow]}
-            onAct={(a) => void doAct([openedRow], a)}
-            folder={folder}
-            folders={folderList}
-            tags={tagsBy}
-          />
+          <>
+            <ActionBar
+              label="Message actions"
+              targets={[openedRow]}
+              onAct={(a) => void doAct([openedRow], a)}
+              folder={folder}
+              folders={folderList}
+              tags={tagsBy}
+            />
+            <div role="toolbar" aria-label="Ledgr actions" className="flex flex-wrap items-center gap-1.5">
+              {LINK_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={BTN}
+                  disabled={creating.has(`${openedRow.id}:${t}`)}
+                  onClick={() => void makeItem(openedRow, t)}
+                >
+                  Make {TYPE_NOUN[t]}
+                </button>
+              ))}
+            </div>
+            {linkError && <Notice text={linkError} slim />}
+          </>
         )
       }
     />
@@ -1011,6 +1105,39 @@ function TagPicker({
   );
 }
 
+// Small per-type icons beside a row (outside the row button: a link cannot nest in a button).
+function LinkIcons({ items }: { items: LinkedItem[] }) {
+  return (
+    <span className="flex shrink-0 items-start gap-1 py-2 pr-2">
+      {LINK_TYPES.map((t) => {
+        const xs = items.filter((i) => i.type === t);
+        if (!xs.length) return null;
+        const title = (i: LinkedItem) => i.title || "(untitled)";
+        const tip =
+          xs.length === 1 ? `Linked ${TYPE_NOUN[t]}: ${title(xs[0])}` : `${xs.length} linked ${TYPE_PLURAL[t]}: ${xs.map(title).join("; ")}`;
+        return (
+          <span key={t} className="group relative">
+            <Link
+              href={`/items/${xs[0].id}`}
+              aria-label={tip}
+              className="inline-flex items-center gap-0.5 rounded px-1 ui-meta text-ink-muted hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink-muted"
+            >
+              <span aria-hidden>{TYPE_ICON[t]}</span>
+              {xs.length > 1 && <span aria-hidden>{xs.length}</span>}
+            </Link>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-56 rounded-card border border-neutral-700 bg-neutral-900 px-2 py-1 ui-meta normal-case text-ink opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+            >
+              {tip}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function Notice({ text, slim }: { text: string; slim?: boolean }) {
   return (
     <p role="alert" className={`border-b border-line bg-surface-2 ui-meta text-ink-muted ${slim ? "px-3 py-1" : "m-4 rounded-card border px-3 py-2"}`}>
@@ -1067,11 +1194,15 @@ function FolderPane({
 function ReadingPane({
   selection,
   rows,
+  links,
+  onLoaded,
   onBack,
   toolbar,
 }: {
   selection: string | null;
   rows: MessageSummary[];
+  links: Record<string, LinkedItem[]>;
+  onLoaded: (ms: { id: string; internetMessageId: string | null }[]) => void;
   onBack?: () => void;
   toolbar?: React.ReactNode;
 }) {
@@ -1099,18 +1230,20 @@ function ReadingPane({
         const row = rowsRef.current.find((r) => r.account === account && r.threadId === threadId);
         try {
           messages = [(await getJson<{ message: FullMessage }>({ view: "message", account, id: row?.id ?? threadId }, ac.signal)).message];
-        } catch {
-          setError({ key: selection, text: msg(e) });
+        } catch (e2) {
+          const gone = (e as { status?: number }).status === 404 || (e2 as { status?: number }).status === 404;
+          setError({ key: selection, text: gone ? GONE : msg(e) });
           return;
         }
       }
       if (ac.signal.aborted) return;
       setError(null);
       setThread({ key: selection, messages });
+      onLoaded(messages);
       setExpanded(new Set(messages.length ? [messages[messages.length - 1].id] : []));
     })();
     return () => ac.abort();
-  }, [selection]);
+  }, [selection, onLoaded]);
 
   if (!selection) {
     return <p className="p-6 ui-meta text-ink-muted">Select a message to read it.</p>;
@@ -1136,7 +1269,7 @@ function ReadingPane({
             const isLast = idx === current.length - 1;
             const isOpen = isLast ? true : expanded.has(message.id);
             return isOpen ? (
-              <MessageView key={message.id} message={message} />
+              <MessageView key={message.id} message={message} items={links[message.id] ?? []} />
             ) : (
               <button
                 key={message.id}
@@ -1157,7 +1290,21 @@ function ReadingPane({
   );
 }
 
-function MessageView({ message }: { message: FullMessage }) {
+function MessageView({ message, items }: { message: FullMessage; items: LinkedItem[] }) {
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  async function save(attachmentId: string, item: LinkedItem) {
+    setSaveError(null);
+    setSaving(attachmentId);
+    try {
+      await linkPost({ op: "attach", account: message.account, messageId: message.id, attachmentId, itemId: item.id });
+      showToast(`Saved to ${item.title || "item"}`);
+    } catch (e) {
+      setSaveError(msg(e));
+    } finally {
+      setSaving(null);
+    }
+  }
   const files = message.attachments.filter((a) => !a.inline);
   const provider = ACCOUNT_NAME[message.account];
   return (
@@ -1180,11 +1327,23 @@ function MessageView({ message }: { message: FullMessage }) {
         <dt className="text-ink-subtle">Date</dt>
         <dd className="text-ink-muted">{fullTime(message.receivedAt)}</dd>
       </dl>
+      {items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ui-meta text-ink-muted">
+          <span className="text-ink-subtle">Linked in Ledgr</span>
+          {items.map((i) => (
+            <Link key={i.id} href={`/items/${i.id}`} className={`underline hover:text-ink ${isDone(i) ? "line-through" : ""}`}>
+              {TYPE_NOUN[i.type as LinkType] ?? i.type}: {i.title || "(untitled)"}
+              {isDone(i) && " (done)"}
+            </Link>
+          ))}
+        </div>
+      )}
       <SafeMailBody html={message.bodyHtml} text={message.bodyText} />
+      {saveError && <Notice text={saveError} slim />}
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {files.map((a) => (
-            <li key={a.id}>
+            <li key={a.id} className="flex items-center gap-1">
               <a
                 href={`/api/mail/attachment?account=${message.account}&message=${encodeURIComponent(message.id)}&id=${encodeURIComponent(a.id)}`}
                 className="inline-flex items-center gap-2 rounded-card border border-line bg-surface-2 px-3 py-1 ui-meta text-ink hover:bg-surface-3"
@@ -1193,6 +1352,35 @@ function MessageView({ message }: { message: FullMessage }) {
                 <span>{a.name}</span>
                 <span className="text-ink-subtle">{formatBytes(a.size)}</span>
               </a>
+              {items.length === 1 && (
+                <button type="button" className={BTN} disabled={saving === a.id} onClick={() => void save(a.id, items[0])}>
+                  Save to {items[0].title || "item"}
+                </button>
+              )}
+              {items.length > 1 && (
+                <Popover label="Save to item…">
+                  {(close) => (
+                    <ul role="menu" className="max-h-64 overflow-y-auto py-1">
+                      {items.map((i) => (
+                        <li key={i.id} role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={saving === a.id}
+                            onClick={() => {
+                              close();
+                              void save(a.id, i);
+                            }}
+                            className="block w-full truncate px-3 py-1.5 text-left ui-row text-ink hover:bg-surface-2"
+                          >
+                            {TYPE_NOUN[i.type as LinkType] ?? i.type}: {i.title || "(untitled)"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Popover>
+              )}
             </li>
           ))}
         </ul>
