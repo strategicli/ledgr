@@ -226,6 +226,31 @@ try {
   check("respond verbs + sendResponse", calls.slice(0, 3).map((c) => c.url.pathname.split("/").pop()).join() === "accept,tentativelyAccept,decline" && (calls[0].body as { sendResponse: boolean; comment: string }).sendResponse === true && (calls[0].body as { comment: string }).comment === "yes");
   check("deleteEvent is DELETE", last().method === "DELETE");
 
+  // --- inline images --------------------------------------------------------
+  reset([
+    ["GET", "/attachments/a1", { id: "a1", contentId: "<logo@x>", contentType: "image/png", contentBytes: "AAAA" }],
+    ["GET", "/attachments/a3", { id: "a3", contentId: "nobytes", contentType: "image/png" }],
+    ["GET", "/attachments/a4", { id: "a4", contentBytes: "BBBB", contentType: "image/gif" }],
+    ["GET", "/attachments/a2", { id: "a2", contentId: "chart@x", contentType: "image/png", contentBytes: "CCCC" }],
+    ["GET", "/messages/m9/attachments?", { value: [
+      { id: "a1", isInline: true, contentType: "image/png" },
+      { id: "a2", isInline: false, contentType: "image/png" },
+      { id: "a5", isInline: true, contentType: "application/pdf" },
+      { id: "a3", isInline: true, contentType: "image/png" },
+      { id: "a4", isInline: true, contentType: "image/gif" },
+    ] }],
+  ]);
+  const imgs = await mail.getInlineImages("m9");
+  check("inline images: pictures fetched (a non-inline-flagged one too), non-pictures not", calls.length === 5 && !calls.some((c) => /a5/.test(c.url.pathname)) && calls.some((c) => /a2$/.test(c.url.pathname)), calls.map((c) => c.url.pathname).join());
+  check("inline images: list asks for isInline,contentType and ImmutableId", calls[0].url.searchParams.get("$select") === "id,isInline,contentType" && calls[0].headers.Prefer === 'IdType="ImmutableId"');
+  check("inline images: <> stripped, no-contentId and no-bytes skipped", imgs.length === 2 && imgs[0].contentId === "logo@x" && imgs[0].contentType === "image/png" && imgs[0].base64 === "AAAA" && imgs[1].contentId === "chart@x", JSON.stringify(imgs));
+  reset([
+    ["GET", "/attachments?", { value: Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, isInline: true, contentType: "image/png" })) }],
+    ["GET", "/attachments/p", { contentId: "c", contentType: "image/png", contentBytes: "AA" }],
+  ]);
+  await mail.getInlineImages("m9");
+  check("inline images: capped at 20 fetches", calls.length === 21, String(calls.length));
+
   // --- no own app: borrow the shared connection, read only -----------------
   delete process.env.MAIL_GRAPH_CLIENT_ID;
   delete process.env.MAIL_GRAPH_CLIENT_SECRET;

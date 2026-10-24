@@ -39,6 +39,8 @@ export type MailAttachmentMeta = {
   contentId: string | null;
 };
 
+export type InlineImage = { contentId: string; contentType: string; base64: string };
+
 export type MessageSummary = {
   // Stable id: Outlook immutable id, Gmail message id. Item links key on it.
   id: string;
@@ -108,6 +110,9 @@ export interface MailProvider {
     messageId: string,
     attachmentId: string
   ): Promise<{ name: string; contentType: string; bytes: Uint8Array }>;
+  // The pictures a message's HTML points at with cid: (pasted screenshots,
+  // signature logos), so the reader can show them without a network fetch.
+  getInlineImages(messageId: string): Promise<InlineImage[]>;
   modify(ids: string[], change: MessageChange): Promise<void>;
   move(ids: string[], folderId: string): Promise<void>;
   // The native archive for the account: Outlook's Archive folder, Gmail's

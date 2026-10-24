@@ -10,6 +10,7 @@ import {
   type CalendarProvider,
   type EventInput,
   type FullMessage,
+  type InlineImage,
   type ListMessagesQuery,
   type MailAddress,
   type MailAttachmentMeta,
@@ -335,6 +336,35 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
     const d = await this.json<{ value?: GMessage[] }>(`/messages?${params}`);
     const msgs = await Promise.all((d.value ?? []).map((m) => this.full(m)));
     return msgs.sort((a, b) => (a.receivedAt ?? "").localeCompare(b.receivedAt ?? ""));
+  }
+
+  async getInlineImages(messageId: string): Promise<InlineImage[]> {
+    const list = await this.json<{ value?: { id: string; isInline?: boolean; contentType?: string }[] }>(
+      `/messages/${mid(messageId)}/attachments?$select=id,isInline,contentType`
+    );
+    // ponytail: cap of 20 pictures per message keeps a spammy mail from fanning out
+    // into hundreds of requests; raise it if real mail needs more.
+    // Inline ones first, then any other picture: some senders mark a picture
+    // their HTML points at by cid as a regular attachment. Only called when the
+    // body has a cid: reference, so this never runs for ordinary mail.
+    const pics = (list.value ?? [])
+      .filter((a) => (a.contentType ?? "").toLowerCase().startsWith("image/"))
+      .sort((a, b) => Number(b.isInline === true) - Number(a.isInline === true))
+      .slice(0, 20);
+    const got = await Promise.all(
+      pics.map((a) =>
+        this.json<{ contentId?: string; contentType?: string; contentBytes?: string }>(
+          `/messages/${mid(messageId)}/attachments/${mid(a.id)}`
+        )
+      )
+    );
+    const out: InlineImage[] = [];
+    for (const g of got) {
+      const contentId = g.contentId?.replace(/^<|>$/g, "");
+      if (!contentId || !g.contentBytes) continue;
+      out.push({ contentId, contentType: g.contentType ?? "application/octet-stream", base64: g.contentBytes });
+    }
+    return out;
   }
 
   async getAttachment(messageId: string, attachmentId: string) {

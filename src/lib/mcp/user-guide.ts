@@ -2260,8 +2260,19 @@ and **Gmail** (paste your Google app's ID and secret, then
 **Connect Gmail** and allow access on Google's page). **Test the connections**
 only reads your folder list to show each account works; nothing is sent or
 changed. The sign-ins stay on this computer and never reach the cloud copy, so
-the module never appears there. Reading, filing and answering mail inside
-Ledgr arrive in later phases.
+the module never appears there.
+
+**Reading mail.** Open **Mail** at \`/mail\` (add it to your nav from the
+destination picker, or find it with ⌘K). Pick **Outlook**, **Gmail**, or
+**All** for one combined inbox, where a small colored dot marks each message's
+account. Folders (Outlook) or labels (Gmail) are on the left with unread
+counts, the messages in the middle, and the whole conversation on the right.
+Search covers the account you're in, or both under All, and **Unread only**
+narrows the list. Mail is shown live from Microsoft and Google, nothing is
+copied into Ledgr, and reading here doesn't mark anything read. Pictures from
+the internet stay hidden until you click **Show pictures**; attachments
+download rather than open in Ledgr. Keys: j and k move, Enter opens, / searches.
+Filing, flags and turning mail into tasks come next.
 
 **Public access (Tailscale Funnel).** Once connected, the same panel can make
 that address work from the public internet too: **Make this reachable from the

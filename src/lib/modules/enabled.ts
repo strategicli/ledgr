@@ -53,10 +53,12 @@ export async function moduleOnFor(ownerId: string, moduleId: string): Promise<bo
 }
 
 // The ids of every module this owner has off, for client components (the Build
-// sidebar) that filter by module without importing server code.
+// sidebar) that filter by module without importing server code. A module that
+// cannot run on this install (its `available` says no, e.g. a hub-only module on
+// Vercel) counts as off too: settings sync, so the switch alone can be on here.
 export function offModuleIds(settings: Pick<UserSettings, "modules">): string[] {
   return allModules()
-    .filter((m) => !moduleOn(settings, m.id))
+    .filter((m) => !moduleOn(settings, m.id) || (m.available ? !m.available() : false))
     .map((m) => m.id);
 }
 

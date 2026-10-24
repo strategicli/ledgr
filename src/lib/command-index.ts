@@ -79,6 +79,7 @@ const BUILTIN_PAGES: StaticEntry[] = [
   { label: "Tasks", href: "/tasks", icon: "tasks", keywords: ["to do", "todo"] },
   { label: "Planner", href: "/planner", icon: "calendar", keywords: ["calendar", "schedule", "time block"] },
   { label: "Desk", href: "/desk", icon: "grid", keywords: ["workspace", "panels"], moduleId: "desk" },
+  { label: "Mail", href: "/mail", icon: "inbox", keywords: ["email", "outlook", "gmail"], moduleId: "mail" },
   { label: "Notifications", href: "/notifications", icon: "bell", keywords: ["alerts"], moduleId: "notification-center" },
   { label: "Notes", href: "/notes", icon: "notes" },
   { label: "Links", href: "/links", icon: "links", keywords: ["bookmarks"] },

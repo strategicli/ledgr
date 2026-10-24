@@ -351,6 +351,49 @@ try {
   check("respond without self attendee throws MailProviderError", e instanceof MailProviderError && !calls.some((c) => c.method === "PATCH"));
 }
 
+// --- getInlineImages ---------------------------------------------------------
+reset();
+{
+  const raw = Buffer.from([0xfb, 0xff, 0xfe, 0x3e, 0x3f]); // standard base64 has + / and padding
+  const urlSafe = raw.toString("base64url");
+  const std = raw.toString("base64");
+  const img = (cid: string | null, extra: object, mime = "image/png") => ({
+    mimeType: mime,
+    headers: cid ? [{ name: "Content-ID", value: cid }] : [],
+    ...extra,
+  });
+  on("GET", "/messages/mi?format=full", 200, {
+    id: "mi",
+    threadId: "t",
+    payload: {
+      mimeType: "multipart/related",
+      parts: [
+        { mimeType: "text/html", body: { data: b64u('<img src="cid:a">') } },
+        img("<a>", { body: { data: urlSafe, size: 5 } }),
+        img("<b>", { filename: "b.png", body: { attachmentId: "att-b", size: 5 } }),
+        img(null, { body: { data: urlSafe } }),
+        img("<d>", { body: { data: urlSafe } }, "application/pdf"),
+      ],
+    },
+  });
+  on("GET", "/messages/mi/attachments/att-b", 200, { data: urlSafe });
+  const out = await gm.getInlineImages("mi");
+  check("inline images: only image parts with a Content-ID", out.map((i) => i.contentId).join() === "a,b", JSON.stringify(out.map((i) => i.contentId)));
+  check("inline images: body.data path makes no attachment call", out[0].base64 === std && calls.filter((c) => c.url.includes("/attachments/")).length === 1);
+  check("inline images: attachmentId path fetches data", out[1].base64 === std && calls.some((c) => c.url.endsWith("/attachments/att-b")));
+  check("inline images: base64url converted to standard base64 with padding", /[+/]/.test(out[0].base64) && out[0].base64.endsWith("=") && !/[-_]/.test(out[0].base64) && out[0].contentType === "image/png");
+}
+reset();
+on("GET", "/messages/mc?format=full", 200, {
+  id: "mc",
+  threadId: "t",
+  payload: {
+    mimeType: "multipart/related",
+    parts: Array.from({ length: 30 }, (_, i) => ({ mimeType: "image/png", headers: [{ name: "Content-ID", value: `<c${i}>` }], body: { data: "AAAA" } })),
+  },
+});
+check("inline images: capped at 20", (await gm.getInlineImages("mc")).length === 20);
+
 if (failures) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);
