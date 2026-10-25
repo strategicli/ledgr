@@ -16,6 +16,14 @@ import { tailscaleAvailable } from "@/modules/tailscale/manifest";
 
 export const mailAvailable = tailscaleAvailable;
 
+const MAIL_INSTRUCTIONS =
+  "MAIL: the owner's Outlook and Gmail are readable through the mail_* tools (only on the Ledgr on their own " +
+  "computer). mail_search lists or searches (Gmail-style operators work for both accounts; words search the " +
+  "whole mailbox) and shows which Ledgr items each email is already linked to. mail_read gives the text of an " +
+  "email or conversation. mail_make_item files an email as a task, note or meeting; mail_import_attachments " +
+  "copies its files into Ledgr. mail_act archives, trashes, moves, flags and tags; confirm before acting on " +
+  "mail the owner didn't point you at. Nothing here sends mail.";
+
 export const mailModule: ModuleManifest = {
   id: "mail",
   label: "Mail & Calendar",
@@ -27,6 +35,19 @@ export const mailModule: ModuleManifest = {
   available: mailAvailable,
   settingsPanel: "mail",
   settingsPanelOpen: true,
+  mcpTools: {
+    names: [
+      "mail_accounts",
+      "mail_list_folders",
+      "mail_list_tags",
+      "mail_search",
+      "mail_read",
+      "mail_act",
+      "mail_make_item",
+      "mail_import_attachments",
+    ],
+    instructions: MAIL_INSTRUCTIONS,
+  },
   routes: [
     "src/app/api/mail/accounts/route.ts",
     "src/app/api/mail/google/start/route.ts",

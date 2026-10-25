@@ -5,6 +5,7 @@ import { getGmail } from "./gmail";
 import { getMicrosoftMail } from "./microsoft";
 import type { AccountId, FullMessage, MailFolder, MailProvider, MessageSummary } from "./types";
 import { MailProviderError } from "./types";
+import { isTextSearch, parseMailQuery, type MailQuery } from "./search";
 
 export const ACCOUNTS: AccountId[] = ["microsoft", "gmail"];
 
@@ -54,8 +55,12 @@ export type ListRequest = {
   account: AccountId | "all";
   // A folder id for one account; for "all", a role ("inbox" by default).
   folder?: string;
+  // What the owner typed, in the search.ts language.
   search?: string;
+  // The list chips: narrow the folder on screen without searching words.
   unreadOnly?: boolean;
+  flaggedOnly?: boolean;
+  filesOnly?: boolean;
   pageToken?: string;
   limit?: number;
 };
@@ -65,6 +70,8 @@ export type ListResult = {
   nextPageToken: string | null;
   // Accounts that failed in a combined view; the rest still show.
   errors: { account: AccountId; error: string }[];
+  // True when the words searched the whole mailbox rather than the folder.
+  searchedAll?: boolean;
 };
 
 // Each provider's fixed name for a role, so the combined view never has to
@@ -75,24 +82,44 @@ const ROLE_IDS: Record<AccountId, Record<string, string>> = {
   gmail: { inbox: "INBOX", sent: "SENT", drafts: "DRAFT", trash: "TRASH", spam: "SPAM", archive: "ARCHIVE" },
 };
 
+export function queryFor(req: Pick<ListRequest, "search" | "unreadOnly" | "flaggedOnly" | "filesOnly">): MailQuery {
+  const q = parseMailQuery(req.search ?? "");
+  if (req.unreadOnly) q.unread = true;
+  if (req.flaggedOnly) q.flagged = true;
+  if (req.filesOnly) q.hasAttachment = true;
+  return q;
+}
+
+// Where one account looks: an in: operator wins, typed words search the whole
+// mailbox (as Gmail does), otherwise the folder on screen. For the combined
+// view `folder` is a role; for one account it is that account's folder id.
+function folderFor(a: AccountId, req: ListRequest, q: MailQuery): string | undefined {
+  if (q.in) return ROLE_IDS[a][q.in];
+  if (isTextSearch(q)) return undefined;
+  return req.account === "all" ? ROLE_IDS[a][req.folder ?? "inbox"] : req.folder;
+}
+
+const newestFirst = (x: MessageSummary, y: MessageSummary) => (y.receivedAt ?? "").localeCompare(x.receivedAt ?? "");
+
 export async function listMessages(req: ListRequest): Promise<ListResult> {
   const limit = Math.min(Math.max(req.limit ?? 50, 1), 100);
+  const query = queryFor(req);
+  const searchedAll = isTextSearch(query) && !query.in;
   if (req.account !== "all") {
     const page = await provider(req.account).listMessages({
-      folderId: req.folder,
-      search: req.search,
-      unreadOnly: req.unreadOnly,
+      folderId: folderFor(req.account, req, query),
+      query,
       pageToken: req.pageToken,
       limit,
     });
-    return { ...page, errors: [] };
+    // Outlook returns word searches by relevance; the list is always by date.
+    return { ...page, messages: [...page.messages].sort(newestFirst), errors: [], searchedAll };
   }
 
   // Combined: each connected account's folder with the same role, merged
   // newest first. Each account fetches a full page, so the merged page can be
   // up to twice `limit`; the next token resumes each account where it stopped.
   // ponytail: no cross-account cursor trimming, so pages vary in size.
-  const role = req.folder ?? "inbox";
   const prior = decodeToken(req.pageToken);
   const accounts = connectedAccounts().filter((a) => !prior || prior[a] !== undefined);
   const next: CombinedToken = {};
@@ -100,17 +127,9 @@ export async function listMessages(req: ListRequest): Promise<ListResult> {
   const pages = await Promise.all(
     accounts.map(async (a) => {
       try {
-        const p = provider(a);
-        // Search spans the whole mailbox; otherwise the account's folder for the role.
-        const folderId = req.search ? undefined : ROLE_IDS[a][role];
-        if (!req.search && !folderId) return [];
-        const page = await p.listMessages({
-          folderId,
-          search: req.search,
-          unreadOnly: req.unreadOnly,
-          pageToken: prior?.[a],
-          limit,
-        });
+        const folderId = folderFor(a, req, query);
+        if (!searchedAll && !folderId) return [];
+        const page = await provider(a).listMessages({ folderId, query, pageToken: prior?.[a], limit });
         if (page.nextPageToken) next[a] = page.nextPageToken;
         return page.messages;
       } catch (err) {
@@ -119,8 +138,7 @@ export async function listMessages(req: ListRequest): Promise<ListResult> {
       }
     })
   );
-  const messages = pages.flat().sort((x, y) => (y.receivedAt ?? "").localeCompare(x.receivedAt ?? ""));
-  return { messages, nextPageToken: encodeToken(next), errors };
+  return { messages: pages.flat().sort(newestFirst), nextPageToken: encodeToken(next), errors, searchedAll };
 }
 
 // Picture types the viewer will show inline (safe-html's data: allow-list).

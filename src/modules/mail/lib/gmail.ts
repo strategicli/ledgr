@@ -6,6 +6,7 @@
 // Verified against a stubbed fetch (scripts/verify-mail-google.mts); the real
 // API shapes are from Google's docs.
 import { googleClient, googleFetch } from "./google-auth";
+import { toGmailQuery } from "./search";
 import { readMailStore } from "./store";
 import {
   MailProviderError,
@@ -142,9 +143,10 @@ function toSummary(m: GMessage): MessageSummary {
     preview: decodeEntities(m.snippet ?? ""),
     read: !labels.includes("UNREAD"),
     flagged: labels.includes("STARRED"),
-    // ponytail: false at list level, the metadata format has no parts to inspect;
-    // getMessage knows the truth. Upgrade: a has:attachment search or format=full.
-    hasAttachments: false,
+    // The metadata format has no parts, but it keeps the top-level type: mail
+    // with files is multipart/mixed. Pictures pasted into the body are
+    // multipart/related and correctly don't count.
+    hasAttachments: (h?.mimeType ?? "").toLowerCase() === "multipart/mixed",
     tags: labels.filter((l) => !isSystemLabel(l)),
     folderIds: labels,
   };
@@ -275,8 +277,8 @@ export class GmailProvider implements MailProvider {
     const query: string[] = [];
     if (q.folderId === ARCHIVE_ID) query.push(ARCHIVE_QUERY);
     else if (q.folderId) p.append("labelIds", q.folderId);
-    if (q.search) query.push(q.search);
-    if (q.unreadOnly) query.push("is:unread");
+    const words = q.query ? toGmailQuery(q.query) : "";
+    if (words) query.push(words);
     if (query.length) p.set("q", query.join(" "));
     if (q.pageToken) p.set("pageToken", q.pageToken);
     const list = await gmail<{ messages?: { id: string }[]; nextPageToken?: string }>(`/messages?${p}`);

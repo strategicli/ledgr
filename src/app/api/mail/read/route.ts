@@ -18,8 +18,10 @@ import { MailProviderError } from "@/modules/mail/lib/types";
 //   ?view=accounts                                  which accounts are connected
 //   ?view=folders&account=microsoft|gmail           folders/labels with unread counts
 //   ?view=tags&account=microsoft|gmail              Outlook categories / Gmail user labels
-//   ?view=messages&account=…|all[&folder][&q][&unread=1][&page]
-//                                                   one page of the list ("all" = combined)
+//   ?view=messages&account=…|all[&folder][&q][&unread=1][&flagged=1][&files=1][&page]
+//                                                   one page of the list ("all" = combined);
+//                                                   q is the search.ts language, and
+//                                                   words in it search the whole mailbox
 //   ?view=message&account=…&id=…                    one message, inline pictures resolved
 //   ?view=thread&account=…&id=<threadId>            the whole conversation, oldest first
 export const dynamic = "force-dynamic";
@@ -54,6 +56,8 @@ export async function GET(req: Request) {
             folder: sp.get("folder") ?? undefined,
             search: q || undefined,
             unreadOnly: sp.get("unread") === "1",
+            flaggedOnly: sp.get("flagged") === "1",
+            filesOnly: sp.get("files") === "1",
             pageToken: sp.get("page") ?? undefined,
           })
         );

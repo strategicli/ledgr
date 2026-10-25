@@ -4,6 +4,7 @@
 // never the shared GRAPH_* one. Graph shapes stop at this file.
 import { graphFetch, GraphError, type GraphCredentials } from "@/modules/microsoft/lib/client";
 import { getMailGraphConnection, getMailUpn } from "./graph-auth";
+import { emptyQuery, passesPost, toGraphSearch } from "./search";
 import {
   MailProviderError,
   type CalendarAttendee,
@@ -283,15 +284,23 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
         $select: SUMMARY_SELECT,
         $top: String(Math.min(Math.max(q.limit ?? 50, 1), 100)),
       });
-      // Graph forbids $orderby together with $search.
-      if (q.search) params.set("$search", `"${q.search.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+      const g = toGraphSearch(q.query ?? emptyQuery());
+      // Graph forbids $orderby (and $filter) together with $search; search.ts
+      // splits the query so each half goes where Graph accepts it.
+      if (g.search) params.set("$search", `"${g.search.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
       else params.set("$orderby", "receivedDateTime desc");
-      if (q.unreadOnly) params.set("$filter", "isRead eq false");
+      if (g.filter) params.set("$filter", g.filter);
       const path = q.folderId ? `/mailFolders/${mid(q.folderId)}/messages` : "/messages";
       url = `${this.base}${path}?${params}`;
     }
+    // The read/flag checks Graph can't do alongside $search. A page token
+    // carries no query, so they ride along on every page.
+    const post = toGraphSearch(q.query ?? emptyQuery()).post;
     const d = await this.json<{ value?: GMessage[]; "@odata.nextLink"?: string }>(url);
-    return { messages: (d.value ?? []).map(summary), nextPageToken: d["@odata.nextLink"] ?? null };
+    return {
+      messages: (d.value ?? []).map(summary).filter((m) => passesPost(m, post)),
+      nextPageToken: d["@odata.nextLink"] ?? null,
+    };
   }
 
   private async full(m: GMessage): Promise<FullMessage> {

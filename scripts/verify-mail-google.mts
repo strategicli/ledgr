@@ -1,6 +1,7 @@
 // Offline check of the Gmail + Google Calendar providers. fetch is stubbed, so
 // no real network and never real mail. Run: npx tsx scripts/verify-mail-google.mts
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { parseMailQuery } from "../src/modules/mail/lib/search";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -170,7 +171,7 @@ reset();
 on("GET", "/messages?", 200, { messages: [{ id: "m1" }, { id: "m2" }], nextPageToken: "np" });
 on("GET", "/messages/m", 200, fullMsg);
 {
-  const page = await gm.listMessages({ folderId: "ARCHIVE", search: "invoice", unreadOnly: true, limit: 500, pageToken: "pt" });
+  const page = await gm.listMessages({ folderId: "ARCHIVE", query: { ...parseMailQuery("invoice"), unread: true }, limit: 500, pageToken: "pt" });
   const u = new URL(calls[0].url);
   check("ARCHIVE uses q, not labelIds", !u.searchParams.has("labelIds") && u.searchParams.get("q") === "-in:inbox -in:sent -in:drafts -in:trash -in:spam invoice is:unread", u.searchParams.get("q") ?? "");
   check("limit capped at 100, pageToken passed", u.searchParams.get("maxResults") === "100" && u.searchParams.get("pageToken") === "pt");

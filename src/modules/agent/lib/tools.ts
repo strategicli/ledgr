@@ -35,6 +35,16 @@ export const TOOL_TIERS: Record<string, Tier> = {
   link_to_line: "R",
   list_website_pages: "R",
   page_design_options: "R",
+  // Mail (hub only): reading is a read; making items and importing files only
+  // add to Ledgr; acting changes the owner's real mailbox, so it asks.
+  mail_accounts: "R",
+  mail_list_folders: "R",
+  mail_list_tags: "R",
+  mail_search: "R",
+  mail_read: "R",
+  mail_make_item: "W",
+  mail_import_attachments: "W",
+  mail_act: "D",
 
   create_item: "W",
   update_item: "W",
@@ -135,6 +145,12 @@ export function describeCall(tool: string, args: Record<string, unknown>): strin
       return "Publish an item to a website page (it becomes public)";
     case "unpublish_from_page":
       return "Take an item off a website page";
+    case "mail_act": {
+      const n = Array.isArray(args.items) ? args.items.length : 0;
+      const kind = s((args.action as { kind?: unknown } | undefined)?.kind);
+      const verb: Record<string, string> = { archive: "Archive", trash: "Delete", move: "Move", read: "Mark read state of", flag: "Flag or unflag", tags: "Change tags on", restore: "Restore" };
+      return `${verb[kind] ?? "Change"} ${n === 1 ? "an email" : `${n} emails`}`;
+    }
     default:
       return tool.replace(/_/g, " ");
   }

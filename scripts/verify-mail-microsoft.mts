@@ -16,6 +16,7 @@ function check(name: string, ok: boolean, detail = "") {
 
 const { getMicrosoftMail, getMicrosoftCalendar } = await import("../src/modules/mail/lib/microsoft");
 const { MailProviderError } = await import("../src/modules/mail/lib/types");
+const { parseMailQuery } = await import("../src/modules/mail/lib/search");
 
 type Call = { url: URL; method: string; headers: Record<string, string>; body: unknown };
 let calls: Call[] = [];
@@ -71,12 +72,17 @@ try {
 
   // --- search / unread / limit --------------------------------------------
   reset([["GET", "/mailFolders/f1/messages", { value: [] }]]);
-  await mail.listMessages({ folderId: "f1", search: 'say "hi"', unreadOnly: true, limit: 500 });
+  reset([["GET", "/mailFolders/f1/messages", { value: [msg({ id: "a", isRead: true }), msg({ id: "b", isRead: false })] }]]);
+  const searched = await mail.listMessages({ folderId: "f1", query: { ...parseMailQuery('say "hi there"'), unread: true }, limit: 500 });
   const sp = last().url.searchParams;
-  check("search drops $orderby", sp.get("$orderby") === null);
-  check("search term is double-quoted with inner quotes escaped", sp.get("$search") === '"say \\"hi\\""', String(sp.get("$search")));
+  check("search drops $orderby and $filter", sp.get("$orderby") === null && sp.get("$filter") === null);
+  check("search is KQL inside escaped quotes", sp.get("$search") === '"\\"say\\" \\"hi there\\""', String(sp.get("$search")));
   check("limit capped at 100", sp.get("$top") === "100");
-  check("unreadOnly filter", sp.get("$filter") === "isRead eq false");
+  check("unread checked after a word search", searched.messages.length === 1 && searched.messages[0].id === "b");
+  reset([["GET", "/mailFolders/f1/messages", { value: [] }]]);
+  await mail.listMessages({ folderId: "f1", query: { ...parseMailQuery(""), unread: true } });
+  const sp2 = last().url.searchParams;
+  check("unread chip is a $filter led by the $orderby field", sp2.get("$filter") === "receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false" && sp2.get("$orderby") === "receivedDateTime desc", String(sp2.get("$filter")));
 
   // --- page token SSRF guard ----------------------------------------------
   reset();

@@ -14,7 +14,7 @@ import { getDb } from "@/db";
 import { createAttachmentFromBytes } from "@/lib/attachments";
 import { bodyMarkdown, makeMarkdownBody } from "@/lib/body";
 import { createItem, updateItem } from "@/lib/item-mutations";
-import { getItem } from "@/lib/items";
+import { ItemError, getItem } from "@/lib/items";
 import { buildEmbedReference } from "@/lib/mcp/tools/attachments";
 import { relateItems } from "@/lib/relations";
 import { emailToMarkdown } from "@/modules/email-capture/lib/html";
@@ -168,6 +168,44 @@ export async function saveAttachment(
   const next = existing.trim() ? `${existing.replace(/\s+$/, "")}\n\n${ref}\n` : `${ref}\n`;
   await updateItem(ownerId, itemId, { body: makeMarkdownBody(next) });
   return { fileUrl: stored.fileUrl };
+}
+
+// One-click import: the email's files become a new note in Ledgr, linked to the
+// email (so it shows under "In Ledgr") and to the sender's person record. One
+// file is titled by its name; several share a note titled by the subject.
+// `attachmentIds` omitted = every file that isn't an inline picture.
+export async function importAttachments(
+  ownerId: string,
+  account: AccountId,
+  messageId: string,
+  attachmentIds?: string[]
+): Promise<LinkedItem> {
+  const m = await readMessage(account, messageId);
+  const files = m.attachments.filter((a) => (attachmentIds ? attachmentIds.includes(a.id) : !a.inline));
+  if (!files.length) throw new ItemError("bad_request", "That email has no attachment to import.");
+  const title = files.length === 1 ? files[0].name : `Attachments: ${m.subject.trim() || "(no subject)"}`;
+  const item = await createItem(ownerId, {
+    type: "note",
+    title,
+    body: makeMarkdownBody(footer(m)),
+    properties: { email: emailLinkFor(m) },
+    inbox: false,
+  });
+  const refs: string[] = [];
+  for (const f of files) {
+    const a = await provider(account).getAttachment(m.id, f.id);
+    const stored = await createAttachmentFromBytes(ownerId, {
+      itemId: item.id,
+      filename: a.name,
+      contentType: a.contentType,
+      bytes: a.bytes,
+    });
+    refs.push(buildEmbedReference(a.contentType, stored.fileUrl, a.name));
+  }
+  await updateItem(ownerId, item.id, { body: makeMarkdownBody(`${refs.join("\n\n")}\n\n${footer(m)}`) });
+  const personId = m.from?.email ? await personByEmail(ownerId, m.from.email) : null;
+  if (personId) await relateItems(ownerId, item.id, personId);
+  return { id: item.id, type: item.type, title: item.title ?? title, status: item.status ?? null };
 }
 
 // The flag job: every finished task made from an email unflags that email,
