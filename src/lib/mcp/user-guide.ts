@@ -2264,34 +2264,70 @@ the module never appears there.
 
 **Reading mail.** Open **Mail** at \`/mail\` (add it to your nav from the
 destination picker, or find it with ⌘K). Pick **Outlook**, **Gmail**, or
-**All** for one combined inbox, where a small colored dot marks each message's
-account. Folders (Outlook) or labels (Gmail) are on the left with unread
-counts, the messages in the middle, and the whole conversation on the right.
-Search covers the account you're in, or both under All, and **Unread only**
-narrows the list. Mail is shown live from Microsoft and Google, nothing is
-copied into Ledgr. Opening a message marks it read, as Outlook and Gmail do.
-Pictures from the internet stay hidden until you click **Show pictures**;
-attachments download rather than open in Ledgr. Keys: j and k move, Enter
-opens, / searches.
+**All** for one combined inbox at the top of the left column; a small colored
+dot on each sender marks the account. Folders (Outlook) or labels (Gmail) are
+on the left with unread counts, and your Outlook categories or Gmail labels sit
+under a **Tags** heading that stays folded until you open it (click a tag to
+show the messages on screen that carry it). The list groups mail by Today,
+Yesterday, This week and Earlier. **Comfortable** shows the sender, subject and
+a preview on separate lines; **Compact** fits one message per line and gives
+the subject the most room. Your choice is remembered on this computer. The
+chips above the list narrow it to **Unread**, **Flagged**, **Files** or **In
+Ledgr** (mail you have already made into a task, note or meeting). Mail is
+shown live from Microsoft and Google, nothing is copied into Ledgr. Opening a
+message marks it read, as Outlook and Gmail do. Pictures from the internet stay
+hidden until you click **Show pictures**.
 
-**Filing mail.** The bar above an open message, or **Select** above the list
-for several at once, offers **Archive**, **Delete**, **Move to…**, **Mark
-read**/**unread**, **Flag** and **Tags…** (your Outlook categories or Gmail
-labels, same names and colors). Archive does each account's own archive.
-Delete moves to the trash, never deletes for good. Every action shows an
-**Undo**. Moving and tagging need messages from one account at a time.
+**Searching mail.** Type in the search box and press Enter. Words search every
+folder of the account you're in (both accounts under **All**), the way Gmail
+does, and the same words mean the same thing in Outlook and Gmail. Click the
+box to see what narrows a search: \`from:\`, \`to:\`, \`subject:\`,
+\`"exact phrase"\`, \`-word\` to leave a word out, \`has:attachment\`,
+\`filename:\`, \`is:unread\`, \`is:flagged\`, \`after:2026-10-01\` and
+\`before:\`, and \`in:sent\` (or inbox, archive, trash…) to stay in one
+folder. Anything else with a colon, like "Re:" or "10:30", is searched as
+plain text.
 
-**Mail into tasks, notes and meetings.** Above an open message, **Make task**,
-**Make note** or **Make meeting** files it in Ledgr in one click: the subject
+**Keys.** j and k (or the arrow keys) move through the list and open each
+message, **Backspace** archives, **Delete** deletes, e and # do the same as in
+Gmail, s flags, u marks unread, t, n and m make a task, note or meeting, /
+jumps to search, and Esc leaves Select. With messages selected, the keys act
+on all of them.
+
+**Filing mail.** The icons above an open message, the buttons that appear when
+you hover a message in the list, or **Select** above the list for several at
+once (or click a sender's picture) offer **Archive**, **Delete**, **Move to
+folder**, **Tags**, **Mark read**/**unread** and **Flag**. Archive does each
+account's own archive. Delete moves to the trash, never deletes for good. When
+you archive or delete the message you're reading, the next one opens. Every
+action shows an **Undo**. Moving and tagging need messages from one account at
+a time.
+
+**Mail into tasks, notes and meetings.** **Task**, **Note** and **Meeting** at
+the top right of an open message file it in Ledgr in one click: the subject
 becomes the title, the sender is linked to their person record if you have
 one, and the item gets a **View email in Mail** link back (it opens on this
 computer, not on the cloud copy). A note brings the email's text along; a task
 or meeting keeps a short preview and points at the live email. Making a task
 flags the email, and finishing the task clears the flag within a few minutes,
-wherever you finish it. Linked emails show a small task, note or meeting icon in
-the list, and one email can have several items. **Save to item** next to an
-attachment copies it into a linked item. If the email is deleted later, the item
+wherever you finish it. The **In Ledgr** box above each conversation lists
+everything made from it, with its status, and the list shows small Task, Note
+and Meeting labels on linked mail. If the email is deleted later, the item
 keeps the sender, subject and preview, and the link says the email is gone.
+
+**Attachments into Ledgr.** Each file in an email has an **Import** button (the
+blue page with a plus): one click makes a new note in Ledgr holding the file,
+linked to the email and its sender. **Import all files** does the same for
+every file at once, in one note. When the email is already linked to an item,
+the link button beside a file adds it to that item instead, and the arrow
+downloads it.
+
+**Mail with Claude.** While Mail & Calendar is on, Claude can do everything
+this screen does through the Ledgr connector: list and search mail with the
+same search words, read a message or a whole conversation, archive, delete,
+move, flag and tag, make a task, note or meeting from an email, and import
+attachments. It works only through the Ledgr on your own computer, and it never
+sends mail.
 
 **Public access (Tailscale Funnel).** Once connected, the same panel can make
 that address work from the public internet too: **Make this reachable from the

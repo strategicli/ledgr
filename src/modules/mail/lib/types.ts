@@ -4,6 +4,8 @@
 // that the Rust port rewrites. Keep this list short and provider-neutral:
 // nothing here may carry a Graph or Gmail JSON shape.
 
+import type { MailQuery } from "./search";
+
 export type AccountId = "microsoft" | "gmail";
 
 // An Outlook folder or a Gmail label. Gmail labels double as the tag list
@@ -73,8 +75,8 @@ export type FullMessage = MessageSummary & {
 
 export type ListMessagesQuery = {
   folderId?: string;
-  search?: string;
-  unreadOnly?: boolean;
+  // Parsed once in search.ts; each provider translates it to its own dialect.
+  query?: MailQuery;
   pageToken?: string;
   limit?: number;
 };

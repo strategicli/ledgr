@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { mailGate } from "@/modules/mail/lib/gate";
-import { createFromEmail, linkedItems, saveAttachment, type LinkType } from "@/modules/mail/lib/links";
+import { createFromEmail, importAttachments, linkedItems, saveAttachment, type LinkType } from "@/modules/mail/lib/links";
 import { isAccount } from "@/modules/mail/lib/reading";
 import { MailProviderError } from "@/modules/mail/lib/types";
 
@@ -9,6 +9,7 @@ import { MailProviderError } from "@/modules/mail/lib/types";
 //   lookup  { emails: [{id, internetMessageId}] }       → { links: {emailId: LinkedItem[]} }
 //   create  { account, id, type: task|note|event }      → { item }  (a task also flags the email)
 //   attach  { account, messageId, attachmentId, itemId } → { fileUrl }
+//   import  { account, messageId, attachmentIds? }       → { item }  (a new note holding the files)
 export const dynamic = "force-dynamic";
 
 const TYPES: LinkType[] = ["task", "note", "event"];
@@ -45,8 +46,15 @@ export async function POST(req: Request) {
         }
         return NextResponse.json(await saveAttachment(ownerId, b.account, b.messageId, b.attachmentId, b.itemId));
       }
+      case "import": {
+        const ids = b.attachmentIds === undefined ? undefined : Array.isArray(b.attachmentIds) ? b.attachmentIds : null;
+        if (!isAccount(b.account) || !str(b.messageId) || ids === null || (ids && (!ids.length || ids.length > 50 || !ids.every((x) => str(x))))) {
+          return bad("account and messageId are required; attachmentIds, when given, is a list of ids");
+        }
+        return NextResponse.json({ item: await importAttachments(ownerId, b.account, b.messageId, ids as string[] | undefined) });
+      }
       default:
-        return bad("op must be lookup, create or attach");
+        return bad("op must be lookup, create, attach or import");
     }
   } catch (err) {
     if (err instanceof MailProviderError) {
