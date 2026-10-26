@@ -19,6 +19,7 @@ import Mention from "@tiptap/extension-mention";
 import { NodeRange } from "@tiptap/pm/model";
 import { liftTarget } from "@tiptap/pm/transform";
 import Image from "@tiptap/extension-image";
+import { OrderedList } from "@tiptap/extension-list";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import {
   BLOCKNOTE_COLORS,
@@ -41,6 +42,7 @@ import {
   type ImageToken,
 } from "@/lib/editor/image-markdown";
 import {
+  alignOrderedItemContent,
   hydrateEmptyListItems,
   spaceEmptyListItems,
   stripSentinelText,
@@ -466,6 +468,26 @@ export const OrderedListTextFix = Extension.create({
     const tokens = (token as { tokens?: unknown[] }).tokens;
     if (!tokens || tokens.length === 0) return [];
     return helpers.parseInline(tokens as Parameters<typeof helpers.parseInline>[0]);
+  },
+});
+
+// Sub-bullets under a numbered item stay siblings (Brandon, 2026-10-26). The
+// stock OrderedList tokenizer nests every sub-bullet after the first under the
+// first when content is indented 4 spaces (our serializer's step); see
+// alignOrderedItemContent for the upstream bug. We feed it aligned input, then
+// hand marked back the ORIGINAL lines as `raw`: marked advances by raw.length,
+// and alignment only removes leading spaces, so the line count still matches.
+const upstreamOrderedTokenizer = OrderedList.config.markdownTokenizer!;
+export const AlignedOrderedList = OrderedList.extend({
+  markdownTokenizer: {
+    ...upstreamOrderedTokenizer,
+    tokenize: (src, tokens, lexer) => {
+      const token = upstreamOrderedTokenizer.tokenize(alignOrderedItemContent(src), tokens, lexer);
+      if (token?.raw) {
+        token.raw = src.split("\n").slice(0, token.raw.split("\n").length).join("\n");
+      }
+      return token;
+    },
   },
 });
 
