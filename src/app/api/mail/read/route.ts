@@ -2,20 +2,19 @@ import { NextResponse } from "next/server";
 import { createLogger, errorMessage } from "@/lib/log";
 import { mailGate } from "@/modules/mail/lib/gate";
 import {
-  connectedAccounts,
   isAccount,
   listFolders,
   listMessages,
   provider,
   readMessage,
   readThread,
+  readThreadLight,
 } from "@/modules/mail/lib/reading";
 import { MailProviderError } from "@/modules/mail/lib/types";
 
 // Everything the mail screens read, live from Outlook and Gmail (phase 2).
 // Read only: nothing here marks, moves or sends.
 //
-//   ?view=accounts                                  which accounts are connected
 //   ?view=folders&account=microsoft|gmail           folders/labels with unread counts
 //   ?view=tags&account=microsoft|gmail              Outlook categories / Gmail user labels
 //   ?view=messages&account=…|all[&folder][&q][&unread=1][&flagged=1][&files=1][&page]
@@ -23,7 +22,9 @@ import { MailProviderError } from "@/modules/mail/lib/types";
 //                                                   q is the search.ts language, and
 //                                                   words in it search the whole mailbox
 //   ?view=message&account=…&id=…                    one message, inline pictures resolved
-//   ?view=thread&account=…&id=<threadId>            the whole conversation, oldest first
+//   ?view=thread&account=…&id=<threadId>            the whole conversation, oldest first;
+//     &light=1[&hint=<messageId>]                   only the newest (and the hint) in full,
+//                                                   the rest as summaries marked partial
 export const dynamic = "force-dynamic";
 
 const log = createLogger("mail");
@@ -39,8 +40,6 @@ export async function GET(req: Request) {
 
   try {
     switch (view) {
-      case "accounts":
-        return NextResponse.json({ accounts: connectedAccounts() });
       case "folders":
         if (!isAccount(account)) return bad("account must be microsoft or gmail");
         return NextResponse.json({ folders: await listFolders(account) });
@@ -67,7 +66,12 @@ export async function GET(req: Request) {
         return NextResponse.json({ message: await readMessage(account, id) });
       case "thread":
         if (!isAccount(account) || !id) return bad("account and id are required");
-        return NextResponse.json({ messages: await readThread(account, id) });
+        return NextResponse.json({
+          messages:
+            sp.get("light") === "1"
+              ? await readThreadLight(account, id, sp.get("hint") || undefined)
+              : await readThread(account, id),
+        });
       default:
         return bad("unknown view");
     }

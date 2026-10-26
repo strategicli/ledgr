@@ -25,7 +25,7 @@ function check(name: string, ok: boolean, detail = "") {
   if (!ok) failures += 1;
 }
 
-const { swapInlineImages, listMessages } = await import("../src/modules/mail/lib/reading");
+const { swapInlineImages, listMessages, readThreadLight } = await import("../src/modules/mail/lib/reading");
 
 // --- swapInlineImages -------------------------------------------------------
 const png = (cid: string, base64 = "AAAA", contentType = "image/png") => ({ contentId: cid, contentType, base64 });
@@ -63,6 +63,17 @@ globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestIni
   const path = decodeURIComponent(url.pathname);
   if (url.host === "graph.microsoft.com") {
     if (failOutlook) return Response.json({ error: { message: "outlook down" } }, { status: 500 });
+    if (path.endsWith("/messages") && url.searchParams.get("$filter")?.startsWith("conversationId")) {
+      return Response.json({
+        value: [
+          { id: "t2", receivedDateTime: "2026-06-20T11:00:00Z" },
+          { id: "t1", receivedDateTime: "2026-06-20T10:00:00Z" },
+          { id: "t3", receivedDateTime: "2026-06-20T12:00:00Z" },
+        ],
+      });
+    }
+    const one = /\/messages\/([^/]+)$/.exec(path);
+    if (one) return Response.json({ id: one[1], receivedDateTime: "2026-06-20T10:00:00Z", body: { contentType: "text", content: `body ${one[1]}` } });
     if (path.endsWith("/mailFolders/inbox/messages")) {
       return Response.json({
         value: [
@@ -107,6 +118,16 @@ try {
   failGmail = true;
   const r4 = await listMessages({ account: "all" });
   check("Gmail failing reports it and keeps Outlook", r4.errors.length === 1 && r4.errors[0].account === "gmail" && r4.messages.map((m) => m.id).join() === "o1,o2");
+  failGmail = false;
+
+  // --- a long conversation opens light ----------------------------------------
+  calls = [];
+  const light = await readThreadLight("microsoft", "conv1", "t1");
+  check("light thread: every message, oldest first", light.map((m) => m.id).join() === "t1,t2,t3", light.map((m) => m.id).join());
+  check("light thread: the hint and the newest are full, the rest folded", !light[0].partial && light[0].bodyText === "body t1" && light[1].partial === true && light[1].bodyText === null && !light[2].partial);
+  const fullReads = calls.filter((c) => /\/messages\/[^/]+$/.test(c.url.pathname)).map((c) => c.url.pathname.split("/").pop());
+  check("light thread: only two full reads (hint + newest)", fullReads.sort().join() === "t1,t3", fullReads.join());
+  check("light thread: the summary call asks for no body", !calls.some((c) => c.url.searchParams.get("$filter") && (c.url.searchParams.get("$select") ?? "").split(",").includes("body")));
 } finally {
   globalThis.fetch = realFetch;
 }

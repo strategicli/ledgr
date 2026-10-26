@@ -303,6 +303,13 @@ export class GmailProvider implements MailProvider {
     return (t.messages ?? []).map(toFull);
   }
 
+  async getThreadSummaries(threadId: string): Promise<MessageSummary[]> {
+    const meta = new URLSearchParams({ format: "metadata" });
+    for (const h of ["From", "To", "Subject", "Message-ID", "Date"]) meta.append("metadataHeaders", h);
+    const t = await gmail<{ messages?: GMessage[] }>(`/threads/${threadId}?${meta}`);
+    return (t.messages ?? []).map(toSummary);
+  }
+
   async getInlineImages(messageId: string): Promise<InlineImage[]> {
     const m = await gmail<GMessage>(`/messages/${messageId}?format=full`);
     const found = { html: null as string | null, text: null as string | null, atts: [] as MailAttachmentMeta[], imgs: [] as Part[] };
