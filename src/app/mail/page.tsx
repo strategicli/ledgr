@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { resolveOwner } from "@/lib/owner";
 import { pageGate } from "@/lib/modules/gate";
 import MailClient from "@/modules/mail/components/MailClient";
+import { connectedAccounts } from "@/modules/mail/lib/reading";
 import { mailAvailable } from "@/modules/mail/manifest";
 
 export const dynamic = "force-dynamic";
@@ -17,5 +18,6 @@ export default async function MailPage() {
   const owner = await resolveOwner();
   if (!owner) redirect("/sign-in");
   await pageGate(owner.id, "mail");
-  return <MailClient />;
+  // Handed over with the page so the screen never waits on a separate account check.
+  return <MailClient accounts={connectedAccounts()} />;
 }

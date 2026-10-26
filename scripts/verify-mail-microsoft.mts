@@ -165,6 +165,7 @@ try {
   const byId = Object.fromEntries(folders.map((f) => [f.id, f]));
   check("folders: roles resolved, 404 archive tolerated", byId["F-IN"].role === "inbox" && byId["F-DEL"].role === "trash" && folders.length === 3);
   check("folders: nested child has parentId and no role", byId["F-KID"].parentId === "F-IN" && byId["F-KID"].role === null && byId["F-IN"].unread === 4);
+  check("folders: each parent is followed by its children", folders.map((f) => f.id).join() === "F-IN,F-KID,F-DEL", folders.map((f) => f.id).join());
 
   // --- tags ---------------------------------------------------------------
   reset([["GET", "/outlook/masterCategories", { value: [{ displayName: "Red", color: "preset0" }, { displayName: "Plain", color: "none" }] }]]);
@@ -181,6 +182,28 @@ try {
   reset([["GET", "/messages?", { value: [msg({ id: "m2", receivedDateTime: "2026-06-21T10:00:00Z" }), msg({ id: "m1" })] }]]);
   const thread = await mail.getThread("it's");
   check("getThread: filter escapes quote, no $orderby, sorted ascending", last().url.searchParams.get("$filter") === "conversationId eq 'it''s'" && last().url.searchParams.get("$orderby") === null && thread.map((t) => t.id).join() === "m1,m2");
+  const sums = await mail.getThreadSummaries("c1");
+  check("getThreadSummaries: same filter, no body asked for", !(last().url.searchParams.get("$select") ?? "").split(",").includes("body") && sums.map((t) => t.id).join() === "m2,m1");
+
+  // --- Outlook's limit: at most 4 requests at once per mailbox -----------------
+  reset([["GET", "/messages/", msg()]]);
+  const inner = globalThis.fetch;
+  let now = 0;
+  let peak = 0;
+  globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
+    const graph = new URL(String(a[0])).host === "graph.microsoft.com";
+    if (graph) peak = Math.max(peak, ++now);
+    try {
+      if (graph) await new Promise((r) => setTimeout(r, 15));
+      return await inner(...a);
+    } finally {
+      if (graph) now--;
+    }
+  }) as typeof fetch;
+  await Promise.all(Array.from({ length: 10 }, (_, i) => mail.getMessage(`q${i}`)));
+  globalThis.fetch = inner;
+  check("never more than 4 Graph requests in flight", peak === 4, `peak ${peak}`);
+
   reset([["GET", "/attachments/a1", { name: "x.txt", contentType: "text/plain", contentBytes: "aGk=" }]]);
   const att = await mail.getAttachment("m1", "a1");
   check("getAttachment decodes base64", new TextDecoder().decode(att.bytes) === "hi");

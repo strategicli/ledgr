@@ -71,6 +71,9 @@ export type FullMessage = MessageSummary & {
   bodyText: string | null;
   attachments: MailAttachmentMeta[];
   webLink: string | null;
+  // Only the summary was loaded (a folded message in a long conversation):
+  // body, recipients beyond To, and attachments are empty until it is read.
+  partial?: true;
 };
 
 export type ListMessagesQuery = {
@@ -108,6 +111,9 @@ export interface MailProvider {
   listMessages(q: ListMessagesQuery): Promise<MessagePage>;
   getMessage(id: string): Promise<FullMessage>;
   getThread(threadId: string): Promise<FullMessage[]>;
+  // The conversation's list rows only, in any order: no bodies, attachments
+  // or pictures. What the reader shows for folded messages.
+  getThreadSummaries(threadId: string): Promise<MessageSummary[]>;
   getAttachment(
     messageId: string,
     attachmentId: string

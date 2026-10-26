@@ -7,7 +7,7 @@
 // /api/mail/link. Never sends.
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { showToast } from "@/components/ui/ActionToast";
 import { badgeCount, formatBytes } from "@/lib/format-count";
@@ -49,6 +49,46 @@ async function getJson<T>(params: Record<string, string | undefined>, signal: Ab
 
 function msg(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+
+// What this tab has already seen (runbook perf rules: show the saved copy,
+// then refresh it). Memory only, never browser storage: closing the tab
+// forgets all of it, so no mail is kept on disk.
+const listCache = new Map<string, ListData>();
+const folderCache = new Map<AccountId, MailFolder[]>();
+const threadCache = new Map<string, { messages: FullMessage[]; at: number }>();
+const threadLoads = new Map<string, Promise<FullMessage[]>>();
+// A conversation loaded this recently is shown without asking again.
+const THREAD_FRESH_MS = 30_000;
+
+function remember<K, V>(m: Map<K, V>, k: K, v: V, cap: number) {
+  m.delete(k);
+  m.set(k, v);
+  if (m.size > cap) m.delete(m.keys().next().value as K);
+}
+
+// One conversation, by row key ("account:threadId"): summaries for every
+// message, full text for the newest and for `hint` (the row's own message).
+// Shared by opening and loading ahead, so the two never fetch the same one
+// twice. A plain read: nothing here marks a message read.
+function loadThread(key: string, hint: string | undefined): Promise<FullMessage[]> {
+  const pending = threadLoads.get(key);
+  if (pending) return pending;
+  const i = key.indexOf(":");
+  const p = getJson<{ messages: FullMessage[] }>(
+    { view: "thread", account: key.slice(0, i), id: key.slice(i + 1), light: "1", hint },
+    new AbortController().signal
+  )
+    .then(({ messages }) => {
+      // Keep the full text of anything already expanded and read.
+      const prev = threadCache.get(key)?.messages;
+      const merged = messages.map((x) => (x.partial ? (prev?.find((y) => y.id === x.id && !y.partial) ?? x) : x));
+      remember(threadCache, key, { messages: merged, at: Date.now() }, 100);
+      return merged;
+    })
+    .finally(() => threadLoads.delete(key));
+  threadLoads.set(key, p);
+  return p;
 }
 
 const LINK_TYPES: LinkType[] = ["task", "note", "event"];
@@ -275,34 +315,26 @@ function usePref<T extends string>(key: string, fallback: T): [T, (v: T) => void
   return [v, set];
 }
 
-export default function MailClient() {
+// The page hands over which accounts are connected, so there's no separate check.
+export default function MailClient({ accounts }: { accounts: AccountId[] }) {
   return (
     <Suspense fallback={<div className="p-6 ui-meta text-ink-muted">Loading mail…</div>}>
-      <MailScreen />
+      <MailScreen accounts={accounts} />
     </Suspense>
   );
 }
 
-function MailScreen() {
-  const router = useRouter();
+// Each account's inbox by its built-in name, so the list needn't wait for folders.
+const INBOX_ID: Record<AccountId, string> = { microsoft: "inbox", gmail: "INBOX" };
+
+function MailScreen({ accounts }: { accounts: AccountId[] }) {
   const pathname = usePathname();
   const sp = useSearchParams();
   const tier = useLayoutTier();
   const [density, setDensity] = usePref<Density>("ledgr.mail.density", "comfortable");
 
-  const [accounts, setAccounts] = useState<AccountId[] | null>(null);
-  const [accountsError, setAccountsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const ac = new AbortController();
-    getJson<{ accounts: AccountId[] }>({ view: "accounts" }, ac.signal)
-      .then((d) => setAccounts(d.accounts))
-      .catch((e) => {
-        if (!ac.signal.aborted) setAccountsError(msg(e));
-      });
-    return () => ac.abort();
-  }, []);
-
+  // The address bar follows every click (so Back, reload and links work), but
+  // without asking the server to redraw the page: the screen loads its own data.
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
       const next = new URLSearchParams(sp.toString());
@@ -311,9 +343,9 @@ function MailScreen() {
         else next.delete(k);
       }
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
     },
-    [sp, router, pathname]
+    [sp, pathname]
   );
 
   const options: AccountView[] = useMemo(
@@ -343,6 +375,7 @@ function MailScreen() {
     const ac = new AbortController();
     getJson<{ folders: MailFolder[] }>({ view: "folders", account }, ac.signal)
       .then((d) => {
+        remember(folderCache, account, d.folders, 4);
         setFolders({ account, list: d.folders });
         setFoldersError(null);
       })
@@ -352,8 +385,9 @@ function MailScreen() {
     return () => ac.abort();
   }, [account]);
 
+  // The saved copy shows until the refreshed one lands.
   const folderList: MailFolder[] | null =
-    account && account !== "all" && folders?.account === account ? folders.list : null;
+    account && account !== "all" ? (folders?.account === account ? folders.list : (folderCache.get(account) ?? null)) : null;
   const ordered = useMemo(() => {
     if (!folderList) return [];
     const byParent = new Map<string | null, MailFolder[]>();
@@ -384,10 +418,15 @@ function MailScreen() {
 
   const rawFolder = sp.get("folder");
   const inboxId = folderList?.find((f) => f.role === "inbox")?.id;
+  // A single account with no folder picked lists its inbox by built-in name at
+  // once; the sidebar marks the real inbox when the folder list arrives.
   const folder: string | undefined =
-    account === "all" ? (rawFolder && ROLES.includes(rawFolder as (typeof ROLES)[number]) ? rawFolder : "inbox") : (rawFolder ?? inboxId);
-  // A single account waits for its folder list so the first fetch already knows the inbox.
-  const foldersReady = account === "all" || !!rawFolder || !!folderList || !!foldersError;
+    account === "all"
+      ? rawFolder && ROLES.includes(rawFolder as (typeof ROLES)[number])
+        ? rawFolder
+        : "inbox"
+      : (rawFolder ?? (account ? INBOX_ID[account] : undefined));
+  const shownFolder = account && account !== "all" && !rawFolder ? (inboxId ?? folder) : folder;
 
   // ---- message list (keeps the old list on screen while the next one loads)
   const [list, setList] = useState<ListData | null>(null);
@@ -395,9 +434,12 @@ function MailScreen() {
   const [listError, setListError] = useState<string | null>(null);
   const [moreLoading, setMoreLoading] = useState(false);
   const [retry, setRetry] = useState(0);
-  const listKey = `${account}|${folder ?? ""}|${q}|${unread}|${flagged}|${files}|${retry}`;
-  const listLoading = foldersReady && settledKey !== listKey;
+  const viewKey = `${account}|${folder ?? ""}|${q}|${unread}|${flagged}|${files}`;
+  const listKey = `${viewKey}|${retry}`;
+  const listLoading = settledKey !== listKey;
   const moreAbort = useRef<AbortController | null>(null);
+  // Counts actions taken, so a refresh that was already on its way can't undo one on screen.
+  const acts = useRef(0);
   const listParams = useCallback(
     () => ({
       view: "messages",
@@ -412,11 +454,21 @@ function MailScreen() {
   );
 
   useEffect(() => {
-    if (!account || !foldersReady) return;
+    if (!account) return;
     moreAbort.current?.abort();
     const ac = new AbortController();
+    // A list seen earlier this session shows at once; the fetch below refreshes it.
+    const saved = listCache.get(viewKey);
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setList(saved);
+      setSettledKey(listKey);
+    }
+    const actsAtStart = acts.current;
     getJson<ListData>(listParams(), ac.signal)
       .then((d) => {
+        // Asked before an archive or flag on the saved copy: that copy is newer.
+        if (saved && acts.current !== actsAtStart) return;
         setList(d);
         setListError(null);
         setSettledKey(listKey);
@@ -429,7 +481,14 @@ function MailScreen() {
     return () => ac.abort();
     // listKey covers every list parameter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey, foldersReady]);
+  }, [listKey]);
+
+  // Every change to the list on screen (refresh, more pages, an archive) is
+  // saved for this view, once the list on screen belongs to it.
+  useEffect(() => {
+    if (list && settledKey === listKey) remember(listCache, viewKey, list, 30);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, settledKey]);
 
   function loadMore() {
     if (!account || !list?.nextPageToken) return;
@@ -589,6 +648,7 @@ function MailScreen() {
 
   async function doAct(targets: MessageSummary[], action: MailAction, silent = false) {
     if (!targets.length) return;
+    acts.current++;
     setActError(null);
     const keys = new Set(targets.map(selKey));
     const order = new Map(allRows.map((r, i) => [selKey(r), i]));
@@ -639,6 +699,17 @@ function MailScreen() {
     // doAct is a plain function over refs and setters; m and rows are the real triggers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [m, allRows]);
+
+  // Load ahead: the conversations J/K or ↓/↑ would open next (or the first
+  // one, when none is open) go into this tab's memory. Only reads them: the
+  // mark-read above runs when a message is actually opened, never here.
+  useEffect(() => {
+    const at = m ? rows.findIndex((r) => rowKey(r) === m) : -1;
+    const next = at < 0 ? [rows[0]] : [rows[at + 1], rows[at - 1]];
+    for (const r of next) {
+      if (r && !threadCache.has(rowKey(r))) loadThread(rowKey(r), r.id).catch(() => {});
+    }
+  }, [m, rows]);
 
   function endSelect() {
     setSelecting(false);
@@ -726,9 +797,7 @@ function MailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ---- no account / loading
-  if (accountsError) return <Notice text={accountsError} />;
-  if (!accounts) return <div className="p-6 ui-meta text-ink-muted">Loading mail…</div>;
+  // ---- no account
   if (!account) {
     return (
       <div className="p-6 ui-row text-ink-muted">
@@ -745,8 +814,8 @@ function MailScreen() {
     account === "all"
       ? ROLE_LABEL[folder ?? "inbox"]
       : (() => {
-          const f = folderList?.find((x) => x.id === folder);
-          return f ? (f.role ? ROLE_LABEL[f.role] : f.name) : "Mail";
+          const f = folderList?.find((x) => x.id === shownFolder);
+          return f ? (f.role ? ROLE_LABEL[f.role] : f.name) : folder === INBOX_ID[account] ? "Inbox" : "Mail";
         })();
   const searching = !!q;
   const allTags = account === "all" ? [...(tagsBy.microsoft ?? []), ...(tagsBy.gmail ?? [])] : (tagsBy[account] ?? []);
@@ -755,7 +824,7 @@ function MailScreen() {
     <FolderPane
       options={options}
       account={account}
-      folder={searching ? undefined : folder}
+      folder={searching ? undefined : shownFolder}
       ordered={ordered}
       error={foldersError}
       loading={account !== "all" && !folderList && !foldersError}
@@ -925,7 +994,7 @@ function MailScreen() {
               label="Message actions"
               targets={[openedRow]}
               onAct={(a) => void doAct([openedRow], a)}
-              folder={folder}
+              folder={shownFolder}
               folders={folderList}
               tags={tagsBy}
             />
@@ -1027,7 +1096,7 @@ function MailScreen() {
                 void doAct(selectedRows, a);
                 endSelect();
               }}
-              folder={folder}
+              folder={shownFolder}
               folders={folderList}
               tags={tagsBy}
               up
@@ -1566,7 +1635,7 @@ function MovePicker({
     return () => ac.abort();
   }, [account, preloaded]);
   // `current` is a folder id, or a role name in the combined view.
-  const list = (preloaded ?? fetched)
+  const list = (preloaded ?? fetched ?? folderCache.get(account))
     ?.filter((f) => f.id !== current && f.role !== current)
     .filter((f) => !filter || (f.role ? ROLE_LABEL[f.role] : f.name).toLowerCase().includes(filter.toLowerCase()));
   return (
@@ -1854,29 +1923,63 @@ function ReadingPane({
     const account = selection.slice(0, i) as AccountId;
     const threadId = selection.slice(i + 1);
     const ac = new AbortController();
+    const row = rowsRef.current.find((r) => r.account === account && r.threadId === threadId);
+    const show = (messages: FullMessage[], fresh: boolean) => {
+      setError(null);
+      setThread({ key: selection, messages });
+      onLoaded(messages);
+      // Only a first showing unfolds the newest; a refresh keeps what's open.
+      if (fresh) setExpanded(new Set(messages.length ? [messages[messages.length - 1].id] : []));
+    };
+    // The saved copy shows at once; it is refreshed unless it was just loaded.
+    const saved = threadCache.get(selection);
+    if (saved) show(saved.messages, true);
+    if (saved && Date.now() - saved.at < THREAD_FRESH_MS) return () => ac.abort();
     (async () => {
       let messages: FullMessage[];
       try {
-        messages = (await getJson<{ messages: FullMessage[] }>({ view: "thread", account, id: threadId }, ac.signal)).messages;
+        messages = await loadThread(selection, row?.id);
       } catch (e) {
         if (ac.signal.aborted) return;
-        const row = rowsRef.current.find((r) => r.account === account && r.threadId === threadId);
+        // A refresh that fails leaves the saved copy up, unless the mail is gone.
+        if (saved && (e as { status?: number }).status !== 404) return;
         try {
           messages = [(await getJson<{ message: FullMessage }>({ view: "message", account, id: row?.id ?? threadId }, ac.signal)).message];
         } catch (e2) {
+          if (ac.signal.aborted) return;
           const gone = (e as { status?: number }).status === 404 || (e2 as { status?: number }).status === 404;
+          if (gone) threadCache.delete(selection);
           setError({ key: selection, text: gone ? GONE : msg(e) });
           return;
         }
       }
       if (ac.signal.aborted) return;
-      setError(null);
-      setThread({ key: selection, messages });
-      onLoaded(messages);
-      setExpanded(new Set(messages.length ? [messages[messages.length - 1].id] : []));
+      show(messages, !saved);
     })();
     return () => ac.abort();
   }, [selection, onLoaded]);
+
+  // Unfold one message; a folded one in a long conversation fetches its full text now.
+  function unfold(message: FullMessage) {
+    setExpanded((s) => new Set(s).add(message.id));
+    if (!message.partial || !selection) return;
+    const key = selection;
+    getJson<{ message: FullMessage }>({ view: "message", account: message.account, id: message.id }, new AbortController().signal)
+      .then(({ message: full }) => {
+        const swap = (ms: FullMessage[]) => ms.map((x) => (x.id === full.id ? full : x));
+        const saved = threadCache.get(key);
+        if (saved) threadCache.set(key, { ...saved, messages: swap(saved.messages) });
+        setThread((t) => (t?.key === key ? { key, messages: swap(t.messages) } : t));
+      })
+      .catch((e) => {
+        setExpanded((s) => {
+          const n = new Set(s);
+          n.delete(message.id);
+          return n;
+        });
+        showToast(`Couldn't open that message: ${msg(e)}`);
+      });
+  }
 
   if (!selection) {
     return (
@@ -1958,7 +2061,12 @@ function ReadingPane({
                   );
                 }
                 const isOpen = isLast || expanded.has(message.id);
-                return isOpen ? (
+                return isOpen && message.partial ? (
+                  <div key={message.id} aria-busy className={`flex flex-col gap-2 bg-surface-0 p-3.5 ${idx > 0 ? "border-t border-line" : ""}`}>
+                    <span className="ui-row font-semibold text-ink">{who(message.from)}</span>
+                    <span className="h-16 animate-pulse rounded-card bg-surface-1" />
+                  </div>
+                ) : isOpen ? (
                   <MessageView
                     key={message.id}
                     message={message}
@@ -1972,7 +2080,7 @@ function ReadingPane({
                     key={message.id}
                     type="button"
                     aria-expanded={false}
-                    onClick={() => setExpanded((s) => new Set(s).add(message.id))}
+                    onClick={() => unfold(message)}
                     className={`grid w-full grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-2.5 bg-surface-1 px-3 py-2 text-left hover:bg-surface-2 ${idx > 0 ? "border-t border-line" : ""} ${FOCUS}`}
                   >
                     <Avatar from={message.from} size={30} />

@@ -135,6 +135,25 @@ function response(r: string | undefined): CalendarAttendee["response"] {
   return r === "tentativelyAccepted" ? "tentative" : "none";
 }
 
+// Outlook serves one app at most 4 requests at a time per mailbox; a fifth gets
+// a 429 and graphFetch then sleeps seconds before retrying. So the burst of
+// opening Mail (folders, inbox, loading ahead) queues here instead.
+const MAX_IN_FLIGHT = 4;
+let inFlight = 0;
+const waiting: (() => void)[] = [];
+async function inTurn<T>(f: () => Promise<T>): Promise<T> {
+  if (inFlight < MAX_IN_FLIGHT) inFlight++;
+  else await new Promise<void>((r) => waiting.push(r));
+  try {
+    return await f();
+  } finally {
+    // Hand the slot straight to the next in line, or give it back.
+    const next = waiting.shift();
+    if (next) next();
+    else inFlight--;
+  }
+}
+
 // Shared transport: ImmutableId on everything, the mail registration's token,
 // and Graph failures surfaced as MailProviderError (with Graph's own message).
 class GraphBase {
@@ -160,7 +179,7 @@ class GraphBase {
   protected async req(url: string, method = "GET", body?: unknown): Promise<Response> {
     let res: Response;
     try {
-      res = await graphFetch(
+      res = await inTurn(() => graphFetch(
         url,
         {
           method,
@@ -171,7 +190,7 @@ class GraphBase {
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
         this.creds
-      );
+      ));
     } catch (err) {
       if (err instanceof GraphError) throw new MailProviderError(err.message, err.kind, err.status);
       throw err;
@@ -211,24 +230,22 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
 
   async listFolders(): Promise<MailFolder[]> {
     const [roles, tops] = await Promise.all([this.roleIds(), this.folderPage("/mailFolders")]);
-    const out: MailFolder[] = [];
-    const walk = async (list: GFolder[], parentId: string | null, depth: number) => {
-      for (const f of list) {
-        out.push({
-          id: f.id,
-          account: "microsoft",
-          name: f.displayName,
-          role: roles.get(f.id) ?? null,
-          parentId,
-          unread: f.unreadItemCount ?? 0,
-        });
-        if ((f.childFolderCount ?? 0) > 0 && depth < MAX_FOLDER_DEPTH) {
-          await walk(await this.folderPage(`/mailFolders/${mid(f.id)}/childFolders`), f.id, depth + 1);
-        }
-      }
+    // Every folder's subfolders are asked for at once, a level at a time, not
+    // one folder after another; the result is still parent-then-children order.
+    const walk = async (list: GFolder[], parentId: string | null, depth: number): Promise<MailFolder[]> => {
+      const kids = await Promise.all(
+        list.map((f) =>
+          (f.childFolderCount ?? 0) > 0 && depth < MAX_FOLDER_DEPTH
+            ? this.folderPage(`/mailFolders/${mid(f.id)}/childFolders`).then((c) => walk(c, f.id, depth + 1))
+            : []
+        )
+      );
+      return list.flatMap((f, i) => [
+        { id: f.id, account: "microsoft" as const, name: f.displayName, role: roles.get(f.id) ?? null, parentId, unread: f.unreadItemCount ?? 0 },
+        ...kids[i],
+      ]);
     };
-    await walk(tops, null, 1);
-    return out;
+    return walk(tops, null, 1);
   }
 
   private async folderPage(path: string): Promise<GFolder[]> {
@@ -338,13 +355,20 @@ export class GraphMailProvider extends GraphBase implements MailProvider {
     return this.full(await this.json<GMessage>(`/messages/${mid(id)}?$select=${FULL_SELECT}`));
   }
 
-  async getThread(threadId: string): Promise<FullMessage[]> {
-    // No $orderby alongside $filter (Graph rejects the combo); sort here.
+  private async threadPage(threadId: string, select: string): Promise<GMessage[]> {
+    // No $orderby alongside $filter (Graph rejects the combo); callers sort.
     const filter = `conversationId eq '${threadId.replace(/'/g, "''")}'`;
-    const params = new URLSearchParams({ $filter: filter, $select: FULL_SELECT, $top: "100" });
-    const d = await this.json<{ value?: GMessage[] }>(`/messages?${params}`);
-    const msgs = await Promise.all((d.value ?? []).map((m) => this.full(m)));
+    const params = new URLSearchParams({ $filter: filter, $select: select, $top: "100" });
+    return (await this.json<{ value?: GMessage[] }>(`/messages?${params}`)).value ?? [];
+  }
+
+  async getThread(threadId: string): Promise<FullMessage[]> {
+    const msgs = await Promise.all((await this.threadPage(threadId, FULL_SELECT)).map((m) => this.full(m)));
     return msgs.sort((a, b) => (a.receivedAt ?? "").localeCompare(b.receivedAt ?? ""));
+  }
+
+  async getThreadSummaries(threadId: string): Promise<MessageSummary[]> {
+    return (await this.threadPage(threadId, SUMMARY_SELECT)).map(summary);
   }
 
   async getInlineImages(messageId: string): Promise<InlineImage[]> {

@@ -132,6 +132,9 @@ reset();
 on("GET", "/threads/t1?format=full", 200, { messages: [fullMsg, { ...fullMsg, id: "m2" }] });
 check("getThread maps every message", (await gm.getThread("t1")).map((m) => m.id).join() === "m1,m2");
 reset();
+on("GET", "/threads/t1?format=metadata", 200, { messages: [fullMsg, { ...fullMsg, id: "m2" }] });
+check("getThreadSummaries asks for metadata only", (await gm.getThreadSummaries("t1")).map((m) => m.id).join() === "m1,m2");
+reset();
 on("GET", "/messages/m1/attachments/att1", 200, { data: Buffer.from([0, 1, 2, 250, 255]).toString("base64url") });
 on("GET", "/messages/m1?format=full", 200, fullMsg);
 {

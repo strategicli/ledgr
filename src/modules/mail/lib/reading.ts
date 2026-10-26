@@ -180,3 +180,28 @@ export async function readThread(account: AccountId, threadId: string): Promise<
   const messages = await p.getThread(threadId);
   return Promise.all(messages.map((m) => withInlineImages(p, m)));
 }
+
+const oldestFirst = (x: MessageSummary, y: MessageSummary) => (x.receivedAt ?? "").localeCompare(y.receivedAt ?? "");
+
+// A list row standing in for a message whose full text isn't loaded yet.
+function stub(s: MessageSummary): FullMessage {
+  return { ...s, cc: [], bcc: [], replyTo: [], bodyHtml: null, bodyText: null, attachments: [], webLink: null, partial: true };
+}
+
+// The conversation as the reader opens it: every message as a summary, and
+// the full text only for the newest (the one shown unfolded). `hint` is the
+// message the list row points at; it is read alongside the summaries so the
+// usual case is one round trip, and kept full if it is already loaded.
+export async function readThreadLight(account: AccountId, threadId: string, hint?: string): Promise<FullMessage[]> {
+  const p = provider(account);
+  const [summaries, hinted] = await Promise.all([
+    p.getThreadSummaries(threadId),
+    hint ? readMessage(account, hint).catch(() => null) : null,
+  ]);
+  const sorted = summaries.sort(oldestFirst);
+  const newest = sorted[sorted.length - 1];
+  if (!newest) return hinted ? [hinted] : [];
+  const full = new Map<string, FullMessage>(hinted ? [[hinted.id, hinted]] : []);
+  if (!full.has(newest.id)) full.set(newest.id, await readMessage(account, newest.id));
+  return sorted.map((s) => full.get(s.id) ?? stub(s));
+}
