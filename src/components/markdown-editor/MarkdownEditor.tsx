@@ -47,6 +47,7 @@ import {
   LedgrTable,
   ListBackspaceJoin,
   MarkdownEscapeFix,
+  AlignedOrderedList,
   OrderedListTextFix,
   SlideMark,
   TableCell,
@@ -673,7 +674,10 @@ export default function MarkdownEditor({
       // StarterKit's inline code excludes every mark, so a comment could not sit
       // on it; CommentableCode (comment-mark.ts, registered beside Comment below)
       // stands in for it.
-      StarterKit.configure({ code: false }),
+      // StarterKit's OrderedList is swapped for AlignedOrderedList (extensions.ts),
+      // which keeps sub-bullets under a numbered item at the right depth.
+      StarterKit.configure({ code: false, orderedList: false }),
+      AlignedOrderedList,
       // Serialize nested lists at a 4-space step. @tiptap/markdown defaults to
       // 2 spaces, which the editor's own (lenient) parser nests fine but
       // CommonMark renderers (markdown-it, on the print/share/export path, and

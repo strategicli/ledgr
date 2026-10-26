@@ -105,3 +105,50 @@ export function stripSentinelText<T>(node: T): T {
   }
   return node;
 }
+
+// Sub-bullets under a numbered item nest one level too deep in the editor
+// (Brandon, 2026-10-26: "Cut with four tests" in a seminar note showed True? as
+// the only child and tucked Sticky?/On target?/Short? under it).
+//
+// Root cause is @tiptap/extension-list's own ordered-list tokenizer (node_modules,
+// ordered-list/utils.ts). It strips only indent+2 columns from an item's content
+// lines, then .trim()s the joined block, which removes the leftover indent from
+// the FIRST line only. With our 4-space serializer (see Markdown.configure in
+// MarkdownEditor.tsx), `4. Cut\n    - A\n    - B` becomes `- A\n  - B`, and B
+// nests under A. Bullets are unaffected: marked's own list tokenizer reads them.
+//
+// So before that tokenizer reads a numbered list, shift each item's indented
+// content left until its shallowest line sits exactly indent+2 deep, which is
+// what the tokenizer expects. Relative depth inside the item is kept. It runs on
+// the tokenizer's own input (AlignedOrderedList in extensions.ts), never on the
+// whole body: a numbered list nested in a bullet reaches the tokenizer already
+// dedented by marked, and marked's CommonMark rules must see the original
+// indents. Editor-internal: the serializer still writes 4 spaces, so what we
+// store stays plain CommonMark that markdown-it already reads correctly.
+const ORDERED_ITEM = /^( *)\d+\.\s/;
+
+export function alignOrderedItemContent(markdown: string): string {
+  if (!/^ *\d+\.\s/m.test(markdown)) return markdown;
+  const lines = markdown.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const item = ORDERED_ITEM.exec(lines[i]);
+    if (!item) continue;
+    // The item's content, as the tokenizer collects it: every following line up
+    // to the next numbered item, while lines stay blank or indented.
+    let end = i + 1;
+    while (end < lines.length && !ORDERED_ITEM.test(lines[end]) && /^(\s|$)/.test(lines[end])) end++;
+    const want = item[1].length + 2;
+    let min = Infinity;
+    for (let j = i + 1; j < end; j++) {
+      if (lines[j].trim() !== "") min = Math.min(min, lines[j].length - lines[j].trimStart().length);
+    }
+    const shift = min - want;
+    if (shift > 0 && min !== Infinity) {
+      for (let j = i + 1; j < end; j++) {
+        if (lines[j].trim() !== "") lines[j] = lines[j].slice(shift);
+      }
+    }
+    i = end - 1;
+  }
+  return lines.join("\n");
+}

@@ -3,12 +3,16 @@
 // bullet under a paragraph must render as a bullet, never as a setext heading.
 // Run: npx tsx scripts/verify-list-markdown.mts
 import {
+  alignOrderedItemContent,
   hydrateEmptyListItems,
   spaceEmptyListItems,
   stripSentinelText,
 } from "../src/lib/editor/list-markdown";
 import { markdownToHtml } from "../src/lib/markdown-render";
 import { marked } from "marked";
+import { MarkdownManager } from "@tiptap/markdown";
+import StarterKit from "@tiptap/starter-kit";
+import { AlignedOrderedList } from "../src/components/markdown-editor/extensions";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -127,6 +131,60 @@ const ruled = markdownToHtml("- A\n    ---\n\n    B\n- C\n");
 check("render: the bullet stays a bullet, the rule stays a rule", !/<h[1-6]/.test(ruled) && /<hr/.test(ruled), ruled.replace(/\n/g, ""));
 const ruledEditor = marked.parse(hydrateEmptyListItems(spaceEmptyListItems("- A\n    ---\n\n    B\n"))) as string;
 check("editor parse: no heading from an indented rule", !/<h[1-6]/.test(ruledEditor) && /<hr/.test(ruledEditor));
+
+// --- sub-bullets under a numbered item (Brandon, 2026-10-26) ---------------
+// The editor's ordered-list tokenizer nested every sub-bullet after the first
+// under the first. Parse with the REAL editor manager and read the shape back.
+type PMNode = { type: string; text?: string; content?: PMNode[] };
+// StarterKit's own sub-extensions, unwrapped the way the editor resolves them,
+// with its OrderedList swapped for ours exactly as MarkdownEditor.tsx does.
+const starterKitParts = (StarterKit.configure({}) as unknown as {
+  config: { addExtensions: (this: unknown) => { name: string }[] };
+}).config.addExtensions.call({ options: { orderedList: false }, parent: null });
+const editorMd = new MarkdownManager({
+  extensions: [...starterKitParts, AlignedOrderedList] as never,
+});
+const textOf = (n: PMNode): string => n.text ?? (n.content ?? []).map(textOf).join("");
+// Each bullet list's items as [text, nested-list item count] pairs.
+function bulletShape(n: PMNode, out: string[][] = []): string[][] {
+  if (n.type === "bulletList") {
+    out.push((n.content ?? []).map((li) => textOf(li.content![0])));
+  }
+  (n.content ?? []).forEach((c) => bulletShape(c, out));
+  return out;
+}
+const parseShape = (md: string) =>
+  JSON.stringify(bulletShape(editorMd.parse(md) as PMNode));
+
+const fourTests = "4. Cut\n    - True a\n    - Sticky b\n    - Short c\n5. Next\n";
+check(
+  "4-space sub-bullets under a numbered item are siblings",
+  parseShape(fourTests) === JSON.stringify([["True a", "Sticky b", "Short c"]]),
+  parseShape(fourTests)
+);
+const deeper = "1. A\n    - B\n        - C\n    - D\n";
+check(
+  "a real deeper level under a numbered item is kept",
+  parseShape(deeper) === JSON.stringify([["B", "D"], ["C"]]),
+  parseShape(deeper)
+);
+const nestedOl = "1. A\n    1. B\n        - C\n        - D\n";
+check(
+  "sub-bullets under a nested numbered item are siblings",
+  parseShape(nestedOl) === JSON.stringify([["C", "D"]]),
+  parseShape(nestedOl)
+);
+const inBullet = "- Room\n    1. One\n        - x\n        - y\n    2. Two\n- After\n";
+check(
+  "a numbered list nested in a bullet keeps its sub-bullets",
+  parseShape(inBullet) === JSON.stringify([["Room", "After"], ["x", "y"]]),
+  parseShape(inBullet)
+);
+check("bullets alone are untouched", alignOrderedItemContent("- A\n    - B\n    - C\n") === "- A\n    - B\n    - C\n");
+check(
+  "two-space content (already what the tokenizer wants) is untouched",
+  alignOrderedItemContent("1. A\n  - B\n  - C\n") === "1. A\n  - B\n  - C\n"
+);
 
 // --- round-trip stability --------------------------------------------------
 // The editor re-serializes tight markdown; running the pass twice must not keep
