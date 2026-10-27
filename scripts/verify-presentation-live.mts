@@ -1,7 +1,16 @@
 // Verify the live-follow state validator (src/modules/presentations/lib/live-state.ts).
 // DB-free by design (must not import @/db). Run with `npx tsx`.
 import assert from "node:assert/strict";
-import { parseLiveState } from "../src/modules/presentations/lib/live-state";
+import { parseLiveState, parseRemoteCommand } from "../src/modules/presentations/lib/live-state";
+
+// phone remote commands
+assert.deepEqual(parseRemoteCommand({ a: "next" }), { a: "next" });
+assert.deepEqual(parseRemoteCommand({ a: "black", i: 4 }), { a: "black" });
+assert.deepEqual(parseRemoteCommand({ a: "goto", i: 3.7 }), { a: "goto", i: 3 });
+assert.deepEqual(parseRemoteCommand({ a: "goto", i: -2 }), { a: "goto", i: 0 });
+assert.equal(parseRemoteCommand({ a: "goto" }), null);
+assert.equal(parseRemoteCommand({ a: "delete" }), null);
+assert.equal(parseRemoteCommand("next"), null);
 
 // valid, passes through
 assert.deepEqual(

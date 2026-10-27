@@ -12,6 +12,17 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
+// One tap on the phone remote. The presenter window turns it into a move.
+export type RemoteCommand = { a: "next" | "prev" | "black" } | { a: "goto"; i: number };
+
+export function parseRemoteCommand(value: unknown): RemoteCommand | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (v.a === "next" || v.a === "prev" || v.a === "black") return { a: v.a };
+  if (v.a === "goto" && isFiniteNumber(v.i)) return { a: "goto", i: Math.max(0, Math.floor(v.i)) };
+  return null;
+}
+
 // Returns a clamped/typed copy, or null if the shape is not a state at all.
 export function parseLiveState(value: unknown): LiveState | null {
   if (!value || typeof value !== "object") return null;
