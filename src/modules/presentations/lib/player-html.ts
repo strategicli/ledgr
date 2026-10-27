@@ -49,7 +49,7 @@ export type PlayerOptions = {
 
 // `<` -> < so `</script` can never close the embedding tag early; U+2028/9
 // are valid JSON but illegal unescaped in JS string literals in older engines.
-function safeJson(value: unknown): string {
+export function safeJson(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
@@ -181,6 +181,8 @@ html[data-role="audience"] #presenter{display:none}
 .live-link-row{display:flex;gap:.4rem}
 .live-link-row input{flex:1;min-width:0;background:#1a1a1a;color:#f2f2f2;border:1px solid #3a3a3a;border-radius:6px;padding:.4rem}
 .live-note{font-size:12px;color:#999}
+.live-panel{display:flex;flex-direction:column;gap:.5rem}
+.remote-qr svg{display:block;width:160px;height:160px;background:#fff;border-radius:6px}
 .slide-list{padding:.5rem 1rem 1rem;font-size:13px;color:#ccc}
 .slide-list-item{padding:.35rem .4rem;border-radius:5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .slide-list-item:hover{background:#1a1a1a}
@@ -288,6 +290,10 @@ export function renderPlayer(opts: PlayerOptions): string {
         <div class="live-panel" id="live-panel" style="display:none">
           <div class="live-link-row"><input type="text" id="live-link" readonly><button id="live-copy">Copy</button></div>
           <div class="live-note">Anyone who can reach this address can follow along.</div>
+          <div class="d-group-label">Phone remote</div>
+          <div class="remote-qr" id="remote-qr"></div>
+          <div class="live-note">Scan this with your phone to move the slides from it. This code works the slides; the link above only watches.</div>
+          <div class="live-link-row"><input type="text" id="remote-link" readonly><button id="remote-copy">Copy</button></div>
           <button id="end-live">End live</button>
         </div>
         <a id="save-offline" style="display:none">Save offline</a>
@@ -1200,6 +1206,39 @@ function initPrintMode(withNotes) {
   });
 }
 
+// ---- phone remote: while live, pick up the phone's taps and make the moves
+// here, so this window stays the one place the show's state is decided. A
+// move off a blacked-out slide brings the picture back, as the phone shows.
+var lastRemoteCmd = 0, remoteBusy = false;
+function applyRemote(c) {
+  if (c.a === "black") { toggleBlank("black"); return; }
+  state.blank = "";
+  if (c.a === "next") next();
+  else if (c.a === "prev") prev();
+  else if (c.a === "goto") goto(c.i);
+}
+function pollRemote() {
+  if (!liveToken || remoteBusy) return;
+  remoteBusy = true;
+  var token = liveToken;
+  fetch(location.pathname + "/live", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "commands", token: token, after: lastRemoteCmd }),
+  })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || token !== liveToken) return;
+      data.cmds.forEach(function (c) {
+        if (c.n <= lastRemoteCmd) return;
+        lastRemoteCmd = c.n;
+        applyRemote(c);
+      });
+    })
+    ["catch"](function () {})
+    .then(function () { remoteBusy = false; });
+}
+
 // ---- presenter-only wiring ----
 function fmtMMSS(s) { var m = Math.floor(s / 60), r = s % 60; return m + ":" + (r < 10 ? "0" : "") + r; }
 function initPresenter() {
@@ -1273,23 +1312,29 @@ function initPresenter() {
       fetch(location.pathname + "/live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
+        body: JSON.stringify({ action: "start", origin: location.origin }),
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           liveToken = data.token;
+          lastRemoteCmd = 0;
           $("live-link").value = location.origin + data.url;
+          $("remote-link").value = location.origin + data.remoteUrl;
+          $("remote-qr").innerHTML = data.remoteQr || ""; // our own server's uqr SVG
           $("live-idle").style.display = "none";
-          $("live-panel").style.display = "block";
+          $("live-panel").style.display = "flex";
           postLiveState();
         })
         .catch(function () {});
     });
-    $("live-copy").addEventListener("click", function () {
-      var input = $("live-link");
-      input.select();
-      try { document.execCommand("copy"); } catch (e) {}
+    ["live", "remote"].forEach(function (which) {
+      $(which + "-copy").addEventListener("click", function () {
+        var input = $(which + "-link");
+        input.select();
+        try { document.execCommand("copy"); } catch (e) {}
+      });
     });
+    setInterval(pollRemote, 500);
     $("end-live").addEventListener("click", function () {
       if (!liveToken) return;
       var token = liveToken;

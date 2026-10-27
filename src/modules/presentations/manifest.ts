@@ -13,12 +13,14 @@ export const presentationsModule: ModuleManifest = {
   types: [],
   exporters: [],
   // The public follow link (step 6): no session, an unguessable token is the
-  // credential, same posture as sharing's "/share(.*)".
+  // credential, same posture as sharing's "/share(.*)". It covers the phone
+  // remote too (/live/<token>/remote), whose taps also need its secret key.
   publicPaths: ["/live(.*)"],
   routes: [
     "src/app/present/[id]/route.ts",
     "src/app/present/[id]/live/route.ts",
     "src/app/present/[id]/design/route.ts",
     "src/app/live/[token]/route.ts",
+    "src/app/live/[token]/remote/route.ts",
   ],
 };
