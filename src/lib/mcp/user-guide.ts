@@ -1352,6 +1352,17 @@ button under Export & sharing. It opens the item as a slideshow in a new tab.
   behind. (The audience window is instant because it talks to your presenter
   window directly; a live link reaches other devices through the server.)
   **End live** turns the link off.
+- **Phone remote.** Once you **Go live**, the presenter window shows a QR code
+  under **Phone remote**. Scan it with your phone to get a remote: the slide the
+  audience sees, with **Back**, **Black** and **Next** over it, and a list of
+  every slide you can tap to jump to (beside the slide when the phone is
+  sideways, below it when upright). Tapping the slide's right side goes forward,
+  its left side goes back. Moving to another slide brings a blacked-out screen
+  back. The phone keeps its screen on while the remote is open. The projector
+  moves within about half a second; the phone's own picture can lag a second
+  behind. It needs internet on both the laptop and the phone, so keep a clicker
+  or the keyboard as a backup. Only the QR code's link can move the slides; the
+  public live link can only watch. **End live** turns both off.
 
 ## Your tasks in your calendar app
 
