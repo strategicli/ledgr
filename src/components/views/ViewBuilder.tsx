@@ -90,11 +90,17 @@ function dateFieldsFor(type: string): string[] {
 }
 function sortFieldsFor(type: string): string[] {
   // Priority is offered only where the type has it (task/any), alongside title.
+  // mostLinked (the confirmed-link count) works on every type, like the list tab.
   const extra = showsUrgency(type) ? ["urgency", "title"] : ["title"];
-  return [...dateFieldsFor(type), ...extra];
+  return [...dateFieldsFor(type), ...extra, "mostLinked"];
 }
 // Sort-select labels: dates reuse DATE_LABELS; urgency reads as "priority".
-const SORT_LABELS: Record<string, string> = { ...DATE_LABELS, urgency: "priority", title: "title" };
+const SORT_LABELS: Record<string, string> = {
+  ...DATE_LABELS,
+  urgency: "priority",
+  title: "title",
+  mostLinked: "most linked",
+};
 // urgency + due window are task-only in the UI (ADR-018).
 function groupFieldsFor(type: string): string[] {
   if (type === "task") return ["status", "urgency", "plan", "due", "scheduled", "type"];
@@ -788,6 +794,11 @@ export default function ViewBuilder({
               <>
                 <Opt value="asc" label="highest first (P1→P6)" />
                 <Opt value="desc" label="lowest first (P6→P1)" />
+              </>
+            ) : sortField === "mostLinked" ? (
+              <>
+                <Opt value="desc" label="most links first" />
+                <Opt value="asc" label="fewest links first" />
               </>
             ) : (
               <>

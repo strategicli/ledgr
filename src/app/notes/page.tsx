@@ -14,7 +14,7 @@ import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
-import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
+import { lensFilter, lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { relatedSummaryFor } from "@/lib/relations";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
@@ -66,8 +66,8 @@ export default async function Notes({
   } else {
     const filter = { type: "note" };
     [notes, count] = await Promise.all([
-      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
-      countViewItems(owner.id, filter),
+      queryViewItems(owner.id, lensFilter(filter, active), resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, lensFilter(filter, active)),
     ]);
   }
 

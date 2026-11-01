@@ -5,11 +5,12 @@
 // same posture as navSlots/favorites. Body:
 //   { lenses }        → save these lenses for the type
 //   { lenses: null }  → reset to the virtual defaults (drop the override)
-// Validated/normalized by parseLenses, so a malformed shape is a 400-free drop,
+// Each tab is checked strictly (lensProblem: unknown fields or a bad filter are
+// a 400 naming them), then normalized by parseLenses,
 // and an empty result also resets to defaults. Owner-guarded.
 import { NextResponse } from "next/server";
 import { errorResponse, requireOwner } from "@/lib/api";
-import { parseLenses } from "@/lib/list-lenses";
+import { lensProblem, parseLenses } from "@/lib/list-lenses";
 import { getSettings, updateSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,12 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const { key } = await context.params;
     const body = (await request.json()) as { lenses?: unknown };
+    if (Array.isArray(body.lenses)) {
+      for (const [i, raw] of body.lenses.entries()) {
+        const problem = lensProblem(raw, `lenses[${i}]`);
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      }
+    }
     const lenses = body.lenses == null ? null : parseLenses(body.lenses);
     const settings = await getSettings(owner.id);
     const listTabs = { ...settings.listTabs };

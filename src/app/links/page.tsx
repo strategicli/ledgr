@@ -15,7 +15,7 @@ import SelectCheckbox from "@/components/selection/SelectCheckbox";
 import SelectionProvider from "@/components/selection/SelectionProvider";
 import SelectModeToggle from "@/components/selection/SelectModeToggle";
 import { bulkConfigForType } from "@/lib/bulk-config";
-import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
+import { lensFilter, lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { resolveOwner } from "@/lib/owner";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
@@ -65,8 +65,8 @@ export default async function Links({
   } else {
     const filter = { type: "link" };
     [links, count] = await Promise.all([
-      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
-      countViewItems(owner.id, filter),
+      queryViewItems(owner.id, lensFilter(filter, active), resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, lensFilter(filter, active)),
     ]);
   }
 

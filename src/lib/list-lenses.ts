@@ -8,6 +8,7 @@
 // favorites). This module is pure and client-safe (no DB / server imports), so
 // settings.ts, the list pages, and the client editor all share it.
 import type { ListSort } from "@/lib/views";
+import { opsForKind, parseWhere, type WhereGroup } from "@/lib/view-where";
 
 // --- Types ----------------------------------------------------------------
 
@@ -23,8 +24,18 @@ export type LensSortSource =
 // upcoming calendar feed with one-click Add; "timeline" is the Upcoming/Past/
 // No-date grouping by meeting time. External-data / grouped renderings like these
 // aren't expressible as sort or view lenses, so they get their own kinds.
+// A sort lens may also carry `where`: the saved-view rule group (same shape and
+// SQL as a view's filter.where), so one tab can both narrow AND order the list,
+// e.g. "Most linked, not Done".
 export type Lens =
-  | { id: string; kind: "sort"; label: string; source: LensSortSource; dir: "asc" | "desc" }
+  | {
+      id: string;
+      kind: "sort";
+      label: string;
+      source: LensSortSource;
+      dir: "asc" | "desc";
+      where?: WhereGroup;
+    }
   | { id: string; kind: "view"; label: string; viewId: string }
   | { id: string; kind: "calendar"; label: string }
   | { id: string; kind: "timeline"; label: string }
@@ -150,6 +161,13 @@ export function resolveLensSort(lens: Lens, reversed: boolean): ListSort | null 
   return { field: lens.source.field, dir } as ListSort;
 }
 
+// Fold a sort lens's rule group into a base filter. No caller's base filter
+// carries a `where` of its own (type/relatedTo/propertyFilters only), so the
+// lens's group is simply set; the scalar filters still AND with it.
+export function lensFilter<F extends object>(filter: F, lens: Lens): F & { where?: WhereGroup } {
+  return lens.kind === "sort" && lens.where ? { ...filter, where: lens.where } : filter;
+}
+
 // --- Editor helpers -------------------------------------------------------
 
 type PropLike = { key: string; label: string; kind: string; hidden?: boolean };
@@ -198,12 +216,91 @@ function parseLens(raw: unknown): Lens | null {
   // Default kind is "sort".
   const dir: "asc" | "desc" = r.dir === "asc" ? "asc" : "desc";
   const src = r.source && typeof r.source === "object" ? (r.source as Record<string, unknown>) : {};
+  const where = parseWhere(r.where);
+  const extra = where ? { where } : {};
   if (typeof src.property === "string" && src.property.trim()) {
     const property = src.property.trim().slice(0, 40);
-    return { id, kind: "sort", label, source: { property, numeric: src.numeric === true }, dir };
+    return { id, kind: "sort", label, source: { property, numeric: src.numeric === true }, dir, ...extra };
   }
   if (isLensField(src.field)) {
-    return { id, kind: "sort", label, source: { field: src.field }, dir };
+    return { id, kind: "sort", label, source: { field: src.field }, dir, ...extra };
+  }
+  return null;
+}
+
+// Strict check for a tab arriving from a caller (the MCP tool, the Build
+// editor's save). parseLens stays tolerant because it also reads STORED
+// settings, where dropping junk is right; a caller must hear why a field or
+// condition would vanish instead. Returns the first problem, or null.
+const LENS_KEYS: Record<string, string[]> = {
+  sort: ["source", "dir", "where"],
+  view: ["viewId"],
+  calendar: [],
+  timeline: [],
+  board: [],
+  completed: [],
+};
+const CONDITION_KEYS = ["subject", "key", "op", "value", "values", "numeric"];
+
+function unknownKeys(o: object, allowed: string[]): string[] {
+  return Object.keys(o).filter((k) => !allowed.includes(k));
+}
+
+export function lensProblem(raw: unknown, at: string): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return `${at} must be an object`;
+  const r = raw as Record<string, unknown>;
+  const kind = r.kind === undefined ? "sort" : String(r.kind);
+  const allowed = LENS_KEYS[kind];
+  if (!allowed) return `${at}.kind "${kind}" must be one of ${Object.keys(LENS_KEYS).join(" | ")}`;
+  const extra = unknownKeys(r, ["id", "label", "kind", ...allowed]);
+  if (extra.length) {
+    return `${at} has unknown field(s) ${extra.join(", ")}; a ${kind} tab takes ${["id", "label", ...allowed].join(", ")}`;
+  }
+  if (kind !== "sort") return null;
+
+  const s = r.source;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return `${at}.source must be { field } or { property }`;
+  const srcExtra = unknownKeys(s, ["field", "property", "numeric"]);
+  if (srcExtra.length) return `${at}.source has unknown field(s) ${srcExtra.join(", ")}`;
+  const src = s as Record<string, unknown>;
+  if (src.property === undefined && !isLensField(src.field)) {
+    return `${at}.source.field must be one of ${LENS_FIELDS.join(" | ")}`;
+  }
+  if (r.dir !== undefined && r.dir !== "asc" && r.dir !== "desc") return `${at}.dir must be asc or desc`;
+
+  if (r.where === undefined) return null;
+  const w = r.where;
+  if (!w || typeof w !== "object" || Array.isArray(w)) return `${at}.where must be { combinator, conditions }`;
+  const wExtra = unknownKeys(w, ["combinator", "conditions"]);
+  if (wExtra.length) return `${at}.where has unknown field(s) ${wExtra.join(", ")}`;
+  const wr = w as Record<string, unknown>;
+  if (wr.combinator !== undefined && wr.combinator !== "and" && wr.combinator !== "or") {
+    return `${at}.where.combinator must be and or or`;
+  }
+  if (!Array.isArray(wr.conditions) || wr.conditions.length === 0) {
+    return `${at}.where.conditions must be a non-empty array`;
+  }
+  if (wr.conditions.length > 25) return `${at}.where takes at most 25 conditions`;
+  for (const [i, c] of wr.conditions.entries()) {
+    const cat = `${at}.where.conditions[${i}]`;
+    if (!c || typeof c !== "object" || Array.isArray(c)) return `${cat} must be an object`;
+    const cExtra = unknownKeys(c, CONDITION_KEYS);
+    if (cExtra.length) return `${cat} has unknown field(s) ${cExtra.join(", ")}`;
+    // parseWhere drops an incoherent condition; one that survives alone is valid.
+    const parsed = parseWhere({ combinator: "and", conditions: [c] });
+    if (!parsed) {
+      return (
+        `${cat} is invalid: it needs subject (property | relation | priority | status), ` +
+        `op, a key for property/relation, and value (single-value ops) or values (anyOf | allOf | noneOf)`
+      );
+    }
+    // The two built-ins honor only some ops in SQL; any other op would filter
+    // nothing, silently.
+    const cond = parsed.conditions[0];
+    if (cond.subject === "status" || cond.subject === "priority") {
+      const ops = opsForKind(cond.subject);
+      if (!ops.includes(cond.op)) return `${cat}.op for ${cond.subject} must be one of ${ops.join(" | ")}`;
+    }
   }
   return null;
 }

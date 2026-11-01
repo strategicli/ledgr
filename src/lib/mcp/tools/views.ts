@@ -81,8 +81,10 @@ export const viewTools: McpTool[] = [
       "{ combinator:'and'|'or', conditions:[{ subject, op, value|values }] } — " +
       "subject is 'property'|'relation' (with `key`) or 'priority'|'status'; op is " +
       "set|empty|eq|neq|contains|gt|lt|gte|lte|anyOf|allOf|noneOf|checked|unchecked " +
-      "(relation/tag conditions use anyOf/allOf/noneOf with `values` of item ids). " +
-      "Optional `sort` { field, dir } or a property sort " +
+      "(relation/tag conditions use anyOf/allOf/noneOf with `values` of item ids; " +
+      "status takes anyOf/noneOf with status keys or categories, e.g. not Done = " +
+      "{ subject:'status', op:'noneOf', values:['done'] }). " +
+      "Optional `sort` { field, dir } (field mostLinked ranks by confirmed link count, the same ranking as the 'Most linked' list tab) or a property sort " +
       "{ field:'property', propertyKey, numeric }, `grouping` ({ field } or " +
       "{ propertyKey } for a board), `columns`, `dateProperty` (which date a " +
       "calendar/agenda places items on), and `display` (calendar mode + grain; " +
@@ -96,7 +98,7 @@ export const viewTools: McpTool[] = [
         name: { type: "string", description: "Display name. E.g. \"This week's tasks\"." },
         layout: { type: "string", enum: [...VIEW_LAYOUTS], description: "list | table | board | calendar | agenda." },
         filter: { type: "object", description: "Item filter (see description). Omit for an unscoped list." },
-        sort: { type: "object", description: "{ field, dir } — field one of plan|dueDate|scheduledDate|meetingAt|urgency|updatedAt|createdAt|title (urgency = task priority P1–P6, asc = P1 first); OR a property sort { field:'property', propertyKey, numeric }; dir asc|desc." },
+        sort: { type: "object", description: "{ field, dir } — field one of plan|dueDate|scheduledDate|meetingAt|urgency|updatedAt|createdAt|title|mostLinked (urgency = task priority P1–P6, asc = P1 first; mostLinked = confirmed link count, desc = most linked first); OR a property sort { field:'property', propertyKey, numeric }; dir asc|desc." },
         grouping: { type: "object", description: "Board/agenda grouping: { field: status|urgency|type|due|scheduled } or { propertyKey } for a custom select." },
         columns: { type: "array", description: "Ordered columns for list/table (advanced). Omit for the layout defaults.", items: { type: "object" } },
         dateProperty: { type: "string", enum: [...DATE_PROPERTIES], description: "Which date a calendar/agenda places items on (default dueDate; meetingAt for events)." },
@@ -127,7 +129,7 @@ export const viewTools: McpTool[] = [
         name: { type: "string", description: "Display name (resend the current one if unchanged)." },
         layout: { type: "string", enum: [...VIEW_LAYOUTS], description: "list | table | board | calendar | agenda." },
         filter: { type: "object", description: "Item filter (see create_view)." },
-        sort: { type: "object", description: "{ field, dir } (see create_view)." },
+        sort: { type: "object", description: "{ field, dir } (see create_view; field mostLinked ranks by link count)." },
         grouping: { type: "object", description: "Board/agenda grouping (see create_view)." },
         columns: { type: "array", description: "Ordered columns for list/table.", items: { type: "object" } },
         dateProperty: { type: "string", enum: [...DATE_PROPERTIES], description: "Calendar/agenda date field." },

@@ -896,7 +896,9 @@ Every type has a list page, reachable from \`/list\`.
 
 - **Tabs (lenses)** across the top: Recent, Newest, A→Z, Most linked, each
   reversible. Add your own — a field, a property, or a whole saved view as a tab.
-  Configure them on the type's edit page.
+  Configure them on the type's edit page. A sort tab can also carry a filter
+  (set by asking Claude), such as "Most linked, but not Done"; Build marks it
+  "filtered".
 - **Projects open on a Board.** The project list leads with a status kanban:
   a column per status, ordered left to right the way the statuses are ordered,
   with cards you drag between columns to change status (long-press to drag on a
@@ -939,8 +941,10 @@ A view is a saved filter, sort and layout you reach by name. Build them at
   itself, so a rule like "day is today" always matches the current date without
   editing the view.
 - **Write simple rules:** "tagged A OR tagged B", combined with the view's other
-  filters.
-- **Sort by anything,** including priority and custom properties.
+  filters. Status can be "is any of" or "is none of", so "not Done" is one rule.
+- **Sort by anything,** including priority, custom properties, and most linked
+  (ranked by how many items each one links to, the same order as the Most
+  linked list tab).
 - **Pick your columns** for list, table and agenda layouts, and for a History
   spine, where they become each entry's second line.
 - **Boards drag,** including on a phone with a long press.
