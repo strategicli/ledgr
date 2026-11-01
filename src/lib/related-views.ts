@@ -8,7 +8,7 @@
 // relation scope; body-free and owner-scoped by construction.
 import type { ViewItem } from "@/components/views/ViewRenderer";
 import { ItemError } from "@/lib/items";
-import { resolveLensSort, type Lens } from "@/lib/list-lenses";
+import { lensFilter, resolveLensSort, type Lens } from "@/lib/list-lenses";
 import { orderedStatuses, resolveStatusSchema } from "@/lib/status";
 import { getType } from "@/lib/types";
 import type { ViewLensData } from "@/lib/view-render";
@@ -138,7 +138,8 @@ function sortInMemory(items: ViewItem[], sort: ListSort): ViewItem[] {
 // construction (the caller's rows already are). View lenses don't apply to a
 // rule-pulled set (their filter would fight the rule), so the caller passes only
 // sort lenses; a non-sort lens falls back to the lens's natural order via a
-// harmless default sort.
+// harmless default sort. For the same reason a sort lens's `where` is not
+// applied here: it contributes order only.
 export async function resolveProvidedGroup(
   rows: ResolvedRow[],
   typeKey: string,
@@ -228,7 +229,7 @@ export async function resolveRelatedGroup(
   // shouldn't reach here — related groups filter them out (relatedLensCandidates)
   // — but default it defensively rather than assert non-null.
   const sort = resolveLensSort(lens, false) ?? { field: "updatedAt", dir: "desc" };
-  const filter = applyRelationScope({}, hostId, typeKey);
+  const filter = lensFilter(applyRelationScope({}, hostId, typeKey), lens);
   const view: ViewDefinition = {
     id: `related:${typeKey}:${lens.id}`,
     name: lens.label,

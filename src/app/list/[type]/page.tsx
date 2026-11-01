@@ -32,7 +32,7 @@ import SubtaskExpandableRow from "@/components/subtasks/SubtaskExpandableRow";
 import { childRollups } from "@/lib/subtasks";
 import { bulkConfigForType } from "@/lib/bulk-config";
 import { ItemError } from "@/lib/items";
-import { lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
+import { lensFilter, lensesForType, resolveLensSort, selectLens } from "@/lib/list-lenses";
 import { relatedSummaryFor } from "@/lib/relations";
 import { appTodayYmd } from "@/lib/recurrence-service";
 import { DEFAULT_TIMEZONE } from "@/lib/today";
@@ -137,8 +137,8 @@ export default async function TypeList({
     };
   } else {
     [items, count] = await Promise.all([
-      queryViewItems(owner.id, filter, resolveLensSort(active, reversed) ?? undefined, show),
-      countViewItems(owner.id, filter),
+      queryViewItems(owner.id, lensFilter(filter, active), resolveLensSort(active, reversed) ?? undefined, show),
+      countViewItems(owner.id, lensFilter(filter, active)),
     ]);
   }
 

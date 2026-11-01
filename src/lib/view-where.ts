@@ -135,7 +135,7 @@ export function opsForKind(kind: string): WhereOp[] {
     case "priority":
       return ["anyOf", "set", "empty"];
     case "status":
-      return ["anyOf"];
+      return ["anyOf", "noneOf"];
     default:
       return ["set", "empty"];
   }

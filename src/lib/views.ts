@@ -101,11 +101,9 @@ export const SORT_FIELDS = [
 export type SortField = (typeof SORT_FIELDS)[number];
 export type ViewSort = { field: SortField; dir: "asc" | "desc" };
 
-// Lens sort superset (internal to the list-lenses feature). The public ViewSort
-// / parseSort and the MCP create_view contract are unchanged; only
-// queryViewItems accepts the extra modes. "mostLinked" orders by the count of
-// confirmed relations; "property" orders by items.properties->>key (optional
-// numeric cast). Saved views and dashboards still pass a plain ViewSort.
+// Sort superset shared by list tabs and saved views (parseSort accepts all
+// three shapes). "mostLinked" orders by the count of confirmed relations;
+// "property" orders by items.properties->>key (optional numeric cast).
 export type ListSort =
   | ViewSort
   | { field: "mostLinked"; dir: "asc" | "desc" }
@@ -430,7 +428,8 @@ function priorityConditionSql(c: WhereCondition): SQL | null {
 // The status built-in as a rule condition. A value is either a category bucket
 // ("active" expands to the two open buckets, mirroring the scalar statusCategory
 // filter) or a type's own status KEY (exact match on items.status); the two
-// sets are OR'd.
+// sets are OR'd. noneOf / neq negate that match (both columns are NOT NULL, so
+// a plain NOT is exact): "status is none of done" = every open or archived item.
 function statusConditionSql(c: WhereCondition): SQL | null {
   const cats = new Set<string>();
   const keys = new Set<string>();
@@ -444,15 +443,17 @@ function statusConditionSql(c: WhereCondition): SQL | null {
       keys.add(v);
     }
   };
-  if (c.op === "anyOf") (c.values ?? []).forEach(add);
-  else if (c.op === "eq" && c.value != null) add(c.value);
+  if (c.op === "anyOf" || c.op === "noneOf") (c.values ?? []).forEach(add);
+  else if ((c.op === "eq" || c.op === "neq") && c.value != null) add(c.value);
   else return null;
   const list = [...cats] as ("not_started" | "in_progress" | "done" | "archived")[];
   const parts: SQL[] = [];
   if (list.length) parts.push(inArray(items.statusCategory, list));
   if (keys.size) parts.push(inArray(items.status, [...keys]));
   if (!parts.length) return null;
-  return parts.length === 1 ? parts[0] : (or(...parts) ?? null);
+  const match = parts.length === 1 ? parts[0] : (or(...parts) ?? null);
+  if (!match) return null;
+  return c.op === "noneOf" || c.op === "neq" ? sql`not (${match})` : match;
 }
 
 function conditionSql(c: WhereCondition): SQL | null {
@@ -954,6 +955,9 @@ export function parseSort(raw: unknown): ListSort {
     if (!key || key.length > 40) bad("sort.propertyKey invalid");
     return { field: "property", propertyKey: key, numeric: r.numeric === true, dir };
   }
+  // The confirmed-link count: viewItemsQuery's one mostLinked path, the same
+  // one the "Most linked" list tab runs.
+  if (r.field === "mostLinked") return { field: "mostLinked", dir };
   const field = r.field as SortField;
   if (!SORT_FIELDS.includes(field)) bad("sort.field invalid");
   return { field, dir };

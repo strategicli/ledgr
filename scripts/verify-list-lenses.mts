@@ -142,6 +142,81 @@ try {
   const missing = await resolveViewLens(owner.id, FAKE_UUID, "task");
   check("missing view → null (falls back)", missing === null);
 
+  console.log("\n# Filtered mostLinked: tab filter + saved-view sort rank the same");
+  // Five tasks under one tag: a (2 links), b + c (1 link each, a tie broken by
+  // most-recently-updated), z (0 links), and d (3 links but Done, must vanish).
+  const ftag = `flt-${stamp}`;
+  const mk = (title: string, status?: string) =>
+    createItem(owner.id, { type: "task", title, ...(status ? { status } : {}), properties: { ftag } });
+  const fa = await mk("a (2)");
+  const fb = await mk("b (1, older)");
+  const fc = await mk("c (1, newer)");
+  const fz = await mk("z (0)");
+  const fd = await mk("d (3, done)", "done");
+  const fn = await Promise.all([1, 2, 3].map((n) => createItem(owner.id, { type: "note", title: `f${n}` })));
+  await db.insert(relations).values([
+    { sourceId: fa.id, targetId: fn[0].id },
+    { sourceId: fn[1].id, targetId: fa.id }, // inbound edges count too
+    { sourceId: fb.id, targetId: fn[0].id },
+    { sourceId: fc.id, targetId: fn[1].id },
+    ...fn.map((t) => ({ sourceId: fd.id, targetId: t.id })),
+  ]);
+  await db.update(items).set({ updatedAt: new Date("2026-01-01T00:00:00Z") }).where(dEq(items.id, fb.id));
+  await db.update(items).set({ updatedAt: new Date("2026-02-01T00:00:00Z") }).where(dEq(items.id, fc.id));
+
+  const { lensFilter, lensProblem } = await import("../src/lib/list-lenses");
+  const tab = {
+    id: "linked",
+    kind: "sort",
+    label: "Most linked",
+    source: { field: "mostLinked" },
+    dir: "desc",
+    where: { combinator: "and", conditions: [{ subject: "status", op: "noneOf", values: ["done"] }] },
+  };
+  check("filtered tab validates", lensProblem(tab, "t") === null);
+  const flens = parseLenses([tab])![0];
+  const base = { type: "task", propertyFilters: [{ key: "ftag", value: ftag }] };
+  const tabRows = await queryViewItems(owner.id, lensFilter(base, flens), resolveLensSort(flens, false)!);
+  const want = [fa.id, fc.id, fb.id, fz.id];
+  check("tab: done excluded, a > c = b (newer first) > z(0)", JSON.stringify(tabRows.map((r) => r.id)) === JSON.stringify(want), tabRows.map((r) => r.title).join(" | "));
+  const { countViewItems } = await import("../src/lib/views");
+  check("tab count matches the filtered list", (await countViewItems(owner.id, lensFilter(base, flens))) === 4);
+  const unfiltered = await queryViewItems(owner.id, base, resolveLensSort(flens, false)!);
+  check("same sort without the filter puts done d first", unfiltered[0]?.id === fd.id && unfiltered.length === 5);
+  const reversed = await queryViewItems(owner.id, lensFilter(base, flens), resolveLensSort(flens, true)!);
+  check("reversed: z(0) first, a last", reversed[0]?.id === fz.id && reversed[3]?.id === fa.id, reversed.map((r) => r.title).join(" | "));
+
+  const mlView = await createView(
+    owner.id,
+    parseViewInput({
+      name: `Linked not done ${stamp}`,
+      layout: "list",
+      filter: { ...base, where: tab.where },
+      sort: { field: "mostLinked", dir: "desc" },
+    })
+  );
+  check("saved view stores mostLinked sort", mlView.sort.field === "mostLinked");
+  const viewRows = await queryViewItems(owner.id, mlView.filter, mlView.sort);
+  check("saved view ranks identically to the tab", JSON.stringify(viewRows.map((r) => r.id)) === JSON.stringify(want));
+  const viewLens = await resolveViewLens(owner.id, mlView.id, "task");
+  check("view-tab renderer ranks identically", JSON.stringify(viewLens?.items.map((i) => i.id)) === JSON.stringify(want));
+
+  console.log("\n# set_list_tabs tool: rejects unknown fields, stores the filter");
+  const { workspaceTools } = await import("../src/lib/mcp/tools/workspace");
+  const setTabs = workspaceTools.find((t) => t.name === "set_list_tabs")!;
+  let err = "";
+  try {
+    await setTabs.handler(owner.id, { typeKey: "task", tabs: [{ ...tab, where: undefined, filter: tab.where }] });
+  } catch (e) {
+    err = (e as Error).message;
+  }
+  check("tool rejects `filter` by name", err.includes("unknown field(s) filter"), err);
+  check("nothing stored after the rejection", !(await getSettings(owner.id)).listTabs.task);
+  const ok = (await setTabs.handler(owner.id, { typeKey: "task", tabs: [{ id: "board", kind: "board", label: "Board" }, tab] })) as { tabs: Lens[] };
+  const storedTab = (await getSettings(owner.id)).listTabs.task?.[1];
+  check("tool stores the filtered tab", ok.tabs.length === 2 && storedTab?.kind === "sort" && JSON.stringify(storedTab.where) === JSON.stringify(tab.where));
+  await updateSettings(owner.id, { listTabs: {} });
+
   console.log("\n# Settings round-trip");
   await updateSettings(owner.id, { listTabs: { task: [propLens] } });
   const s1 = await getSettings(owner.id);

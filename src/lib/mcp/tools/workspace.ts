@@ -24,6 +24,7 @@ import { listViews } from "@/lib/views";
 import {
   defaultLenses,
   lensesForType,
+  lensProblem,
   parseLenses,
   type Lens,
 } from "@/lib/list-lenses";
@@ -246,9 +247,19 @@ export const workspaceTools: McpTool[] = [
       "plain item list in an order, where field is updatedAt | createdAt | title " +
       "| mostLinked | urgency; or { kind: 'board' } / { kind: 'completed' } (the " +
       "type's own status kanban and its finished-work archive) and, on events, " +
-      "{ kind: 'calendar' } / { kind: 'timeline' }. Each tab takes a `label` " +
-      "(defaults to the view's name for a view tab) and an optional `id`. Max 12 " +
-      "per type. Pass reset:true to drop your strip and go back to the defaults.",
+      "{ kind: 'calendar' } / { kind: 'timeline' }. A sort tab may also take an " +
+      "optional `where` that narrows its list, the same rule group saved views " +
+      "use: { combinator: 'and'|'or', conditions: [{ subject: property|relation|" +
+      "priority|status, key (property/relation only), op, value | values }] }. " +
+      "Status takes op anyOf or noneOf with values that are status keys or " +
+      "categories (not_started | in_progress | done | archived | active), e.g. " +
+      "'Most linked, not Done' = { kind:'sort', label:'Most linked', source:{ " +
+      "field:'mostLinked' }, dir:'desc', where:{ combinator:'and', conditions:[{ " +
+      "subject:'status', op:'noneOf', values:['done'] }] } }. Each tab takes a " +
+      "`label` (defaults to the view's name for a view tab) and an optional `id`. " +
+      "Unknown fields and invalid conditions are rejected with an error naming " +
+      "them, never dropped. Max 12 per type. Pass reset:true to drop your strip " +
+      "and go back to the defaults.",
     inputSchema: {
       type: "object",
       properties: {
@@ -305,9 +316,8 @@ export const workspaceTools: McpTool[] = [
       const usedIds = new Set<string>();
       const normalized = args.tabs.map((raw, i) => {
         const at = `tabs[${i}]`;
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-          throw new ItemError("bad_request", `${at} must be an object`);
-        }
+        const problem = lensProblem(raw, at);
+        if (problem) throw new ItemError("bad_request", problem);
         const t = { ...(raw as Record<string, unknown>) };
         if (t.kind === "view") {
           const viewId = typeof t.viewId === "string" ? t.viewId.trim() : "";

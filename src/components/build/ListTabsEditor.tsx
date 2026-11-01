@@ -52,8 +52,11 @@ function describe(lens: Lens, views: ViewDefinition[] | null): string {
   if (lens.kind === "timeline") return "Upcoming / past by meeting time";
   if (lens.kind === "board") return "Kanban grouped by status · drag to change";
   if (lens.kind === "completed") return "Completed work, searchable";
-  if ("property" in lens.source) return `Sort by ${lens.source.property}`;
-  return FIELD_DESC[lens.source.field];
+  // A filtered sort tab (set via the MCP tool) says so, so its narrower list
+  // isn't a surprise; the filter itself is edited through set_list_tabs.
+  const filtered = lens.where ? " · filtered" : "";
+  if ("property" in lens.source) return `Sort by ${lens.source.property}${filtered}`;
+  return FIELD_DESC[lens.source.field] + filtered;
 }
 
 // The small kind badge on each tab row: label + tint.
