@@ -102,8 +102,25 @@ async function readLocalState(db: SyncDb, ops: SyncOp[]): Promise<LocalState> {
     // (origin device when that write was itself an applied foreign op).
     // ponytail: scans every op for the touched rows; bounded once the
     // retention prune lands (phase 3), fine for v1 batch sizes.
+    // Stamping needs only each op's field NAMES, its updated_at (madeAt) and,
+    // for users, the settings key names (opFieldKeys), so `changed` comes back
+    // with every other value nulled. Shipping the values meant a long body
+    // edited hundreds of times (an imported book: 841 ops, ~33 MB compressed)
+    // came back whole on every batch that touched it, and the cloud copy
+    // failed the exchange with a 500 for a week (2026-10-27).
     const stamps = await db.execute(
-      sql`select to_jsonb(o) as op from sync_ops o
+      sql`select jsonb_build_object(
+            'row_id', o.row_id, 'at', o.at, 'device_id', o.device_id,
+            'origin_device_id', o.origin_device_id, 'kind', o.kind,
+            'changed', case when jsonb_typeof(o.changed) = 'object' then coalesce((
+              select jsonb_object_agg(k, case
+                when k = 'updated_at' then o.changed -> k
+                when k = 'settings' and jsonb_typeof(o.changed -> k) = 'object' then coalesce(
+                  (select jsonb_object_agg(sk, null) from jsonb_object_keys(o.changed -> k) sk),
+                  '{}'::jsonb)
+                else 'null'::jsonb end)
+              from jsonb_object_keys(o.changed) k), '{}'::jsonb) else o.changed end
+          ) as op from sync_ops o
           where o.tbl = ${tbl} and o.row_id = any(${uuidArray(ids)}::uuid[]) order by o.seq`
     );
     for (const s of stamps.rows) {
