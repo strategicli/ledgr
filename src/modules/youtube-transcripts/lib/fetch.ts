@@ -111,17 +111,25 @@ export async function fetchTranscript(url: string): Promise<FetchedTranscript> {
 // arriving first, and we know which one we got. (Measured on the real machine,
 // 2026-08-30.)
 //
-// --sub-langs is exactly `en`, never `en.*`: the wildcard matches YouTube's
+// --sub-langs is exactly one track, never `en.*`: the wildcard matches YouTube's
 // dozens of auto-TRANSLATED tracks (en-de, en-fr, …), which yt-dlp then fetches
 // one at a time until YouTube answers 429 Too Many Requests. Same measurement.
 //
+// The automatic track is asked for as `en-orig`, not `en`. Since autumn 2026
+// YouTube lists its own speech-to-text as "en-orig" (English (Original)) and
+// serves plain "en" as a TRANSLATION of it, and translated tracks are the ones
+// it rate-limits: every `--write-auto-subs … en` call answered 429 for weeks
+// (2026-11-05, yt-dlp 2026.10.21, with and without browser impersonation),
+// while `en-orig` for the same videos came back in a second. A video spoken in
+// another language has no en-orig; it falls through to Whisper, as before.
+//
 // Note --skip-download: no video is fetched on this path at all.
 async function fetchCaptions(url: string, dir: string): Promise<string | null> {
-  const ask = [
+  const ask = (lang: string) => [
     "--skip-download",
     "--write-subs",
     "--sub-langs",
-    "en",
+    lang,
     "--sub-format",
     "vtt",
     "--no-playlist",
@@ -129,10 +137,10 @@ async function fetchCaptions(url: string, dir: string): Promise<string | null> {
     join(dir, "cap.%(ext)s"),
     url,
   ];
-  let attempt = await ytDlp(ask, CAPTION_TIMEOUT_MS);
+  let attempt = await ytDlp(ask("en"), CAPTION_TIMEOUT_MS);
   let vtt = await largestVtt(dir);
   if (!vtt) {
-    attempt = await ytDlp(["--write-auto-subs", ...ask], CAPTION_TIMEOUT_MS);
+    attempt = await ytDlp(["--write-auto-subs", ...ask("en-orig")], CAPTION_TIMEOUT_MS);
     vtt = await largestVtt(dir);
   }
 
