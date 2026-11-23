@@ -89,6 +89,7 @@ import {
   restoreErrorLine,
   supervisorStatePath,
   parseRestartRequest,
+  serializeRestartRequest,
   parseSupervisorState,
   serializeSupervisorState,
   codeFingerprint,
