@@ -108,7 +108,7 @@ ADR-001 through ADR-268 were written under an older every-choice rule and stay a
 
 Two files, both kept short enough to read in one sitting:
 
-- **`next_steps.md` is what's next.** A short queue: what's in flight, what's coming up, what's parked and why. When something ships, it comes off the list. It is not a log of finished work: finished work is in git history, the PR, and the in-app Changelog. When a section grows long enough to skim past, move it to `next_steps_archive.md` and leave a one-line pointer.
+- **`next_steps.md` is what's next.** A short queue: what's in flight, what's coming up, what's parked and why. When something ships, it comes off the list. It is not a log of finished work: finished work is in git history, the PR, and the in-app Changelog. When a section grows long enough to skim past, move it to `next_steps_archive.md` and leave a one-line pointer. Keep `next_steps.md` under about 40 KB (it is read at the start of every session); when it passes that, archive the oldest, longest, parked or finished sections word for word (the 2026-11-24 move took it from about 204 KB to about 34 KB: long parked ideas, old queued sections and the launch plan are in the archive's last two sections).
 - **`roadmap.md` is the phase checklist.** Tick the box when a phase item lands.
 
 Update them when something actually lands, not on every push. The point is a short, retraceable trail of where the project is, not a paper trail of how it got there.
